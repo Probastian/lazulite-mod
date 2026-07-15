@@ -1,3 +1,9 @@
 dependencies {
 	api project(':api')
+
+	// steamworks4j: SteamworksService's public surface exposes/accepts
+	// steamworks4j-typed values (e.g. com.codedisaster.steamworks.SteamException)
+	// to feature code, so this is `api`, not `implementation` (same rationale
+	// already used in features/hello-world-main-menu/build.gradle).
+	api "com.code-disaster.steamworks4j:steamworks4j:${steamworks4j_version}"
 }

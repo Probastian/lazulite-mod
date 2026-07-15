@@ -27,11 +27,29 @@ subprojects {
 		useJUnitPlatform()
 	}
 
+	// Lombok, available to every subproject with no per-module setup.
+	dependencies {
+		compileOnly "org.projectlombok:lombok:${lombok_version}"
+		annotationProcessor "org.projectlombok:lombok:${lombok_version}"
+		testCompileOnly "org.projectlombok:lombok:${lombok_version}"
+		testAnnotationProcessor "org.projectlombok:lombok:${lombok_version}"
+	}
+
+	// JSpecify nullness annotations (@Nullable/@NonNull), available to every subproject.
+	dependencies {
+		compileOnly "org.jspecify:jspecify:${jspecify_version}"
+	}
+
 	// JUnit 5, available to every subproject as `testImplementation`/`testRuntimeOnly`
 	// with no per-module setup. Harmless no-op for modules with no tests.
 	dependencies {
 		testImplementation platform("org.junit:junit-bom:${junit_version}")
 		testImplementation 'org.junit.jupiter:junit-jupiter'
 		testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+
+		// AssertJ fluent assertions and Mockito, layered on top of JUnit 5 for every subproject.
+		testImplementation "org.assertj:assertj-core:${assertj_version}"
+		testImplementation "org.mockito:mockito-core:${mockito_version}"
+		testImplementation "org.mockito:mockito-junit-jupiter:${mockito_version}"
 	}
 }

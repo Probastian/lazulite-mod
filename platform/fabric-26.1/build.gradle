@@ -3,9 +3,17 @@ plugins {
 	id 'maven-publish'
 }
 
+repositories {
+	maven {
+		name = 'Ladysnake Mods'
+		url = 'https://maven.ladysnake.org/releases'
+	}
+}
+
 dependencies {
 	api project(':api')
 	implementation project(':features:hello-world-main-menu')
+	implementation project(':services')
 
 	// To change the versions see the gradle.properties file
 	minecraft "com.mojang:minecraft:${minecraft_version}"
@@ -13,6 +21,34 @@ dependencies {
 
 	// Fabric API. This is technically optional, but you probably want it anyway.
 	implementation "net.fabricmc.fabric-api:fabric-api:${fabric_api_version}"
+
+	// Cardinal Components API: data attachment/sync/persistence for Fabric mods.
+	implementation "org.ladysnake.cardinal-components-api:cardinal-components-base:${cardinal_components_version}"
+
+	// Jar-in-Jar: physically bundles steamworks4j (JNI bridge + Valve's
+	// redistributable binary alike) inside this module's shipped mod jar.
+	include "com.code-disaster.steamworks4j:steamworks4j:${steamworks4j_version}"
+}
+
+// Writes a dev-only run/steam_appid.txt before runClient, defaulting to
+// Valve's public test App ID 480 ("Spacewar"), overridable via
+// -PsteamAppId=<id>. This is a Gradle-build-time concern, deliberately
+// separate from SteamAppIdResolver's runtime JVM-system-property override
+// (see services/steamworks/SteamAppIdResolver's JavaDoc).
+tasks.register('generateSteamAppId') {
+	def outputFile = layout.projectDirectory.file('run/steam_appid.txt')
+	def appId = project.findProperty('steamAppId') ?: '480'
+	inputs.property('appId', appId)
+	outputs.file(outputFile)
+
+	doLast {
+		outputFile.asFile.parentFile.mkdirs()
+		outputFile.asFile.text = "${appId}\n"
+	}
+}
+
+tasks.named('runClient') {
+	dependsOn tasks.named('generateSteamAppId')
 }
 
 processResources {

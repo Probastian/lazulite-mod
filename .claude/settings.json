@@ -11,7 +11,6 @@
       "Bash(curl -s https://meta.fabricmc.net/v2/versions/loader)",
       "WebFetch(domain:maven.fabricmc.net)",
       "Bash(grep -v '^d.*\\\\.git$')",
-
       "Bash(git status*)",
       "Bash(git diff*)",
       "Bash(git log*)",
@@ -22,7 +21,6 @@
       "Bash(git describe*)",
       "Bash(git remote -v)",
       "Bash(git branch)",
-
       "Bash(ls*)",
       "Bash(pwd)",
       "Bash(wc -l*)",
@@ -30,7 +28,6 @@
       "Bash(grep *)",
       "Bash(head *)",
       "Bash(tail *)",
-
       "Bash(./gradlew.bat compileJava*)",
       "Bash(./gradlew.bat test*)",
       "Bash(./gradlew.bat check*)",
@@ -43,7 +40,8 @@
       "Bash(./gradlew.bat :features:hello-world-main-menu:check*)",
       "Bash(./gradlew.bat :platform:fabric-26.2:compileJava*)",
       "Bash(./gradlew.bat :platform:fabric-26.1:compileJava*)",
-      "Bash(./gradlew.bat :platform:fabric-1.21.11:compileJava*)"
+      "Bash(./gradlew.bat :platform:fabric-1.21.11:compileJava*)",
+      "Bash(./gradlew build *)"
     ]
   }
 }
