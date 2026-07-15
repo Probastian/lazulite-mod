@@ -25,4 +25,8 @@ Each feature owns:
 - tests
 - documentation
 
+This repo is intended for a large Steamworks-driven mod. Feature authors
+should design with Steam Cloud, Steam Friends, join-from-friends, Workshop
+support, server discovery, and future Steamworks capabilities in mind.
+
 Features expose stable APIs but never depend on other features directly.

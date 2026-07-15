@@ -25,7 +25,7 @@ planning. No implementation code is written as part of this plan.
   `subprojects {}` configuration) and is the precedent this plan follows for
   `api` (see Files to Create).
 - Each `platform/fabric-*` module already has:
-  - a `TemplateMod implements ModInitializer` with a `"main"` entrypoint,
+  - a `LazuliMod implements ModInitializer` with a `"main"` entrypoint,
     `environment: "*"`, and a static `LOGGER` (SLF4J) — this pattern is
     extended, not replaced, with a new `"client"` entrypoint.
   - `dependencies { api project(':api') ... }` in its `build.gradle`, i.e.
@@ -135,7 +135,7 @@ Decision: keep the standard, zero-configuration Gradle/Java layout
 (`src/main/java`, `src/main/resources`, `src/test/java`) that every other
 module in this repo already uses, and realize the required folder names as
 Java sub-packages under the feature's base package
-`de.probastian.boilerplate.features.helloworldmainmenu`:
+`de.lazuli.features.helloworldmainmenu`:
 - `api/` -> `....helloworldmainmenu.api` package (in `src/main/java`)
 - `config/` -> `....helloworldmainmenu.config` package
 - `services/` -> `....helloworldmainmenu.services` package
@@ -235,50 +235,50 @@ spec — not a decision this feature needs to future-proof further today.
 
 **`api` module** (no new `build.gradle` needed — no new dependency; relies on
 root `subprojects {}` defaults, matching the existing precedent of `api`/`libraries`):
-- `api/src/main/java/de/probastian/boilerplate/api/mainmenu/MainMenuHook.java`
+- `api/src/main/java/de/lazuli/api/mainmenu/MainMenuHook.java`
   — interface: `void showLabel(String text);` / `void hideLabel();`. Only
   `java.lang.String` in the signature. JavaDoc with a usage example per NFR6.
 
 **`features/hello-world-main-menu` module (new Gradle subproject):**
 - `features/hello-world-main-menu/build.gradle`
 - `features/hello-world-main-menu/README.md`
-- `features/hello-world-main-menu/src/main/java/de/probastian/boilerplate/features/helloworldmainmenu/api/HelloWorldMainMenuConfig.java`
+- `features/hello-world-main-menu/src/main/java/de/lazuli/features/helloworldmainmenu/api/HelloWorldMainMenuConfig.java`
   — immutable data type (`record`): `boolean enabled()`, `String text()`,
   `static final HelloWorldMainMenuConfig DEFAULT` (`enabled=true`,
   `text="Hello World"`), derived `boolean shouldDisplayLabel()` (Decision 4).
-- `features/hello-world-main-menu/src/main/java/de/probastian/boilerplate/features/helloworldmainmenu/config/HelloWorldMainMenuConfigIO.java`
+- `features/hello-world-main-menu/src/main/java/de/lazuli/features/helloworldmainmenu/config/HelloWorldMainMenuConfigIO.java`
   — pure-ish JSON read/write for the 2-field schema (Decision 6): parse a
   `String` -> `HelloWorldMainMenuConfig` (never throws; returns a small result
   type indicating whether defaults were used and why), serialize a config back
   to `String`, and file-level `load(Path)` (creates the file with serialized
   `DEFAULT` if missing, per FR5) using `java.nio.file.Files` only (plain JDK).
-- `features/hello-world-main-menu/src/main/java/de/probastian/boilerplate/features/helloworldmainmenu/services/HelloWorldMainMenuService.java`
+- `features/hello-world-main-menu/src/main/java/de/lazuli/features/helloworldmainmenu/services/HelloWorldMainMenuService.java`
   — constructor `(MainMenuHook hook, HelloWorldMainMenuConfigIO configIO, Path configFilePath, Consumer<String> warningLogger)`.
   `applyToMainMenu()`: loads config via `configIO`, reports any warning via
   `warningLogger` (keeps FR5/NFR4's "logs a warning" requirement out of
   `api`/`Fabric`/SLF4J entirely — the platform composition root supplies the
-  actual logger, e.g. `TemplateMod.LOGGER::warn`, avoiding a new SLF4J
+  actual logger, e.g. `LazuliMod.LOGGER::warn`, avoiding a new SLF4J
   dependency on the feature module), then calls `hook.showLabel(text)` or
   `hook.hideLabel()` per `shouldDisplayLabel()`.
-- `features/hello-world-main-menu/src/main/java/de/probastian/boilerplate/features/helloworldmainmenu/events/package-info.java` (placeholder, documents why empty)
-- `features/hello-world-main-menu/src/main/java/de/probastian/boilerplate/features/helloworldmainmenu/gui/package-info.java` (placeholder, documents why empty — FR8)
-- `features/hello-world-main-menu/src/main/java/de/probastian/boilerplate/features/helloworldmainmenu/mixins/package-info.java` (placeholder, documents why permanently empty — FR8/NFR5)
+- `features/hello-world-main-menu/src/main/java/de/lazuli/features/helloworldmainmenu/events/package-info.java` (placeholder, documents why empty)
+- `features/hello-world-main-menu/src/main/java/de/lazuli/features/helloworldmainmenu/gui/package-info.java` (placeholder, documents why empty — FR8)
+- `features/hello-world-main-menu/src/main/java/de/lazuli/features/helloworldmainmenu/mixins/package-info.java` (placeholder, documents why permanently empty — FR8/NFR5)
 - `features/hello-world-main-menu/src/main/resources/.gitkeep` (placeholder — `resources/` unused for v1, no bundled assets)
-- `features/hello-world-main-menu/src/test/java/de/probastian/boilerplate/features/helloworldmainmenu/api/HelloWorldMainMenuConfigTest.java`
-- `features/hello-world-main-menu/src/test/java/de/probastian/boilerplate/features/helloworldmainmenu/config/HelloWorldMainMenuConfigIOTest.java`
-- `features/hello-world-main-menu/src/test/java/de/probastian/boilerplate/features/helloworldmainmenu/services/HelloWorldMainMenuServiceTest.java`
+- `features/hello-world-main-menu/src/test/java/de/lazuli/features/helloworldmainmenu/api/HelloWorldMainMenuConfigTest.java`
+- `features/hello-world-main-menu/src/test/java/de/lazuli/features/helloworldmainmenu/config/HelloWorldMainMenuConfigIOTest.java`
+- `features/hello-world-main-menu/src/test/java/de/lazuli/features/helloworldmainmenu/services/HelloWorldMainMenuServiceTest.java`
 
 **Platform modules — one Version Adapter + one client entrypoint per module (x3):**
-- `platform/fabric-26.2/src/main/java/de/probastian/boilerplate/mainmenu/FabricMainMenuHook.java`
-- `platform/fabric-26.2/src/main/java/de/probastian/boilerplate/HelloWorldMainMenuClientInitializer.java`
+- `platform/fabric-26.2/src/main/java/de/lazuli/mainmenu/FabricMainMenuHook.java`
+- `platform/fabric-26.2/src/main/java/de/lazuli/HelloWorldMainMenuClientInitializer.java`
   (implements `net.fabricmc.api.ClientModInitializer`; composition root —
   resolves `FabricLoader.getInstance().getConfigDir().resolve("hello-world-main-menu.json")`,
   constructs `FabricMainMenuHook`, `HelloWorldMainMenuConfigIO`,
   `HelloWorldMainMenuService`, calls `applyToMainMenu()`)
-- `platform/fabric-26.1/src/main/java/de/probastian/boilerplate/mainmenu/FabricMainMenuHook.java`
-- `platform/fabric-26.1/src/main/java/de/probastian/boilerplate/HelloWorldMainMenuClientInitializer.java`
-- `platform/fabric-1.21.11/src/main/java/de/probastian/boilerplate/mainmenu/FabricMainMenuHook.java`
-- `platform/fabric-1.21.11/src/main/java/de/probastian/boilerplate/HelloWorldMainMenuClientInitializer.java`
+- `platform/fabric-26.1/src/main/java/de/lazuli/mainmenu/FabricMainMenuHook.java`
+- `platform/fabric-26.1/src/main/java/de/lazuli/HelloWorldMainMenuClientInitializer.java`
+- `platform/fabric-1.21.11/src/main/java/de/lazuli/mainmenu/FabricMainMenuHook.java`
+- `platform/fabric-1.21.11/src/main/java/de/lazuli/HelloWorldMainMenuClientInitializer.java`
 
 **Documentation:**
 - `docs/adr/0001-platform-composition-root-may-depend-on-feature-classes.md`
@@ -295,7 +295,7 @@ root `subprojects {}` defaults, matching the existing precedent of `api`/`librar
 - `platform/fabric-26.1/build.gradle` — same
 - `platform/fabric-1.21.11/build.gradle` — same
 - `platform/fabric-26.2/src/main/resources/fabric.mod.json` — add a new
-  `"client": ["de.probastian.boilerplate.HelloWorldMainMenuClientInitializer"]`
+  `"client": ["de.lazuli.HelloWorldMainMenuClientInitializer"]`
   array under `"entrypoints"`, alongside the existing `"main"` array; no other
   field changes (existing `"main"`/`"environment": "*"` untouched)
 - `platform/fabric-26.1/src/main/resources/fabric.mod.json` — same
@@ -510,3 +510,6 @@ Mapped to the specification's functional and non-functional requirements:
   decisions the spec flagged as planning-adjacent (Decisions 5–6). Any further
   questions should surface during implementation as concrete compile-time
   findings (see Risk 1), not as open design questions.
+
+
+

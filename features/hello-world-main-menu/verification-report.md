@@ -11,7 +11,7 @@ Issues).
 
 | Req | Status | Evidence |
 |---|---|---|
-| FR1 (label shown, non-overlapping) | Implemented (static) / unverified visually | platform/fabric-26.2/src/main/java/de/probastian/boilerplate/mainmenu/FabricMainMenuHook.java:78-80 constructs a StringWidget, centers it horizontally, offsets it scaledHeight/4 + LABEL_Y_OFFSET(24) below the logo, adds via Screens.getWidgets(screen). Mirrored in fabric-26.1 (same file, same lines) and fabric-1.21.11 (.../mainmenu/FabricMainMenuHook.java:84-86, TextWidget + Screens.getButtons). Actual non-overlap with vanilla buttons at real resolutions/GUI scales requires manual in-game verification - not verifiable here. |
+| FR1 (label shown, non-overlapping) | Implemented (static) / unverified visually | platform/fabric-26.2/src/main/java/de/lazuli/mainmenu/FabricMainMenuHook.java:78-80 constructs a StringWidget, centers it horizontally, offsets it scaledHeight/4 + LABEL_Y_OFFSET(24) below the logo, adds via Screens.getWidgets(screen). Mirrored in fabric-26.1 (same file, same lines) and fabric-1.21.11 (.../mainmenu/FabricMainMenuHook.java:84-86, TextWidget + Screens.getButtons). Actual non-overlap with vanilla buttons at real resolutions/GUI scales requires manual in-game verification - not verifiable here. |
 | FR2 (label re-added on every TitleScreen recreation) | Implemented (static) / unverified visually | FabricMainMenuHook constructor (fabric-26.2/.../FabricMainMenuHook.java:54-56) registers ScreenEvents.AFTER_INIT.register(this::onScreenInit) once; onScreenInit (lines 68-81) re-adds the widget for every TitleScreen instance, using the cached labelText field, not a fresh disk read. Resize/return-from-world behavior requires manual verification. |
 | FR3 (purely decorative, no interaction) | Implemented (static) / unverified visually | Vanilla StringWidget/TextWidget are non-interactive display widgets, not Button; no click handler wired anywhere in FabricMainMenuHook. Tab-focus/click behavior should still be confirmed manually per the plan's own framing. |
 | FR4 (config: enabled/text, defaults) | Implemented | features/hello-world-main-menu/src/main/java/.../api/HelloWorldMainMenuConfig.java:28,34 - record (boolean enabled, String text), DEFAULT = (true, "Hello World"). Read once at startup: HelloWorldMainMenuClientInitializer.java:39-47 (all 3 platforms) calls service.applyToMainMenu() once from onInitializeClient(). |
@@ -112,7 +112,7 @@ Code-review only (no runtime profiling performed, and none is feasible without a
 | platform/fabric-26.1 | Yes (verified, fresh) | Same as 26.2 (mirrors it, per its own JavaDoc) |
 | platform/fabric-1.21.11 | Yes (verified, fresh) | net.minecraft.client.gui.widget.TextWidget, net.minecraft.text.Text, Screens.getButtons |
 
-Each fabric.mod.json gained a "client": ["de.probastian.boilerplate.HelloWorldMainMenuClientInitializer"] entrypoint array alongside the pre-existing "main" array, with no other field changes - confirmed for all three platform modules.
+Each fabric.mod.json gained a "client": ["de.lazuli.HelloWorldMainMenuClientInitializer"] entrypoint array alongside the pre-existing "main" array, with no other field changes - confirmed for all three platform modules.
 
 Actual player-visible identical behavior across the three live clients (FR7) is not verifiable by static analysis or compilation and requires a manual launch of each target.
 
@@ -134,3 +134,6 @@ Actual player-visible identical behavior across the three live clients (FR7) is 
 2. While doing the manual pass, sanity-check FabricLoader.getInstance().getConfigDir()'s resolved path in a real launch (plan Risk 4), and confirm the config file is created at the expected location.
 3. Optionally clarify the HelloWorldMainMenuService JavaDoc sentence about re-reading the config file (cosmetic only).
 4. No code changes are recommended based on this static/build verification - the implementation matches the specification and plan faithfully wherever it could be checked without launching the game.
+
+
+

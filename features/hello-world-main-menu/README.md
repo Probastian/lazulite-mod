@@ -40,7 +40,7 @@ justification. Concretely:
   `platform/fabric-*`. There is no legal place for real GUI source inside a
   feature module under this architecture; the widget-adding code lives
   entirely in each platform module's `FabricMainMenuHook`
-  (`platform/fabric-<version>/src/main/java/de/probastian/boilerplate/mainmenu/FabricMainMenuHook.java`).
+  (`platform/fabric-<version>/src/main/java/de/lazuli/mainmenu/FabricMainMenuHook.java`).
 - **`mixins/`** -- same reasoning as `gui/`, but permanent rather than
   "empty for now": a `@Mixin` class by definition targets `net.minecraft.*`
   classes, so no feature module can ever legally contain one under this
@@ -117,3 +117,5 @@ Module"), adding support for a new Minecraft version should only require:
 
 No changes to `api`, `features/hello-world-main-menu`, or this feature's
 business logic should be needed.
+
+

@@ -2,13 +2,14 @@
 
 ## Mission
 This repository is a long-term software platform for developing a large,
-multi-version Minecraft client mod. Every decision should optimize for:
+Steamworks-enabled Minecraft client mod. Every decision should optimize for:
 - Maintainability
 - Readability
 - Discoverability
 - Testability
 - Multi-version compatibility
 - Extensibility
+- Steamworks integration readiness
 
 ## Core Principles
 - Prefer long-term architecture over short-term convenience.

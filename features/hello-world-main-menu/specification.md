@@ -1,7 +1,7 @@
 # Hello World Main Menu — Feature Specification
 
 ## Overview
-Adds a small, self-contained "Hello World" demonstration to the game's title/main menu screen. This is the first entry under `features/`, and its primary purpose is to validate the boilerplate's end-to-end feature workflow (specification -> plan -> implementation -> verification) and the `Feature -> API -> Version Adapter -> Platform` layering pattern across all three currently supported targets: `platform/fabric-26.2` (Minecraft 26.2), `platform/fabric-26.1` (Minecraft 26.1), and `platform/fabric-1.21.11` (Minecraft 1.21.11).
+Adds a small, self-contained "Hello World" demonstration to the game's title/main menu screen. This is the first entry under `features/`, and its primary purpose is to validate the lazuli's end-to-end feature workflow (specification -> plan -> implementation -> verification) and the `Feature -> API -> Version Adapter -> Platform` layering pattern across all three currently supported targets: `platform/fabric-26.2` (Minecraft 26.2), `platform/fabric-26.1` (Minecraft 26.1), and `platform/fabric-1.21.11` (Minecraft 1.21.11).
 
 ## Motivation
 No feature exists yet; `features/` is empty. Before larger features are attempted, the project needs one deliberately minimal, visually verifiable-in-game reference feature that proves:
@@ -27,7 +27,7 @@ No feature exists yet; `features/` is empty. Before larger features are attempte
 - No server-side behavior of any kind.
 
 ## User Stories
-- As a mod developer validating the boilerplate, I want to launch the client on any of the three supported versions and see "Hello World" on the title screen, so I know the feature pipeline and the version-adapter pattern both work end-to-end.
+- As a mod developer validating the lazuli, I want to launch the client on any of the three supported versions and see "Hello World" on the title screen, so I know the feature pipeline and the version-adapter pattern both work end-to-end.
 - As a mod user, I want to disable the "Hello World" label or change its text by editing a config file, without recompiling the mod.
 - As a future feature author, I want a documented, copyable example under `features/` that demonstrates the required folder layout and the "Fabric API events + Platform API adapter, no mixin" approach, so I can model new features on it.
 
@@ -52,7 +52,7 @@ No feature exists yet; `features/` is empty. Before larger features are attempte
 ## Public API
 Illustrative shapes (final names/signatures are a planning-phase decision); the layering itself is normative.
 
-1. **`api` module** (shared, zero Minecraft imports) — new package, e.g. `de.probastian.boilerplate.api.mainmenu`:
+1. **`api` module** (shared, zero Minecraft imports) — new package, e.g. `de.lazuli.api.mainmenu`:
    - `MainMenuHook` (interface) — the "Platform API" referenced by `architecture.md`'s multi-version pattern:
      - `void showLabel(String text);`
      - `void hideLabel();`
@@ -102,12 +102,12 @@ Minecraft: TitleScreen, Screen, a label/button widget, Component/Text
   Given `.claude/context/philosophy.md` requires an ADR for "significant architectural changes," and this genuinely clarifies/extends an existing documented rule, an ADR is recommended before or during planning.
 
 **Version-specific facts affecting the adapters** (confirmed via Fabric documentation for the target versions):
-- `platform/fabric-1.21.11` is obfuscated and uses Yarn mappings (`net.fabricmc:yarn:1.21.11+build.6:v2`), consistent with this repo's existing `net.minecraft.util.Identifier` / `Identifier.of(...)` usage in that module's `TemplateMod.java`.
+- `platform/fabric-1.21.11` is obfuscated and uses Yarn mappings (`net.fabricmc:yarn:1.21.11+build.6:v2`), consistent with this repo's existing `net.minecraft.util.Identifier` / `Identifier.of(...)` usage in that module's `LazuliMod.java`.
 - `platform/fabric-26.1` and `platform/fabric-26.2` use Minecraft's official (Mojang) mappings natively — no obfuscation/remap step (`fabric-loom` plugin rather than `fabric-loom-remap`) — consistent with this repo's existing `net.minecraft.resources.Identifier` / `Identifier.fromNamespaceAndPath(...)` usage.
 - Minecraft's `Screen` rendering has moved to a render-state-extraction model (`extractRenderState(...)` populating a state object consumed separately, rather than a screen drawing itself directly inside an overridden `render(...)`); current Fabric documentation for custom screens already reflects this model. Implementation/verification should confirm empirically whether 1.21.11 already uses this model (very likely, since it is one patch release after 1.21.10, where the model was already documented) — this affects how a custom widget renders itself, but does **not** affect the `ScreenEvents.AFTER_INIT` + `Screens.getButtons` add-widget mechanism, which is unaffected by that refactor.
 - Because of the above, `FabricMainMenuHook` cannot be one shared source file across 1.21.11 and 26.x: package names (`net.minecraft.client.gui.screen.*` vs. `net.minecraft.client.gui.screens.*`), the text type (`net.minecraft.text.Text` vs. `net.minecraft.network.chat.Component`), and possibly widget-rendering details differ. Each platform module owns its own small adapter file — expected version-glue duplication of a handful of lines, not business-logic duplication.
 
-**Client-only entrypoint:** `TitleScreen` and the relevant Fabric GUI APIs are client-only. Each platform module's `fabric.mod.json` currently declares only a `"main"` entrypoint (`TemplateMod`, a plain `ModInitializer`, `"environment": "*"`, i.e., loads on both client and dedicated server). This feature requires a new `"client"` entrypoint (a class implementing `net.fabricmc.api.ClientModInitializer`) per platform module, where the platform registers its `FabricMainMenuHook` and triggers `applyToMainMenu()`. This is additive to each `fabric.mod.json`; it does not change the existing server-safe `main` entrypoint.
+**Client-only entrypoint:** `TitleScreen` and the relevant Fabric GUI APIs are client-only. Each platform module's `fabric.mod.json` currently declares only a `"main"` entrypoint (`LazuliMod`, a plain `ModInitializer`, `"environment": "*"`, i.e., loads on both client and dedicated server). This feature requires a new `"client"` entrypoint (a class implementing `net.fabricmc.api.ClientModInitializer`) per platform module, where the platform registers its `FabricMainMenuHook` and triggers `applyToMainMenu()`. This is additive to each `fabric.mod.json`; it does not change the existing server-safe `main` entrypoint.
 
 ## UI / Rendering
 - A single line of text, default `"Hello World"`, rendered on the vanilla `TitleScreen`. Suggested default position: centered horizontally, above the "Singleplayer" button row — exact pixel offsets are an implementation detail to be verified visually across common resolutions/GUI scales so it never overlaps the logo, splash text, or existing buttons.
@@ -183,3 +183,5 @@ Only the config file described above (`config/hello-world-main-menu.json`). No w
 - Promote the `MainMenuHook` / lookup-mechanism pattern into a generalized shared `services` capability if more features need to extend the title screen or other shared vanilla screens, avoiding each feature reinventing its own registry/lookup.
 - Migrate this feature's config loading onto a shared Config service in `services/`, once one exists, per the Configuration section above.
 - Resolve the "Platform -> API only" vs. composition-root-wiring tension identified in Architecture via a formal ADR, generalizing the answer for all future features rather than deciding it ad hoc here.
+
+
