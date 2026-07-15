@@ -1,0 +1,21 @@
+pluginManagement {
+	repositories {
+		maven {
+			name = 'Fabric'
+			url = 'https://maven.fabricmc.net/'
+		}
+		mavenCentral()
+		gradlePluginPortal()
+	}
+}
+
+rootProject.name = 'mod-boilerplate'
+
+include 'api'
+include 'common'
+include 'services'
+include 'libraries'
+include 'features:hello-world-main-menu'
+include 'platform:fabric-26.2'
+include 'platform:fabric-26.1'
+include 'platform:fabric-1.21.11'

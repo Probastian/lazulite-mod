@@ -1,0 +1,49 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "WebFetch(domain:docs.fabricmc.net)",
+      "WebFetch(domain:fabricmc.net)",
+      "WebFetch(domain:meta.fabricmc.net)",
+      "WebFetch(domain:plugins.gradle.org)",
+      "WebFetch(domain:github.com)",
+      "Bash(curl -s https://meta.fabricmc.net/v2/versions/game)",
+      "Bash(curl -s https://meta.fabricmc.net/v2/versions/loader)",
+      "WebFetch(domain:maven.fabricmc.net)",
+      "Bash(grep -v '^d.*\\\\.git$')",
+
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git show*)",
+      "Bash(git blame*)",
+      "Bash(git ls-files*)",
+      "Bash(git rev-parse*)",
+      "Bash(git describe*)",
+      "Bash(git remote -v)",
+      "Bash(git branch)",
+
+      "Bash(ls*)",
+      "Bash(pwd)",
+      "Bash(wc -l*)",
+      "Bash(cat *)",
+      "Bash(grep *)",
+      "Bash(head *)",
+      "Bash(tail *)",
+
+      "Bash(./gradlew.bat compileJava*)",
+      "Bash(./gradlew.bat test*)",
+      "Bash(./gradlew.bat check*)",
+      "Bash(./gradlew.bat tasks*)",
+      "Bash(./gradlew.bat dependencies*)",
+      "Bash(./gradlew.bat projects*)",
+      "Bash(./gradlew.bat --version)",
+      "Bash(./gradlew.bat :features:hello-world-main-menu:compileJava*)",
+      "Bash(./gradlew.bat :features:hello-world-main-menu:test*)",
+      "Bash(./gradlew.bat :features:hello-world-main-menu:check*)",
+      "Bash(./gradlew.bat :platform:fabric-26.2:compileJava*)",
+      "Bash(./gradlew.bat :platform:fabric-26.1:compileJava*)",
+      "Bash(./gradlew.bat :platform:fabric-1.21.11:compileJava*)"
+    ]
+  }
+}

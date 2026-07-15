@@ -1,0 +1,37 @@
+allprojects {
+	group = property('maven_group')
+	version = property('mod_version')
+}
+
+subprojects {
+	apply plugin: 'java-library'
+
+	repositories {
+		mavenCentral()
+	}
+
+	// Shared modules (api/common/services/libraries) target the lowest Java version
+	// among all supported Minecraft versions, so every platform module can depend on
+	// them. Platform modules override this to the Java version their Minecraft
+	// version actually requires.
+	java {
+		sourceCompatibility = JavaVersion.VERSION_21
+		targetCompatibility = JavaVersion.VERSION_21
+	}
+
+	tasks.withType(JavaCompile).configureEach {
+		it.options.release = 21
+	}
+
+	test {
+		useJUnitPlatform()
+	}
+
+	// JUnit 5, available to every subproject as `testImplementation`/`testRuntimeOnly`
+	// with no per-module setup. Harmless no-op for modules with no tests.
+	dependencies {
+		testImplementation platform("org.junit:junit-bom:${junit_version}")
+		testImplementation 'org.junit.jupiter:junit-jupiter'
+		testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+	}
+}

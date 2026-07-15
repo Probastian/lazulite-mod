@@ -1,0 +1,8 @@
+dependencies {
+	// MainMenuHook (an api-module type) appears in HelloWorldMainMenuService's
+	// public constructor signature, so it must leak to consumers -- hence
+	// `api`, not `implementation`.
+	api project(':api')
+
+	// JUnit 5 is provided to every subproject by the root build.gradle.
+}
