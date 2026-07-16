@@ -17,6 +17,8 @@ These are Java sub-packages under the feature's base package (`src/main/java/...
 
 **`mixins/` is permanently a placeholder, not just empty for now.** A `@Mixin` class by definition targets `net.minecraft.*` classes, and the layering forbids `net.minecraft.*` imports outside `platform/fabric-*`. So if a feature genuinely needs a mixin, that class cannot live in the feature's own `mixins/` package no matter how the feature grows — it must live under `platform/fabric-<version>/.../mixins/`, registered in that platform module's `*.mixins.json`. Don't go looking for it in the feature folder.
 
+For any `gui/`-touching work (screens, widgets, HUD elements), see `.claude/context/ui-guidelines.md` for the established patterns (when a mixin is actually required vs. a non-mixin overlay widget suffices, reusable-widget discipline, texture asset conventions) before designing new UI from scratch.
+
 Each feature owns:
 - configuration
 - resources
