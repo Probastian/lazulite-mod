@@ -53,6 +53,7 @@ public final class SteamworksClientInitializer implements ClientModInitializer {
 
         SteamworksService steamworksService =
                 SteamworksService.create(appId, nativeLibraryDirectory, LazuliMod.LOGGER::warn);
+        SteamworksServiceHandoff.publish(steamworksService);
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> steamworksService.pumpCallbacks());
         ClientLifecycleEvents.CLIENT_STOPPING.register(client -> steamworksService.shutdown());

@@ -13,6 +13,7 @@ repositories {
 dependencies {
 	api project(':api')
 	implementation project(':features:hello-world-main-menu')
+	implementation project(':features:steam-cloud-sync')
 	implementation project(':services')
 
 	// To change the versions see this project's gradle.properties file

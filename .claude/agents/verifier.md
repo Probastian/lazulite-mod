@@ -29,3 +29,4 @@ Efficiency:
 - Use Gradle's normal incremental build/test (no --rerun-tasks or clean) unless you have a specific reason to distrust the cache. Independence means re-checking claims against the code, not repeating expensive full rebuilds by default.
 - Cite file:line evidence instead of quoting large blocks of code, spec, or plan back into the report.
 - Only re-derive a repo fact the plan already recorded (e.g. its "Existing Implementation" section) if you have reason to think it changed or was wrong.
+- Spend forced/non-cached re-runs only on the specific self-reported claims that actually need independent confirmation (e.g. a surprising bytecode/signature finding, a novel warning). A routine "build succeeded"/"tests passed" claim with nothing suspicious about it can be spot-checked with a normal incremental run, not re-proven from a clean state.

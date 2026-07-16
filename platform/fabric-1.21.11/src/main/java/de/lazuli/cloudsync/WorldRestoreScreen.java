@@ -1,0 +1,115 @@
+package de.lazuli.cloudsync;
+
+import de.lazuli.api.cloudsync.CloudOnlyWorldSummary;
+import de.lazuli.api.cloudsync.RestoreHandle;
+import de.lazuli.api.cloudsync.RestoreProgress;
+import de.lazuli.api.cloudsync.RestoreProgressListener;
+import de.lazuli.api.cloudsync.WorldRestoreHook;
+
+import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.gui.DrawContext;
+import net.minecraft.client.gui.screen.Screen;
+import net.minecraft.client.gui.screen.world.SelectWorldScreen;
+import net.minecraft.client.gui.widget.ButtonWidget;
+import net.minecraft.text.Text;
+
+import java.util.concurrent.atomic.AtomicReference;
+
+/**
+ * Thin {@code Screen} subclass driving/displaying one FR6.10-FR6.12 world
+ * restore attempt on Minecraft 1.21.11 (Yarn-mapped, obfuscated).
+ *
+ * <p>Uses the honest "Restoring.../Extracting..." framing (FR6.11) -- never
+ * "Downloading...", since the real Cloud transfer already happened silently
+ * before Minecraft launched. The progress bar is a manually-drawn filled
+ * rectangle sized to {@code processedBytes/totalBytes}, drawn via
+ * {@link DrawContext} primitives (this version's older, still-immediate-mode
+ * rendering model, as opposed to 26.x's renamed/refactored
+ * {@code GuiGraphicsExtractor}/{@code extractRenderState} model -- see
+ * {@code .claude/context/minecraft.md}'s Known Cross-Version API Differences
+ * table) rather than any per-version reusable progress-bar widget class.
+ *
+ * <p>{@link RestoreProgressListener} callbacks may arrive from a background
+ * thread ({@code CloudSyncWorker}); this screen only ever reads the latest
+ * snapshot from a {@link AtomicReference} field on the render thread, never
+ * blocking it.
+ */
+public final class WorldRestoreScreen extends Screen {
+
+    private final CloudOnlyWorldSummary summary;
+    private final WorldRestoreHook restoreHook;
+    private final AtomicReference<RestoreProgress> latestProgress = new AtomicReference<>();
+    private final AtomicReference<String> failureReason = new AtomicReference<>();
+    private volatile boolean completed;
+    private RestoreHandle handle;
+
+    public WorldRestoreScreen(CloudOnlyWorldSummary summary, WorldRestoreHook restoreHook) {
+        super(Text.literal("Restoring " + summary.displayName()));
+        this.summary = summary;
+        this.restoreHook = restoreHook;
+    }
+
+    @Override
+    protected void init() {
+        addDrawableChild(ButtonWidget.builder(Text.literal("Cancel"), button -> onCancel())
+                .dimensions(width / 2 - 50, height / 2 + 40, 100, 20)
+                .build());
+
+        handle = restoreHook.beginRestore(summary.worldSlug(), new RestoreProgressListener() {
+            @Override
+            public void onProgress(RestoreProgress progress) {
+                latestProgress.set(progress);
+            }
+
+            @Override
+            public void onComplete(String worldSlug) {
+                completed = true;
+            }
+
+            @Override
+            public void onFailed(String worldSlug, String reason) {
+                failureReason.set(reason);
+            }
+        });
+    }
+
+    @Override
+    public void render(DrawContext context, int mouseX, int mouseY, float delta) {
+        super.render(context, mouseX, mouseY, delta);
+
+        if (completed) {
+            MinecraftClient.getInstance().setScreen(new SelectWorldScreen(null));
+            return;
+        }
+        String failure = failureReason.get();
+        if (failure != null) {
+            context.drawCenteredTextWithShadow(textRenderer, "Restore failed: " + failure, width / 2, height / 2 - 20, 0xFF5555);
+            return;
+        }
+
+        RestoreProgress progress = latestProgress.get();
+        String statusText = progress == null
+                ? "Restoring world from Steam Cloud..."
+                : switch (progress.phase()) {
+                    case READING_FROM_CLOUD -> "Restoring world from Steam Cloud...";
+                    case EXTRACTING -> "Extracting world files...";
+                };
+        context.drawCenteredTextWithShadow(textRenderer, statusText, width / 2, height / 2 - 30, 0xFFFFFF);
+
+        int barWidth = 200;
+        int barX = width / 2 - barWidth / 2;
+        int barY = height / 2;
+        context.fill(barX, barY, barX + barWidth, barY + 10, 0xFF555555);
+        if (progress != null && progress.totalBytes() > 0) {
+            float fraction = Math.min(1f, (float) progress.processedBytes() / progress.totalBytes());
+            context.fill(barX, barY, barX + (int) (barWidth * fraction), barY + 10, 0xFF33AA33);
+        }
+    }
+
+    private void onCancel() {
+        if (handle != null) {
+            restoreHook.cancelRestore(handle);
+        }
+        MinecraftClient.getInstance().setScreen(new SelectWorldScreen(null));
+    }
+}

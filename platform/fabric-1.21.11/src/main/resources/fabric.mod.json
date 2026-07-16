@@ -20,7 +20,8 @@
 		],
 		"client": [
 			"de.lazuli.HelloWorldMainMenuClientInitializer",
-			"de.lazuli.SteamworksClientInitializer"
+			"de.lazuli.SteamworksClientInitializer",
+			"de.lazuli.SteamCloudSyncClientInitializer"
 		]
 	},
 	"mixins": [

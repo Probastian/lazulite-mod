@@ -29,3 +29,6 @@ Token efficiency:
 - When delegating, point the subagent at the spec/plan file path(s) instead of restating their contents in the prompt.
 - Each phase's output document (spec, plan) is the handoff artifact. Trust facts it already recorded (e.g. the plan's "Existing Implementation" section) instead of asking the next phase to rediscover them from scratch.
 - Only ask a phase to re-verify something the previous phase already established if there's a specific reason to distrust it.
+- Don't restate architecture/coding-style/context-doc rules in a subagent's prompt just because they're relevant — every agent already reads `.claude/context/*.md` itself; reference a doc by name/section instead of summarizing its contents into the prompt.
+- Don't re-read a file in full right after you (the orchestrator) just wrote or edited it in this same turn — you already know what's in it. Read back only the specific section you're unsure about, if any.
+- Prefer delegating a document-producing phase to an agent with `Write` access to its own output file, rather than an agent that returns the full document as text for you to paste into a separate `Write` call — that round-trip pays for the same content twice.

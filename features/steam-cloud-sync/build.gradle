@@ -1,0 +1,19 @@
+dependencies {
+	// CloudSyncable and the four hook interfaces (an api-module type) appear in
+	// this feature's own public constructor/service signatures, so it must leak
+	// to consumers -- hence `api`, not `implementation` (same rationale already
+	// used in features/hello-world-main-menu/build.gradle).
+	api project(':api')
+
+	// SteamAvailability (a services-layer construction) is only ever accepted
+	// as `api.steamworks.SteamAvailability` by this feature's own public
+	// surface (e.g. CloudSyncCoordinator's constructor) -- this feature never
+	// re-exposes a steamworks4j type further downstream itself (see Decision 7
+	// of this feature's implementation plan: only the two
+	// SteamRemoteStorage*Store classes import com.codedisaster.steamworks.*,
+	// and neither type appears in any public method signature), so `services`
+	// stays `implementation`, not `api`.
+	implementation project(':services')
+
+	// JUnit 5/AssertJ/Mockito are provided to every subproject by the root build.gradle.
+}

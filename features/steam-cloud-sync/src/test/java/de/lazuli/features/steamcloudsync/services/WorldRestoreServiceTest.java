@@ -1,0 +1,238 @@
+package de.lazuli.features.steamcloudsync.services;
+
+import de.lazuli.api.cloudsync.RestoreHandle;
+import de.lazuli.api.cloudsync.RestoreProgress;
+import de.lazuli.api.cloudsync.RestoreProgressListener;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.OptionalLong;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+class WorldRestoreServiceTest {
+
+    private static final class FakeWorldArchiveCloudStore implements WorldArchiveCloudStore {
+        final Map<String, byte[]> archives = new HashMap<>();
+
+        @Override
+        public boolean isAvailable() {
+            return true;
+        }
+
+        @Override
+        public boolean streamWrite(String fileName, byte[] data) {
+            archives.put(fileName, data);
+            return true;
+        }
+
+        @Override
+        public void beginAsyncRead(String fileName, AsyncReadListener listener) {
+            byte[] data = archives.get(fileName);
+            if (data == null) {
+                listener.onFailed("not found");
+                return;
+            }
+            listener.onChunk(data);
+            listener.onComplete();
+        }
+
+        @Override
+        public int fileSize(String fileName) {
+            byte[] data = archives.get(fileName);
+            return data == null ? -1 : data.length;
+        }
+
+        @Override
+        public OptionalLong fileTimestamp(String fileName) {
+            return OptionalLong.empty();
+        }
+
+        @Override
+        public boolean getQuota(long[] totalBytes, long[] availableBytes) {
+            return true;
+        }
+
+        @Override
+        public boolean forget(String fileName) {
+            return archives.remove(fileName) != null;
+        }
+    }
+
+    /** Records callbacks and counts down a latch once a terminal outcome is reached. */
+    private static final class RecordingListener implements RestoreProgressListener {
+        final CountDownLatch done = new CountDownLatch(1);
+        final List<RestoreProgress> progressEvents = new ArrayList<>();
+        volatile String completedSlug;
+        volatile String failedSlug;
+        volatile String failureReason;
+
+        @Override
+        public void onProgress(RestoreProgress progress) {
+            progressEvents.add(progress);
+        }
+
+        @Override
+        public void onComplete(String worldSlug) {
+            completedSlug = worldSlug;
+            done.countDown();
+        }
+
+        @Override
+        public void onFailed(String worldSlug, String reason) {
+            failedSlug = worldSlug;
+            failureReason = reason;
+            done.countDown();
+        }
+    }
+
+    private static byte[] buildZipArchive(Map<String, String> entries) throws IOException {
+        ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+        try (ZipOutputStream zip = new ZipOutputStream(buffer)) {
+            for (Map.Entry<String, String> entry : entries.entrySet()) {
+                zip.putNextEntry(new ZipEntry(entry.getKey()));
+                zip.write(entry.getValue().getBytes(StandardCharsets.UTF_8));
+                zip.closeEntry();
+            }
+        }
+        return buffer.toByteArray();
+    }
+
+    @Test
+    void successfulRestoreExtractsFilesAndEnablesSync(@TempDir Path tempDir) throws Exception {
+        Path savesDirectory = Files.createDirectory(tempDir.resolve("saves"));
+        FakeWorldArchiveCloudStore archiveStore = new FakeWorldArchiveCloudStore();
+        archiveStore.archives.put("lazuli-world-my_world.zip",
+                buildZipArchive(Map.of("level.dat", "fake level data")));
+
+        WorldSyncPreferenceService preferenceService =
+                new WorldSyncPreferenceService(tempDir.resolve("world-sync-preferences.json"), w -> { });
+        preferenceService.load();
+        CloudSyncWorker worker = new CloudSyncWorker(w -> { });
+        WorldRestoreService service = new WorldRestoreService(archiveStore, preferenceService, worker, savesDirectory, w -> { });
+
+        RecordingListener listener = new RecordingListener();
+        RestoreHandle handle = service.beginRestore("my_world", listener);
+
+        assertThat(listener.done.await(5, TimeUnit.SECONDS)).isTrue();
+        assertThat(handle.worldSlug()).isEqualTo("my_world");
+        assertThat(listener.completedSlug).isEqualTo("my_world");
+        assertThat(listener.failedSlug).isNull();
+
+        Path restoredFile = savesDirectory.resolve("my_world").resolve("level.dat");
+        assertThat(Files.exists(restoredFile)).isTrue();
+        assertThat(Files.readString(restoredFile)).isEqualTo("fake level data");
+        assertThat(preferenceService.isSyncEnabled("my_world")).isTrue();
+        assertThat(Files.exists(savesDirectory.resolve(".tmp-restore-my_world"))).isFalse();
+
+        worker.shutdown();
+    }
+
+    @Test
+    void collisionWithExistingLocalWorldAbortsBeforeExtraction(@TempDir Path tempDir) throws IOException {
+        Path savesDirectory = Files.createDirectory(tempDir.resolve("saves"));
+        Files.createDirectory(savesDirectory.resolve("existing_world"));
+
+        FakeWorldArchiveCloudStore archiveStore = new FakeWorldArchiveCloudStore();
+        WorldSyncPreferenceService preferenceService =
+                new WorldSyncPreferenceService(tempDir.resolve("world-sync-preferences.json"), w -> { });
+        preferenceService.load();
+        CloudSyncWorker worker = new CloudSyncWorker(w -> { });
+        WorldRestoreService service = new WorldRestoreService(archiveStore, preferenceService, worker, savesDirectory, w -> { });
+
+        RecordingListener listener = new RecordingListener();
+        service.beginRestore("existing_world", listener);
+
+        assertThat(listener.failedSlug).isEqualTo("existing_world");
+        assertThat(listener.failureReason).contains("already exists");
+        assertThat(listener.completedSlug).isNull();
+
+        worker.shutdown();
+    }
+
+    @Test
+    void missingArchiveFailsImmediately(@TempDir Path tempDir) {
+        Path savesDirectory = tempDir.resolve("saves");
+        FakeWorldArchiveCloudStore archiveStore = new FakeWorldArchiveCloudStore();
+        WorldSyncPreferenceService preferenceService =
+                new WorldSyncPreferenceService(tempDir.resolve("world-sync-preferences.json"), w -> { });
+        preferenceService.load();
+        CloudSyncWorker worker = new CloudSyncWorker(w -> { });
+        WorldRestoreService service = new WorldRestoreService(archiveStore, preferenceService, worker, savesDirectory, w -> { });
+
+        RecordingListener listener = new RecordingListener();
+        service.beginRestore("never_uploaded", listener);
+
+        assertThat(listener.failedSlug).isEqualTo("never_uploaded");
+        assertThat(listener.failureReason).contains("not found");
+
+        worker.shutdown();
+    }
+
+    @Test
+    void corruptArchiveFailsAndLeavesNoStagingDirectoryOrPartialWorld(@TempDir Path tempDir) throws Exception {
+        Path savesDirectory = Files.createDirectory(tempDir.resolve("saves"));
+        // A valid zip's local file header parses fine, but truncating its compressed
+        // data mid-stream reliably throws an IOException when the entry is actually
+        // read/decompressed -- unlike plain garbage bytes, which ZipInputStream simply
+        // reports as "no entries" (no exception, nothing to extract). Content must be
+        // low-compressibility (not "x" repeated) so the compressed payload is large
+        // enough that a substantial truncation still lands inside it, not just inside
+        // the (much smaller, ZipInputStream-ignored-on-read) trailing central directory.
+        StringBuilder incompressible = new StringBuilder();
+        java.util.Random random = new java.util.Random(42);
+        for (int i = 0; i < 5000; i++) {
+            incompressible.append((char) (32 + random.nextInt(95)));
+        }
+        byte[] validArchive = buildZipArchive(Map.of("level.dat", incompressible.toString()));
+        byte[] truncatedArchive = Arrays.copyOf(validArchive, validArchive.length * 3 / 5);
+
+        FakeWorldArchiveCloudStore archiveStore = new FakeWorldArchiveCloudStore();
+        archiveStore.archives.put("lazuli-world-corrupt_world.zip", truncatedArchive);
+
+        WorldSyncPreferenceService preferenceService =
+                new WorldSyncPreferenceService(tempDir.resolve("world-sync-preferences.json"), w -> { });
+        preferenceService.load();
+        CloudSyncWorker worker = new CloudSyncWorker(w -> { });
+        WorldRestoreService service = new WorldRestoreService(archiveStore, preferenceService, worker, savesDirectory, w -> { });
+
+        RecordingListener listener = new RecordingListener();
+        service.beginRestore("corrupt_world", listener);
+
+        assertThat(listener.done.await(5, TimeUnit.SECONDS)).isTrue();
+        assertThat(listener.failedSlug).isEqualTo("corrupt_world");
+        assertThat(listener.completedSlug).isNull();
+        assertThat(Files.exists(savesDirectory.resolve("corrupt_world"))).isFalse();
+        assertThat(Files.exists(savesDirectory.resolve(".tmp-restore-corrupt_world"))).isFalse();
+
+        worker.shutdown();
+    }
+
+    @Test
+    void cancelRestoreOnUnknownHandleIsHarmless(@TempDir Path tempDir) {
+        FakeWorldArchiveCloudStore archiveStore = new FakeWorldArchiveCloudStore();
+        WorldSyncPreferenceService preferenceService =
+                new WorldSyncPreferenceService(tempDir.resolve("world-sync-preferences.json"), w -> { });
+        preferenceService.load();
+        CloudSyncWorker worker = new CloudSyncWorker(w -> { });
+        WorldRestoreService service = new WorldRestoreService(archiveStore, preferenceService, worker, tempDir, w -> { });
+
+        service.cancelRestore(new RestoreHandle("never_started"));
+
+        worker.shutdown();
+    }
+}

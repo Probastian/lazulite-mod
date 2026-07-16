@@ -3,7 +3,8 @@
 	"package": "de.lazuli.mixin",
 	"compatibilityLevel": "JAVA_21",
 	"mixins": [
-		"ExampleMixin"
+		"ExampleMixin",
+		"WorldListWidgetInvokerMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1
