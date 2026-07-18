@@ -1,0 +1,16 @@
+dependencies {
+	// FriendSummary/FriendSidebarHook/FriendActionListener (api-module types)
+	// appear in this feature's own public constructor/service signatures
+	// (FriendsSidebarFacade, FriendsDataSource), so it must leak to
+	// consumers -- hence `api`, not `implementation` (same rationale already
+	// used in features/steam-cloud-sync/build.gradle).
+	api project(':api')
+
+	// SteamAvailability is only ever consulted by this feature's platform
+	// composition root, never re-exposed by this feature's own public
+	// surface -- but this feature has no other services-layer dependency
+	// beyond that, so `services` stays `implementation`.
+	implementation project(':services')
+
+	// JUnit 5/AssertJ/Mockito are provided to every subproject by the root build.gradle.
+}

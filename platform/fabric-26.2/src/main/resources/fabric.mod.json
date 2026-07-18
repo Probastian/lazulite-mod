@@ -21,7 +21,8 @@
 		"client": [
 			"de.lazuli.HelloWorldMainMenuClientInitializer",
 			"de.lazuli.SteamworksClientInitializer",
-			"de.lazuli.SteamCloudSyncClientInitializer"
+			"de.lazuli.SteamCloudSyncClientInitializer",
+			"de.lazuli.FriendsSidebarClientInitializer"
 		]
 	},
 	"mixins": [
