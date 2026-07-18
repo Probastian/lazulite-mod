@@ -80,6 +80,127 @@ bigger commitment than Pattern 1 and is very likely to require a real
   divergence found in `minecraft.md`'s Known Cross-Version API Differences
   table.
 
+### The `@Invoker`/`@Accessor` duck-interface trap
+
+If the invoker/accessor's real parameter or return type is itself a
+**protected nested type** (common for list-entry base classes — confirmed for
+both `EntryListWidget.Entry` and `AbstractSelectionList.Entry`), a plain
+`interface` mixin cannot declare it at all (the type isn't nameable outside
+its own package), and switching the mixin to an **abstract class extending
+the target** to gain protected-type access breaks calling code instead: Java
+only permits a compile-time cast between two *unrelated concrete classes* if
+one is a real sub/supertype of the other, so external code can no longer cast
+to the mixin class directly (confirmed via a real crash/compile failure, not
+theory). The fix, learned the hard way (`steam-cloud-sync`,
+`WorldSelectionListInvokerMixin`): split into two types —
+
+1. A plain, untyped **duck interface** (e.g. parameters/returns as `Object`
+   instead of the real protected type) that calling code casts to. A
+   class-to-interface cast always compiles, deferring the real check to
+   runtime, by which point Mixin has merged the real implementation in.
+2. The actual `@Mixin`-annotated **abstract class**, extending the target's
+   **raw** (non-generic) form to avoid a separate ordering problem (a
+   protected type referenced in the class's own generic bound is resolved
+   before the subclass relationship that would otherwise grant access to it),
+   `implements` the duck interface, and delegates to the real, correctly-typed
+   `@Invoker`/`@Accessor` method.
+
+**The duck interface must not live in the mod's declared Mixin package**
+(`*.mixins.json`'s `"package"` value, `de.lazuli.mixin` in this repo) — Sponge
+Mixin's classloader throws `IllegalClassLoadError` for any direct external
+reference to *anything* in that package, mixin-annotated or not. Put duck
+interfaces in a sibling package (this repo's convention: `de.lazuli.duck`).
+
+**Superseded — the duck-interface pattern above does not actually work,
+confirmed via a real in-game crash across every platform module.** Sponge
+Mixin's hierarchy validator rejects a mixin class that declares
+`extends TargetItself` (the exact shape the duck-interface fix requires,
+since a real subclass relationship is the only way to name a protected
+nested type from outside its package): `InvalidMixinException: Super class
+'X' of Y was not found in the hierarchy of target class 'X'`. It compiles
+fine and can even boot without visible errors, which is what made it look
+correct at first — the error only surfaces once something actually loads the
+target class. A follow-up attempt to dodge this by declaring the plain
+`@Invoker` interface directly inside the target's own package (no `extends`
+needed at all, gaining access via same-package protected visibility instead
+of inheritance) avoids the hierarchy-validator bug, but Sponge Mixin's
+mixin-package-ownership mechanism claims the *entire* declared package, not
+just the mixin classes inside it — an immediate crash trying to load any
+*unrelated* vanilla class that happens to share that package.
+
+**The fix that actually works: abandon `@Mixin`/`@Invoker` for this specific
+problem and use plain reflection instead.** Find the target method via
+`getDeclaredMethods()` filtered by name and parameter count, `setAccessible(true)`,
+and `invoke(...)` with a plain `Object` argument — no Java source-level type
+is ever written for the protected parameter, so there is nothing for a
+descriptor mismatch, a hierarchy validator, or a package-ownership rule to
+reject. `setAccessible(true)` works here because Fabric Loader's classloader
+does not run mods under strict JPMS encapsulation. This is less "elegant"
+than a generated `@Invoker`, but it is the version that survived actual
+in-game testing after three Mixin-based designs each failed differently —
+prefer it directly for this exact situation (needing to call a target's own
+protected method whose parameter type is also protected) rather than
+re-attempting the Mixin route.
+
+## Pattern 3: rendering/click-handling inside an *existing* real list entry
+
+Different from Pattern 2 (which creates whole new synthetic rows): this is
+for adding a small piece of UI (an icon, a toggle) *inside* a row that
+already exists as a real vanilla object (e.g. a per-world sync-toggle icon
+drawn into every real world's own row, rather than a separate overlay
+button). Confirmed simpler than Pattern 2's `@Invoker` case: the concrete row
+class itself (e.g. `WorldListWidget.WorldEntry` / `WorldSelectionList.WorldListEntry`)
+is `public final` on both sides of the obfuscation boundary — no protected-type
+naming problem, so no duck-interface split is needed here. A plain `@Inject`
+-style `@Mixin` targeting the concrete row class hooks `render`/`mouseClicked`
+directly (that mechanism is not the problem below — it worked correctly the
+first time).
+
+**Reading the row's own bounds/identity accessors (`getX()`/`getY()`/
+`getWidth()`/`getLevelSummary()`/`getLevel()`) is a second, separate trap,
+confirmed via a real in-game crash even though these methods are all
+`public`.** The obvious approach — `@Shadow public abstract int getX();` —
+compiles fine, but fails at Mixin-apply time with
+`InvalidMixinException: @Shadow method getX()I ... was not located in the
+target class ... $WorldEntry`. The reason: these accessors are declared on
+an *ancestor* class (e.g. `AbstractSelectionList.Entry`/`EntryListWidget.Entry`),
+not on the concrete row class itself — `@Shadow` only resolves members
+declared directly on the exact `@Mixin` target, not merely inherited ones.
+**Fix: read them via plain reflection instead**, using `Class.getMethod(name)`
+(not `getDeclaredMethod`) — `getMethod` searches the full *public*
+inheritance chain automatically, so it finds an inherited public accessor
+without needing to know or name the exact ancestor class that declares it
+(no `setAccessible(true)` needed either, since these are already public). Cache
+the resolved `Method` once per accessor in a small companion reflection
+helper class, call it from the `@Inject` handler instead of `this.getX()`.
+
+- Render method: confirmed to take `(graphics, mouseX, mouseY, hovering,
+  partialTick)` on both sides — no explicit x/y/width/height parameters; read
+  the row's own bounds accessors instead of assuming they're passed in.
+  `@Inject(method = "render"/"extractContent", at = @At("TAIL"))` to draw
+  after vanilla's own content.
+- Click method: confirmed to take a **click-event record** (`.x()`/`.y()`/
+  `.button()`) plus a `boolean` (double-click flag) on both sides — not the
+  legacy `(double, double, int)` shape. `@Inject(method = "mouseClicked",
+  at = @At("HEAD"), cancellable = true)`: check the event's coordinates
+  against your icon's bounds first, and if hit, act and cancel (so vanilla's
+  own row-click handling — open world, etc. — doesn't also fire).
+- A plain `graphics.fill(x1, y1, x2, y2, argbColor)` call is the established,
+  working way to draw a simple colored-indicator icon in this codebase
+  (`CloudOnlyWorldListEntry`) — it avoids needing to register a real
+  texture/sprite, which on ≥26.1 requires an extra `RenderPipeline` argument
+  on `blitSprite` (a further rendering-API surface not otherwise needed here).
+- Since a real `@Mixin` class (not a duck-interface pair) has no constructor
+  parameters vanilla code will ever supply, bridge it to this feature's own
+  service (e.g. a `WorldSyncToggleHook`) the same way `SteamworksServiceHandoff`
+  already bridges `SteamworksService` to a second composition-root entrypoint:
+  a small static holder, `publish(...)`-ed once by the platform composition
+  root at startup, `require()`-d by the injected handler method.
+- Exact class/method names per version are recorded in `minecraft.md`'s Known
+  Cross-Version API Differences table — confirm via `javap` before writing
+  the mixin, don't assume continuity from Pattern 2's findings just because
+  the class hierarchy is related.
+
 ## Reusable widget components
 
 Don't pre-build a shared "icon toggle button" or similar generic widget

@@ -3,7 +3,6 @@ package de.lazuli.cloudsync;
 import de.lazuli.api.cloudsync.CloudOnlyWorldSummary;
 import de.lazuli.api.cloudsync.CloudOnlyWorldsHook;
 import de.lazuli.api.cloudsync.WorldRestoreHook;
-import de.lazuli.mixin.WorldListWidgetInvokerMixin;
 
 import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
 
@@ -25,8 +24,10 @@ import java.util.List;
  * {@link CloudOnlyWorldsHook#listCloudOnlyWorlds(List)} with the local save
  * folder names read from every real {@link WorldListWidget.WorldEntry}
  * currently populated, and appends one {@link CloudOnlyWorldListEntry} per
- * summary via {@link WorldListWidgetInvokerMixin}'s {@code @Invoker}-exposed
- * {@code addEntry} (never a public API on this list otherwise).
+ * summary via {@link EntryListWidgetReflection#addEntry} (a plain
+ * reflective call, never a public API on this list otherwise -- see that
+ * class's own JavaDoc for why reflection is used here instead of a
+ * {@code @Mixin}).
  *
  * <p>Usage example (from this module's composition root):
  * <pre>{@code
@@ -68,9 +69,8 @@ public final class FabricCloudOnlyWorldListInjector {
             }
 
             List<CloudOnlyWorldSummary> cloudOnlyWorlds = cloudOnlyWorldsHook.listCloudOnlyWorlds(localWorldFolderNames);
-            WorldListWidgetInvokerMixin invoker = (WorldListWidgetInvokerMixin) list;
             for (CloudOnlyWorldSummary summary : cloudOnlyWorlds) {
-                invoker.lazuli$invokeAddEntry(new CloudOnlyWorldListEntry(summary, this::onPlaySelected));
+                EntryListWidgetReflection.addEntry(list, new CloudOnlyWorldListEntry(summary, this::onPlaySelected));
             }
             return;
         }

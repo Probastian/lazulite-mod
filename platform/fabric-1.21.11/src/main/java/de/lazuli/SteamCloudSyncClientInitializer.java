@@ -3,7 +3,6 @@ package de.lazuli;
 import de.lazuli.api.cloudsync.CloudSyncable;
 import de.lazuli.cloudsync.FabricBookmarkToggleInjector;
 import de.lazuli.cloudsync.FabricCloudOnlyWorldListInjector;
-import de.lazuli.cloudsync.FabricWorldSyncToggleInjector;
 import de.lazuli.features.helloworldmainmenu.config.HelloWorldMainMenuConfigIO;
 import de.lazuli.features.steamcloudsync.api.SteamCloudSyncConfig;
 import de.lazuli.features.steamcloudsync.config.SteamCloudSyncConfigIO;
@@ -84,8 +83,14 @@ public final class SteamCloudSyncClientInitializer implements ClientModInitializ
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> onPlayDisconnect(client, coordinator));
 
         new FabricBookmarkToggleInjector(coordinator.bookmarkedServersService());
-        new FabricWorldSyncToggleInjector(coordinator.worldSyncPreferenceService(),
-                () -> config.enabled() && steamworksService.isSteamAvailable());
+        if (config.enabled() && steamworksService.isSteamAvailable()) {
+            WorldSyncToggleHookHolder.publish(coordinator.worldSyncPreferenceService());
+            LazuliMod.LOGGER.info("Steam Cloud world-sync toggle icon activated (per-row icon should now render on the Singleplayer screen).");
+        } else {
+            LazuliMod.LOGGER.info(
+                    "Steam Cloud world-sync toggle icon NOT activated (config.enabled={}, isSteamAvailable={}) -- no icon will render.",
+                    config.enabled(), steamworksService.isSteamAvailable());
+        }
         new FabricCloudOnlyWorldListInjector(coordinator.cloudOnlyWorldsFacade(), coordinator.worldRestoreService());
     }
 
