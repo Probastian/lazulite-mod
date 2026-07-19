@@ -43,4 +43,23 @@ public interface FriendsDataSource extends FriendActionListener {
      *         friend (FR1.3), or empty if not yet available
      */
     Optional<byte[]> avatarRgba(long steamId64);
+
+    /**
+     * Resolves the local player's own Steam identity for the sidebar's
+     * permanently-pinned first row (FR1.6/FR4.4) -- reuses the same
+     * persona/avatar accessors already used for friends, applied to the
+     * local player's own {@code SteamID}.
+     *
+     * @return the local player's own {@link FriendSummary}, or empty if it
+     *         could not be resolved (never throws, NFR2)
+     */
+    Optional<FriendSummary> localProfile();
+
+    /**
+     * @param steamId64 the friend to look up Rich Presence for
+     * @return the friend's Rich Presence {@code "status"} value (FR1.7), or
+     *         empty if no such value is currently set/resolved -- callers
+     *         fall back to the friend's plain persona-state word (FR4.8)
+     */
+    Optional<String> richPresenceStatus(long steamId64);
 }

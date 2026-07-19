@@ -69,17 +69,18 @@ public final class FabricFriendsSidebarInjector {
             return;
         }
 
-        FriendSidebarWidget sidebar = new FriendSidebarWidget(6, 6, facade, avatarTextureCache,
-                (friend, mouseX, mouseY, button) -> openContextMenu(screen, friend, mouseX, mouseY));
+        FriendSidebarWidget sidebar = new FriendSidebarWidget(facade, avatarTextureCache,
+                (friend, mouseX, mouseY, button, isOwnProfile) -> openContextMenu(screen, friend, mouseX, mouseY, isOwnProfile));
+        sidebar.setScreenWidth(scaledWidth);
         Screens.getButtons(screen).add(sidebar);
 
         ScreenMouseEvents.beforeMouseClick(screen).register(this::onBeforeMouseClick);
         ScreenKeyboardEvents.allowKeyPress(screen).register(this::onAllowKeyPress);
     }
 
-    private void openContextMenu(Screen screen, FriendSummary friend, int mouseX, int mouseY) {
+    private void openContextMenu(Screen screen, FriendSummary friend, int mouseX, int mouseY, boolean isOwnProfile) {
         closeMenu();
-        FriendContextMenuWidget menu = new FriendContextMenuWidget(mouseX, mouseY, friend, facade, this::closeMenu);
+        FriendContextMenuWidget menu = new FriendContextMenuWidget(mouseX, mouseY, friend, facade, this::closeMenu, isOwnProfile);
         List<ClickableWidget> widgets = Screens.getButtons(screen);
         widgets.add(menu);
         openMenu = menu;

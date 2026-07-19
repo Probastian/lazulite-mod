@@ -37,6 +37,16 @@ public final class NoopFriendsService implements FriendsDataSource {
     }
 
     @Override
+    public Optional<FriendSummary> localProfile() {
+        return Optional.empty();
+    }
+
+    @Override
+    public Optional<String> richPresenceStatus(long steamId64) {
+        return Optional.empty();
+    }
+
+    @Override
     public void onOpenChat(long steamId64) {
         // Intentionally empty -- FR0.2.
     }

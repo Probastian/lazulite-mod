@@ -36,6 +36,7 @@ public final class FriendsSidebarFacade implements FriendSidebarHook {
     private final FriendSidebarStateMachine stateMachine;
 
     private volatile List<FriendSummary> friends = List.of();
+    private volatile Optional<FriendSummary> localProfile = Optional.empty();
     private volatile boolean enabled = true;
 
     public FriendsSidebarFacade(FriendsDataSource dataSource, FriendSidebarStateMachine stateMachine) {
@@ -50,6 +51,7 @@ public final class FriendsSidebarFacade implements FriendSidebarHook {
      */
     public void refresh() {
         updateFriends(dataSource.currentFriends());
+        localProfile = dataSource.localProfile();
     }
 
     @Override
@@ -82,6 +84,22 @@ public final class FriendsSidebarFacade implements FriendSidebarHook {
      */
     public Optional<byte[]> avatarRgba(long steamId64) {
         return dataSource.avatarRgba(steamId64);
+    }
+
+    /**
+     * @return the local player's own pinned-row {@link FriendSummary}
+     *         (FR4.4), as of the last {@link #refresh()}
+     */
+    public Optional<FriendSummary> localProfile() {
+        return localProfile;
+    }
+
+    /**
+     * @param steamId64 the friend to look up Rich Presence for
+     * @return the friend's Rich Presence status text (FR1.7/FR4.8), if any
+     */
+    public Optional<String> richPresenceStatus(long steamId64) {
+        return dataSource.richPresenceStatus(steamId64);
     }
 
     /** @return the underlying action listener (row/menu clicks). */

@@ -7,6 +7,8 @@ import com.codedisaster.steamworks.SteamException;
 import com.codedisaster.steamworks.SteamFriends;
 import com.codedisaster.steamworks.SteamFriendsCallback;
 import com.codedisaster.steamworks.SteamID;
+import com.codedisaster.steamworks.SteamUser;
+import com.codedisaster.steamworks.SteamUserCallback;
 import com.codedisaster.steamworks.SteamUtils;
 import com.codedisaster.steamworks.SteamUtilsCallback;
 
@@ -48,10 +50,15 @@ public final class FriendsService implements FriendsDataSource {
 
     private final SteamFriends steamFriends;
     private final SteamUtils steamUtils;
+    private final SteamUser steamUser;
 
     private final Map<Long, FriendSummary> friendsByIdSnapshot = new HashMap<>();
     private final Map<Long, byte[]> avatarsById = new HashMap<>();
+    private final Map<Long, String> richPresenceById = new HashMap<>();
     private final Set<Long> dirtyAvatars = new HashSet<>();
+
+    /** Valve's own documented Rich Presence key for a human-readable status string (FR1.7). */
+    private static final String RICH_PRESENCE_STATUS_KEY = "status";
 
     private long lastRefreshAtMillis = -1L;
 
@@ -67,6 +74,7 @@ public final class FriendsService implements FriendsDataSource {
         this.warnLogger = warnLogger;
         this.steamFriends = new SteamFriends(new Callback());
         this.steamUtils = new SteamUtils(new UtilsCallback());
+        this.steamUser = new SteamUser(new UserCallback());
     }
 
     @Override
@@ -122,7 +130,7 @@ public final class FriendsService implements FriendsDataSource {
         // field is still populated so a future extension is a small change.
         boolean joinable = inGame && connectHint != null;
 
-        int avatarHandle = steamFriends.getSmallFriendAvatar(friend);
+        int avatarHandle = steamFriends.getLargeFriendAvatar(friend);
 
         friendsByIdSnapshot.put(steamId64,
                 new FriendSummary(steamId64, personaName, personaState, avatarHandle, inGame, joinable, connectHint));
@@ -130,11 +138,56 @@ public final class FriendsService implements FriendsDataSource {
         if (avatarHandle != 0 && !avatarsById.containsKey(steamId64)) {
             resolveAvatar(friend);
         }
+
+        // FR1.7: Rich Presence values are cached locally by Steam and only
+        // refresh when explicitly requested -- request every sweep, then
+        // read the "status" key; empty/unset falls back to the plain
+        // persona-state word at render time (FR4.8), never rendered blank.
+        try {
+            steamFriends.requestFriendRichPresence(friend);
+            String richPresence = steamFriends.getFriendRichPresence(friend, RICH_PRESENCE_STATUS_KEY);
+            if (richPresence != null && !richPresence.isEmpty()) {
+                richPresenceById.put(steamId64, richPresence);
+            } else {
+                richPresenceById.remove(steamId64);
+            }
+        } catch (RuntimeException e) {
+            warnLogger.accept("Failed to resolve Rich Presence for a Steam friend: " + e.getMessage());
+        }
+    }
+
+    @Override
+    public Optional<FriendSummary> localProfile() {
+        try {
+            SteamID self = steamUser.getSteamID();
+            if (self == null) {
+                return Optional.empty();
+            }
+            long steamId64 = SteamID.getNativeHandle(self);
+            String personaName = steamFriends.getPersonaName();
+            int personaState = steamFriends.getPersonaState().ordinal();
+            int avatarHandle = steamFriends.getLargeFriendAvatar(self);
+            if (avatarHandle != 0 && !avatarsById.containsKey(steamId64)) {
+                resolveAvatar(self);
+            }
+            // The own-profile row never uses inGame/joinable/connectHint
+            // (FR2.8 disables Invite/Join for this row unconditionally) and
+            // never resolves Rich Presence (FR1.6 -- friend-relative only).
+            return Optional.of(new FriendSummary(steamId64, personaName, personaState, avatarHandle, false, false, null));
+        } catch (RuntimeException e) {
+            warnLogger.accept("Failed to resolve local Steam profile: " + e.getMessage());
+            return Optional.empty();
+        }
+    }
+
+    @Override
+    public Optional<String> richPresenceStatus(long steamId64) {
+        return Optional.ofNullable(richPresenceById.get(steamId64));
     }
 
     private void resolveAvatar(SteamID friend) {
         long steamId64 = SteamID.getNativeHandle(friend);
-        int avatarHandle = steamFriends.getSmallFriendAvatar(friend);
+        int avatarHandle = steamFriends.getLargeFriendAvatar(friend);
         if (avatarHandle == 0) {
             return;
         }
@@ -142,10 +195,12 @@ public final class FriendsService implements FriendsDataSource {
         if (!steamUtils.getImageSize(avatarHandle, size) || size[0] <= 0 || size[1] <= 0) {
             return;
         }
-        ByteBuffer buffer = ByteBuffer.allocate(size[0] * size[1] * 4);
+        ByteBuffer buffer = ByteBuffer.allocateDirect(size[0] * size[1] * 4);
         try {
             if (steamUtils.getImageRGBA(avatarHandle, buffer)) {
-                avatarsById.put(steamId64, buffer.array());
+                byte[] bytes = new byte[buffer.remaining()];
+                buffer.get(bytes);
+                avatarsById.put(steamId64, bytes);
             }
         } catch (SteamException e) {
             warnLogger.accept("Failed to decode avatar image for a Steam friend: " + e.getMessage());
@@ -226,5 +281,15 @@ public final class FriendsService implements FriendsDataSource {
      * feature has no use for {@code SteamUtilsCallback}'s own events.
      */
     private static final class UtilsCallback implements SteamUtilsCallback {
+    }
+
+    /**
+     * Required by steamworks4j's {@link SteamUser} constructor (FR1.6);
+     * every declared method on {@link SteamUserCallback} is a default
+     * method (javap-confirmed against this repo's own resolved
+     * {@code steamworks4j-1.10.0.jar}), so this feature has no use for any
+     * of its events beyond the zero-arg {@code getSteamID()} query itself.
+     */
+    private static final class UserCallback implements SteamUserCallback {
     }
 }

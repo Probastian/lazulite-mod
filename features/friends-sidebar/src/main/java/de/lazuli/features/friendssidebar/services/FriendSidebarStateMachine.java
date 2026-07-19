@@ -74,4 +74,60 @@ public final class FriendSidebarStateMachine {
     public boolean isJoinEnabled(FriendSummary friend) {
         return false;
     }
+
+    /**
+     * Pure clamp/accumulate for the scrollable friends list (FR4.7) -- the
+     * pinned own-profile row never scrolls, this only governs the friends
+     * list below it. Offsets are in whole rows, not pixels, so this stays
+     * resolution/{@code ROW_HEIGHT}-agnostic.
+     *
+     * @param currentScrollOffset current offset, in rows
+     * @param deltaRows           signed row delta from one scroll-wheel event
+     * @param totalRows           total friend-row count
+     * @param visibleRows         how many friend rows currently fit in the
+     *                            sidebar's scrollable region
+     * @return the new offset, clamped to {@code [0, max(0, totalRows - visibleRows)]}
+     */
+    public int clampScroll(int currentScrollOffset, int deltaRows, int totalRows, int visibleRows) {
+        int maxOffset = Math.max(0, totalRows - visibleRows);
+        int next = currentScrollOffset + deltaRows;
+        return Math.max(0, Math.min(next, maxOffset));
+    }
+
+    /**
+     * Maps a {@code SteamFriends.PersonaState} ordinal (0-7, see
+     * {@code FriendSummary#personaState()}) to Steam's own status-color
+     * convention (FR4.9/FR4.10) -- full-alpha ARGB, {@code 0xFF} alpha byte
+     * always set. {@code Online}/{@code LookingToTrade}/{@code LookingToPlay}
+     * share one green; {@code Offline}/{@code Invisible} share one grey.
+     *
+     * @param personaState the friend's/own profile's persona-state ordinal
+     * @return a full-alpha {@code 0xFFxxxxxx} ARGB color
+     */
+    public int statusColorArgb(int personaState) {
+        return switch (personaState) {
+            case 1, 5, 6 -> 0xFF5BA32F; // Online, LookingToTrade, LookingToPlay
+            case 3, 4 -> 0xFFE3A008;    // Away, Snooze
+            case 2 -> 0xFFD54141;       // Busy
+            default -> 0xFF898989;     // Offline (0) / Invisible (7)
+        };
+    }
+
+    /**
+     * @param personaState the friend's/own profile's persona-state ordinal
+     * @return the plain-text status word for that state (FR1.8/FR4.8) --
+     *         used whenever no Rich Presence value is available
+     */
+    public String statusLabel(int personaState) {
+        return switch (personaState) {
+            case 1 -> "Online";
+            case 2 -> "Busy";
+            case 3 -> "Away";
+            case 4 -> "Snooze";
+            case 5 -> "Looking to Trade";
+            case 6 -> "Looking to Play";
+            case 7 -> "Invisible";
+            default -> "Offline";
+        };
+    }
 }

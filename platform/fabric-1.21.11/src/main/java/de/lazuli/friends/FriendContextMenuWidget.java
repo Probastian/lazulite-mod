@@ -34,15 +34,33 @@ public final class FriendContextMenuWidget extends ClickableWidget {
     private final FriendSummary friend;
     private final FriendsSidebarFacade facade;
     private final Runnable onClosed;
+    private final boolean isOwnProfile;
 
     public FriendContextMenuWidget(int x, int y, FriendSummary friend, FriendsSidebarFacade facade, Runnable onClosed) {
+        this(x, y, friend, facade, onClosed, false);
+    }
+
+    /**
+     * @param isOwnProfile {@code true} when this menu was opened for the
+     *                     pinned own-profile row (FR2.8) -- Open chat/Invite/
+     *                     Join are forced disabled and only Show profile is
+     *                     enabled, regardless of the state machine's own
+     *                     friend-row availability logic
+     */
+    public FriendContextMenuWidget(int x, int y, FriendSummary friend, FriendsSidebarFacade facade, Runnable onClosed,
+            boolean isOwnProfile) {
         super(x, y, WIDTH, OPTION_HEIGHT * LABELS.length, Text.literal("Friend menu"));
         this.friend = friend;
         this.facade = facade;
         this.onClosed = onClosed;
+        this.isOwnProfile = isOwnProfile;
     }
 
     private boolean isEnabled(int index) {
+        if (isOwnProfile) {
+            // FR2.8: only "Show profile" is ever actionable for one's own row.
+            return index == 1;
+        }
         return switch (index) {
             case 0 -> facade.stateMachine().isOpenChatEnabled(friend);
             case 1 -> facade.stateMachine().isShowProfileEnabled(friend);

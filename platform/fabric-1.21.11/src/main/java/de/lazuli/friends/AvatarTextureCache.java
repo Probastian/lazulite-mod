@@ -34,9 +34,13 @@ import java.util.function.Consumer;
  */
 public final class AvatarTextureCache {
 
-    private static final int AVATAR_SIZE = 32;
+    // Steam's "large" avatar (SteamFriends.getLargeFriendAvatar) is always
+    // delivered at this fixed resolution.
+    static final int AVATAR_SIZE = 184;
+    public static final int SIZE = AVATAR_SIZE;
 
     private final Map<Long, Identifier> uploaded = new HashMap<>();
+    private final Map<Long, byte[]> uploadedSource = new HashMap<>();
     private final Consumer<String> warnLogger;
 
     public AvatarTextureCache(Consumer<String> warnLogger) {
@@ -53,11 +57,16 @@ public final class AvatarTextureCache {
      */
     public Identifier getOrUpload(long steamId64, byte[] rgba) {
         Identifier existing = uploaded.get(steamId64);
-        if (existing != null) {
+        // FriendsService replaces its avatarsById entry with a new array
+        // instance whenever a fresher avatar arrives (e.g. Steam's
+        // placeholder is swapped for the real image after
+        // onAvatarImageLoaded fires) -- re-upload rather than keeping the
+        // first (possibly placeholder) texture forever.
+        if (existing != null && uploadedSource.get(steamId64) == rgba) {
             return existing;
         }
         if (rgba == null || rgba.length != AVATAR_SIZE * AVATAR_SIZE * 4) {
-            return null;
+            return existing;
         }
         try {
             NativeImage image = new NativeImage(AVATAR_SIZE, AVATAR_SIZE, false);
@@ -74,13 +83,16 @@ public final class AvatarTextureCache {
             }
             NativeImageBackedTexture texture = new NativeImageBackedTexture(() -> "lazuli friend avatar " + steamId64, image);
             texture.upload();
-            Identifier id = Identifier.of("lazuli", "friend_avatar_" + Long.toHexString(steamId64));
+            Identifier id = existing != null
+                    ? existing
+                    : Identifier.of("lazuli", "friend_avatar_" + Long.toHexString(steamId64));
             MinecraftClient.getInstance().getTextureManager().registerTexture(id, texture);
             uploaded.put(steamId64, id);
+            uploadedSource.put(steamId64, rgba);
             return id;
         } catch (RuntimeException e) {
             warnLogger.accept("Failed to upload avatar texture for friend " + steamId64 + ": " + e.getMessage());
-            return null;
+            return existing;
         }
     }
 }

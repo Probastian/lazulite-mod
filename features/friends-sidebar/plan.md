@@ -212,11 +212,17 @@ reliably, exclude `RealmsMainScreen` from v1 and log it (spec Non-goals'
   `net.minecraft.client.gui.screens.multiplayer.JoinMultiplayerScreen`
   (**not** `MultiplayerScreen` — spec's illustrative name corrected per
   Existing Implementation, matching what `FabricBookmarkToggleInjector`
-  already targets), `net.minecraft.client.gui.screens.OptionsScreen`,
+  already targets), `net.minecraft.client.gui.screens.options.OptionsScreen`
+  (per `.claude/context/minecraft.md`'s own real-compile-confirmed package,
+  which superseded this plan's own original guessed package —
+  `net.minecraft.client.gui.screens.OptionsScreen` — recorded here so the
+  v1.1 additions below reference the already-corrected package),
   `net.minecraft.client.gui.screens.PauseScreen` (**not** `GameMenuScreen` —
-  confirmed absent on this side), `net.minecraft.realmsclient.gui.screens.RealmsMainScreen`
-  (package guessed by convention with other `realmsclient.gui.screens.*`
-  classes — not independently confirmed, flagged again in Risk 1).
+  confirmed absent on this side), `com.mojang.realmsclient.RealmsMainScreen`
+  (also real-compile-corrected in `minecraft.md`'s table from this plan's
+  original `net.minecraft.realmsclient.gui.screens.RealmsMainScreen` guess —
+  Realms lives under Mojang's own `com.mojang.realmsclient` namespace here,
+  not under `net.minecraft` at all).
 - **`fabric-1.21.11`** (Yarn-mapped): `TitleScreen`,
   `net.minecraft.client.gui.screen.world.SelectWorldScreen` (already the
   exact type `FabricCloudOnlyWorldListInjector` imports on this module),
@@ -252,6 +258,13 @@ avatar texture per friend (Decision 5). It never itself imports
 callback surface and a `List<FriendSummary>` snapshot, both `api`-module
 types (spec Public API item 1).
 
+**Confirmed as-built (real compile, both platform families)**: the concrete
+top-level widget base classes actually used are `net.minecraft.client.gui.components.AbstractWidget`
+(26.x, Mojang) and `net.minecraft.client.gui.widget.ClickableWidget` (1.21.11,
+Yarn) — Risk 6 is resolved; both compile and are already exercised by the
+real `FriendSidebarWidget.java`/`FriendContextMenuWidget.java` in every
+module (Existing Implementation, v1.1 section below).
+
 ### 4. Context menu: a second small top-level overlay widget, drawn after the sidebar, capturing all input while open
 `FriendContextMenuWidget` (one per platform module, same package) is
 constructed at the mouse's click position (FR2.6) the moment a row is
@@ -281,6 +294,13 @@ method, cancellable, scoped only to "is a context menu open" — never a
 broader per-screen mixin. Flagged in Risks (Risk 7) as the one place this
 plan's default Pattern-1 commitment has a plausible fallback trigger.
 
+**Confirmed as-built**: `ScreenMouseEvents.beforeMouseClick(screen)` /
+`ScreenKeyboardEvents.allowKeyPress(screen)` (both `fabric-screen-api-v1`) are
+the real Fabric API hooks used by `FabricFriendsSidebarInjector` for
+outside-click and Escape interception respectively — no mixin fallback was
+needed for v1 (Risk 7 did not trigger). This same pair of hooks is reused
+unchanged by the v1.1 additions below.
+
 ### 5. Avatar texture upload: one small `AvatarTextureCache` per platform module, keyed by `steamId64`
 Per spec Architecture — Avatar Rendering: `SteamUtils.getImageSize`/
 `getImageRGBA` yield raw RGBA bytes (Existing Implementation confirms these
@@ -299,6 +319,25 @@ available, `FriendSidebarWidget` draws a plain flat-colored square (a
 established for `CloudOnlyWorldListEntry`'s cloud icon per `minecraft.md`'s
 table) — no placeholder PNG asset needed.
 
+**Confirmed as-built (real compile, Risk 3 resolved)**: per
+`.claude/context/minecraft.md`'s table, 26.x uses
+`com.mojang.blaze3d.platform.NativeImage` + `net.minecraft.client.renderer.texture.DynamicTexture`
+(a concrete class), `NativeImage.setPixelABGR(x, y, abgr)` (no ARGB
+convenience overload), `TextureManager.register(Identifier, AbstractTexture)`;
+1.21.11 uses `net.minecraft.client.texture.NativeImage` +
+`net.minecraft.client.texture.NativeImageBackedTexture` (26.x's
+`DynamicTexture` name is instead an *interface* there),
+`NativeImage.setColorArgb(x, y, argb)`, `TextureManager.registerTexture(...)`.
+`AvatarTextureCache.java` (all three modules) is already built against these
+confirmed names; the avatar path used is `getLargeFriendAvatar` (184×184,
+`AvatarTextureCache.SIZE`/`AVATAR_SIZE`), not `getSmallFriendAvatar` as this
+plan originally assumed — downscaled at draw time by `FriendSidebarWidget`'s
+own 12-arg `blit(...)` call passing `DISPLAY_SIZE` as the destination
+width/height and `AvatarTextureCache.SIZE` as the source region/texture
+size. This large-avatar-downscaled-to-small choice (rather than fetching
+`getSmallFriendAvatar` directly) is carried forward unchanged into v1.1
+(Decision 12 reuses the identical call for the pinned own-profile row, FR5.4).
+
 ### 6. `FriendsService` action methods use the corrected `OverlayToUserDialog` enum, not string literals
 Per Existing Implementation's steamworks4j corrections: `FriendsService.openChat(long steamId64)`
 calls `steamFriends.activateGameOverlayToUser(OverlayToUserDialog.Chat, new SteamID(steamId64))`;
@@ -312,6 +351,14 @@ are implemented as **empty method bodies with a code comment citing FR3.3/FR3.4*
 `FriendContextMenuWidget`'s Invite/Join rows are always non-interactive
 (Decision 4) — not merely "implemented but disabled," per spec Non-goals'
 explicit "no connect-string... exists yet in v1."
+
+**Correction versus this decision's own original text**: the real,
+as-built `FriendsService.activateOverlay(...)` does call a genuine
+`steamUtils.isOverlayEnabled()` guard before `activateGameOverlayToUser(...)`
+— steamworks4j's `SteamUtils` *does* expose this query after all (this
+plan's original claim that no such query exists was incorrect; superseded
+here, no action needed, the as-built code is strictly better than what this
+decision originally called for).
 
 ### 7. Refresh cadence and callback registration: `FriendsService` owns both, ticked from the composition root, no new background thread
 Per FR1.4/FR1.5/Architecture — Threading: unlike `steam-cloud-sync`'s Group 6
@@ -527,7 +574,9 @@ single named exception structurally guarantees) zero
    plan's `OptionsScreen`/`RealmsMainScreen` package guesses in particular)
    and that `ScreenEvents.AFTER_INIT` actually fires for each allow-listed
    screen — log the confirmed result in `minecraft.md`'s table per that
-   file's convention.
+   file's convention. **Resolved during v1 implementation** — see Decision 2's
+   "Confirmed as-built" note and `minecraft.md`'s own table row; carried here
+   only as a closed historical record, not an open risk for v1.1.
 2. **`RealmsMainScreen` reachability via `ScreenEvents.AFTER_INIT` is
    unconfirmed** (spec's own explicit flag, Architecture; carried forward
    verbatim) — its third-party-library-driven internals may not construct/
@@ -539,28 +588,39 @@ single named exception structurally guarantees) zero
    flagged gap, carried forward) — `AvatarTextureCache`'s concrete
    implementation is the first piece of Group-analogous UI work that must
    start with a real compile/`javap` pass against each module's resolved
-   jar, not an assumption.
+   jar, not an assumption. **Resolved during v1 implementation** — see
+   Decision 5's "Confirmed as-built" note; carried here only as a closed
+   historical record.
 4. **`SteamFriendsCallback`'s exact declared method signatures
    (`onPersonaStateChange`/`onAvatarImageLoaded`-shaped) were not retrieved
    by this planning pass's `WebFetch` attempts** — `FriendsService`'s
    callback-registration code is the first concrete implementation step
    needing a fresh, successful fetch/read of that interface's real source
    (or a real compile against the already-resolved jar) before being
-   written.
+   written. **Resolved during v1 implementation** — the real, as-built
+   `FriendsService.Callback` (Existing Implementation, `FriendsService.java`)
+   confirms `onPersonaStateChange(SteamID, SteamFriends.PersonaChange)` /
+   `onAvatarImageLoaded(SteamID, int, int, int)`; carried here only as a
+   closed historical record.
 5. **`OverlayToUserDialog`'s enum constant list came from `WebSearch`, not a
    second direct `WebFetch` of the enum's own source file** — low risk (the
    two constants this feature actually needs, `Chat`/`SteamID`, are
    independently corroborated by Valve's own public `ISteamFriends` docs
    citing the same two dialog-name strings the spec itself already cites,
    `"chat"`/`"steamid"`), but implementation should still let a real compile
-   confirm the exact enum constant names before relying on them.
+   confirm the exact enum constant names before relying on them. **Resolved
+   during v1 implementation** — the real, as-built `FriendsService.java`
+   compiles and calls `OverlayToUserDialog.Chat`/`OverlayToUserDialog.SteamID`
+   successfully; closed historical record.
 6. **`FriendSidebarWidget`'s exact top-level renderable/clickable interface
    name per platform module is not independently `javap`-confirmed this
    pass** (Decision 3) — smallest-risk item in this plan (a custom widget
    class only needs to satisfy whatever interface `Screens.getWidgets(...)`'s
    list element type requires, already proven reachable by every existing
    Pattern-1 injector in this repo); confirm the exact interface name at
-   implementation time via a real compile.
+   implementation time via a real compile. **Resolved during v1
+   implementation** — see Decision 3's "Confirmed as-built" note; closed
+   historical record.
 7. **Decision 4's Escape/outside-click interception is the one place this
    plan's default "Pattern 1 only, no mixin" commitment has a concrete,
    pre-identified fallback trigger** — if intercepting Escape *before* the
@@ -571,7 +631,8 @@ single named exception structurally guarantees) zero
    ("conditional, not committed up front"). This should be resolved early in
    implementation (before building out `FriendContextMenuWidget`'s full
    behavior) since it affects that widget's own design, not deferred to the
-   end.
+   end. **Resolved during v1 implementation, fallback not triggered** — see
+   Decision 4's "Confirmed as-built" note; closed historical record.
 8. **No fake/test-double seam exists for `FriendsService`'s own steamworks4j
    calls** (unlike `steam-cloud-sync`'s `CloudFileStore`/`WorldArchiveCloudStore`
    seam) — this plan's Test Strategy explicitly accepts a smaller unit-test
@@ -579,7 +640,9 @@ single named exception structurally guarantees) zero
    verification with a real friend list instead; flagged as a deliberate,
    scope-proportionate trade-off, not an oversight, but noted in case a
    future feature needs a richer `SteamFriends`-shaped fake and this
-   decision is revisited then.
+   decision is revisited then. **Still open** — unchanged by v1.1, since the
+   v1.1 additions (Decision 12's local-profile accessor, Decision 14's rich
+   presence read) extend the same un-fake-seamed class.
 9. **Manual verification requires a live Steam session with at least one
    real friend online** to exercise most of FR1–FR3 meaningfully — if no
    such friend/account pairing is available during the verification phase,
@@ -587,7 +650,12 @@ single named exception structurally guarantees) zero
    `PersonaStateChange`-driven refresh, `ActivateGameOverlayToUser` actually
    opening Steam's overlay) cannot be fully exercised and should be
    explicitly marked "not verified, no test friend available" in the
-   verification report rather than silently skipped.
+   verification report rather than silently skipped. **Still open** —
+   unchanged by v1.1; the v1.1 manual matrix (below) inherits this same
+   constraint and adds that the *local* player's own account (always
+   available, no test friend needed) now covers a meaningful subset of
+   these checks for the pinned own-profile row specifically (FR5.1–FR5.4),
+   somewhat reducing (but not eliminating) this risk's practical impact.
 
 ## Acceptance Criteria
 Mapped to the specification's functional and non-functional requirements:
@@ -651,3 +719,686 @@ Mapped to the specification's functional and non-functional requirements:
   further questions should surface during implementation as concrete
   compile-time/`javap`-confirmation findings (Risks 1, 2, 3, 4, 5, 6), not as
   open design questions.
+
+# v1.1 Revision — Layout, Pinned Own Profile, Scroll, Borders, Real Status
+
+Everything below extends the plan above with FR4.x/FR5.x (specification
+v1.1 revision, `features/friends-sidebar/specification.md:59-80`). The v1
+plan above is unchanged and remains accurate for FR0–FR3 (already
+implemented; this section's own Decisions numbered 9+ continue that
+numbering, and its own Risks are appended after Risk 9 above using the same
+list, not restarted).
+
+## Existing Implementation (v1.1 addendum)
+Grounded directly in the real, currently-checked-out code (not the v1 plan's
+as-designed version — implementation diverged in the details noted below):
+
+- **Current sidebar anchor/size constants, all three modules identical**
+  (`platform/fabric-{26.2,26.1,1.21.11}/.../friends/FriendSidebarWidget.java`):
+  `DISPLAY_SIZE = 32`, `ROW_PADDING = 4`, `COLLAPSED_WIDTH = DISPLAY_SIZE + ROW_PADDING*2 = 40`,
+  `EXPANDED_WIDTH = 170`, `ROW_HEIGHT = DISPLAY_SIZE + ROW_PADDING*2 = 40`,
+  `MAX_ROWS = 12`. Constructed at a **fixed top-left anchor**,
+  `new FriendSidebarWidget(6, 6, ...)`, by `FabricFriendsSidebarInjector.onScreenInit(...)`
+  — left-edge anchored with a 6px margin on both axes, not right-edge, not
+  flush (spec FR4.1/FR4.2 supersede this). `onScreenInit` already receives
+  `scaledWidth`/`scaledHeight` from `ScreenEvents.AFTER_INIT`'s own callback
+  signature, unused today — the right-edge-flush math (Decision 9) uses this
+  already-available parameter, no new event/hook needed.
+- **Current avatar draw call, 26.x** (`FriendSidebarWidget.drawRow`, confirmed
+  exact 12-arg overload already in use): `guiGraphics.blit(RenderPipelines.GUI_TEXTURED,
+  avatarTexture, x + ROW_PADDING, y + ROW_PADDING, 0f, 0f, DISPLAY_SIZE, DISPLAY_SIZE,
+  size, size, size, size)` where `size = AvatarTextureCache.SIZE` (184, the
+  large-avatar source resolution) — this is the fractional-UV-safe 12-arg
+  overload the task's own briefing flags as load-bearing (the 4-arg
+  `blit(Identifier, ...)` convenience overload draws nothing); already
+  correctly used, no change needed to the *mechanism*, only to the
+  `DISPLAY_SIZE` constant it's parameterized by (Decision 10).
+- **Current avatar draw call, 1.21.11**: `context.drawTexturedQuad(avatarTexture,
+  x + ROW_PADDING, y + ROW_PADDING, x + ROW_PADDING + DISPLAY_SIZE,
+  y + ROW_PADDING + DISPLAY_SIZE, 0f, 1f, 0f, 1f)` — whole-texture UV span
+  (`0..1`), scaled to `DISPLAY_SIZE` by the destination rectangle alone; no
+  fractional-region parameter needed on this side at all (Yarn's
+  `drawTexturedQuad` shape differs from 26.x's `blit`, already correctly
+  used).
+- **Current text draw calls**: 26.x, `guiGraphics.text(Minecraft.getInstance().font,
+  friend.personaName(), x + ROW_PADDING + DISPLAY_SIZE + 6, y + ROW_HEIGHT/2 - 4,
+  0xFFFFFFFF)` — **already uses full ARGB with a non-zero alpha byte**
+  (`0xFFFFFFFF`, not `0xFFFFFF`), so the task's flagged "`text()` no-ops if
+  alpha byte is 0" pitfall does **not** currently affect this call and any
+  new v1.1 status-text draw call must copy this same full-ARGB convention,
+  not the 1.21.11 side's convention below. 1.21.11,
+  `context.drawTextWithShadow(MinecraftClient.getInstance().textRenderer,
+  friend.personaName(), x + ROW_PADDING + DISPLAY_SIZE + 6, y + ROW_HEIGHT/2 - 4,
+  0xFFFFFF)` — Yarn's `drawTextWithShadow` takes a plain RGB `int` (alpha
+  implied opaque by the method itself, confirmed by this call already
+  rendering visibly today), a genuinely different color-parameter contract
+  from 26.x's `text(...)`, not just a naming difference; any new v1.1 text
+  draw call on this side keeps the plain-RGB convention unchanged.
+- **Current placeholder/background fill calls, both sides**: `guiGraphics.fill(x1, y1, x2, y2, argbColor)`
+  / `context.fill(x1, y1, x2, y2, argbColor)` — used today for (a) the
+  semi-transparent sidebar background (`0x99000000`, alpha `0x99`, renders
+  correctly) and (b) the flat-colored avatar-placeholder square
+  (`personaColor(friend)`, full-alpha `0xFF......`, renders correctly). This
+  confirms `fill(...)` has **no alpha-zero pitfall** analogous to `text()`/`blit()`
+  on either side — a semi-transparent (`0x99`) and a fully-opaque (`0xFF`)
+  alpha both already render as expected in the real, currently-checked-out
+  code, so `fill(...)` is confirmed the correct, already-proven building
+  block for every new border line this revision adds (Decision 13) with no
+  further alpha-safety verification needed. This directly answers the task
+  briefing's own open question ("confirm... `fill(...)` is the right
+  building block... doesn't have an alpha-zero pitfall").
+- **`FriendSidebarStateMachine.isExpanded(...)`** (`features/friends-sidebar/src/main/java/de/lazuli/features/friendssidebar/services/FriendSidebarStateMachine.java`)
+  takes `(mouseX, mouseY, sidebarX, sidebarY, sidebarWidth, sidebarHeight)` and
+  is pure/`net.minecraft.*`-free — reused unchanged by Decision 9's
+  right-edge math (the caller now passes a dynamically-computed `sidebarX`
+  each frame rather than a fixed constructor value; the state machine's own
+  signature does not change).
+- **`FriendsDataSource`/`FriendsService`/`NoopFriendsService`/`FriendsSidebarFacade`**
+  (all under `features/friends-sidebar/src/main/java/de/lazuli/features/friendssidebar/services/`)
+  — `FriendsService` is confirmed (Existing Implementation above, v1 section)
+  as the sole class importing `com.codedisaster.steamworks.*`; it already
+  owns `SteamFriends`/`SteamUtils` construction, `tick()`'s rate-limited
+  refresh sweep, and the `FriendSummary` snapshot map (`friendsByIdSnapshot`)
+  the v1.1 pinned-row/status-text work extends. `FriendSummary.personaState()`
+  is `SteamFriends.PersonaState.ordinal()` (`resolveFriend(...)`, confirmed);
+  **`PersonaState`'s declared enum order** (`WebFetch`,
+  `code-disaster/steamworks4j` tag `1.10.0`,
+  `SteamFriends.java`): `Offline(0), Online(1), Busy(2), Away(3), Snooze(4),
+  LookingToTrade(5), LookingToPlay(6), Invisible(7)` — this is the exact
+  ordinal mapping Decision 14's status-color/status-text logic must use;
+  **note the enum's own declared order does not match spec FR5.11's prose
+  order** ("Online, Away/Snooze, Busy, Offline") — the *ordinals* (0–7 above)
+  are what code must switch on, not positional assumptions from FR5.11's
+  prose.
+- **`getFriendRichPresence` confirmed present** (`WebFetch`, same source/tag):
+  `public String getFriendRichPresence(SteamID steamIDFriend, String key)` —
+  key-value, not a single "current status string" call; FR5.10's "rich
+  presence status string when available" needs a specific, chosen key (see
+  Decision 14) since this call requires one.
+- **`SteamUser` confirmed present, not currently constructed by this
+  feature** (`WebFetch`, same source/tag): `public class SteamUser extends
+  SteamInterface`, constructor `public SteamUser(SteamUserCallback callback)`,
+  `public SteamID getSteamID()`. `SteamworksService` (the shared bootstrap,
+  `services/steamworks/SteamworksService.java`) does **not** itself expose a
+  `SteamUser` instance (grepped, no match) — `FriendsService` must construct
+  its own, mirroring how it already constructs its own `SteamFriends`/
+  `SteamUtils` (Decision 12). `SteamUserCallback`'s own declared interface
+  methods were **not** retrieved by this planning pass's `WebFetch` (same
+  class of gap the v1 plan already flagged for `SteamFriendsCallback`, Risk 4
+  above) — carried forward as new Risk 10.
+- **`getPersonaName()`/`getPersonaState()` zero-arg overloads**: spec FR5.3
+  already cites these as `javap`-confirmed against this repo's own resolved
+  jar; this planning pass did not independently re-run that `javap` pass
+  (no such tool available this session, Existing Implementation's own
+  stated tool limitation) but has no reason to doubt the spec's own
+  first-party confirmation — treated as confirmed per the spec's own
+  citation, consistent with how this plan already treats FR5.3/5.4's other
+  `javap`-flagged facts.
+
+## Decisions on the Open Questions (v1.1, resolved during planning)
+
+### 9. Right-edge-flush positioning: compute `x` every frame from `scaledWidth` minus the sidebar's *current* rendered width, not a fixed constructor value
+Supersedes the current fixed `new FriendSidebarWidget(6, 6, ...)` call
+(Existing Implementation) for `x` only — `y` stays a fixed small top margin
+(`6`, unchanged; FR4.1/FR4.2 require zero-margin flush only against the
+*right* edge, not the top, per the spec's own precise wording, "flush
+against the screen edge it is anchored to... the edge is now fixed as the
+right edge"). `FriendSidebarWidget` gains a `setScreenWidth(int scaledWidth)`
+setter, called by `FabricFriendsSidebarInjector.onScreenInit(...)` (which
+already receives `scaledWidth` — Existing Implementation) once per
+(re-)init, and internally, at the top of `extractWidgetRenderState`/
+`renderWidget` (before computing `expanded`), the widget does:
+```java
+int width = expanded ? EXPANDED_WIDTH : COLLAPSED_WIDTH;
+setX(screenWidth - width);
+```
+so the sidebar's left edge moves as it expands/collapses, always keeping the
+*right* edge flush at `screenWidth` (zero gap, FR4.1). `getX()` (used by
+`isMouseOver`/click-index math, already present) automatically reflects the
+new value since it's the same `AbstractWidget`/`ClickableWidget` field every
+other method already reads — no other method needs to change its own logic,
+only its timing relative to this new `setX(...)` call (must run before
+`isMouseOver`/click handling in the same frame, i.e. at the top of the
+render method, which is where `expanded` is already recomputed today).
+`scaledWidth` is not expected to change without a screen re-init (window
+resize triggers Minecraft's own screen `init()` re-run, which re-fires
+`ScreenEvents.AFTER_INIT` — confirmed general Minecraft/Fabric behavior, not
+independently re-verified this pass, low risk since a stale `screenWidth`
+for one frame during a resize is a cosmetic, self-correcting glitch, not a
+functional bug) — new Risk 11.
+
+### 10. Avatar/row-size reduction (FR4.3): `DISPLAY_SIZE` 32 → 16, `ROW_PADDING` 4 → 2, proportional row-height shrink
+`DISPLAY_SIZE = 16` (exactly half of the current `32`, satisfying FR4.3's
+"roughly half the size used in the initial implementation" using the real
+current constant, not the spec's own illustrative placeholder value).
+`ROW_PADDING` also halves, `4 → 2`, so `ROW_HEIGHT = DISPLAY_SIZE + ROW_PADDING*2`
+shrinks proportionally with it (`40 → 20`) rather than leaving the old `4px`
+padding around a now-much-smaller avatar (which would look disproportionate
+and leave "leftover vertical whitespace," the exact failure mode FR4.3
+explicitly calls out). `COLLAPSED_WIDTH` shrinks the same way (`40 → 20`).
+This is a pure constant change in `FriendSidebarWidget` (all three modules)
+— no method-shape change, since every existing method already derives its
+own layout math from these constants rather than hardcoding `32`/`4`
+anywhere else (confirmed by reading the full file, Existing Implementation).
+`AvatarTextureCache.SIZE`/`AVATAR_SIZE` (184, the Steam-delivered source
+resolution) is **unrelated to and unchanged by** this decision — only the
+*destination* draw size (`DISPLAY_SIZE`, the `blit`/`drawTexturedQuad` call's
+width/height parameter) changes; the same already-uploaded 184×184 texture
+is simply downscaled further at draw time, no re-upload/cache-key change
+needed (Decision 5 / `AvatarTextureCache` is untouched by this revision).
+
+### 11. Expanded-state text scale (FR4.4): kept at the platform's own default (unscaled) text size — 0% shrink, deliberately less drastic than the avatar's ~50% shrink (Decision 10)
+FR4.4 requires only that text shrink **less drastically** than the avatar,
+not that it shrink by some specific nonzero amount, and that it "remain
+legible at the smaller avatar size." The current code already draws
+persona-name text at each platform's own default, unscaled font size
+(`guiGraphics.text(Minecraft.getInstance().font, ...)` / `context.drawTextWithShadow(
+MinecraftClient.getInstance().textRenderer, ...)`, Existing Implementation)
+— this plan's resolution is to **leave text drawing exactly as-is,
+unscaled**, satisfying FR4.4 literally and trivially (a 0% shrink is by
+definition less drastic than the avatar's ~50% shrink) while avoiding new
+matrix-scale/pose-transform code this revision has no other need for.
+`EXPANDED_WIDTH` (currently `170`) narrows slightly, `170 → 154` (reduced
+by exactly the same 16px the avatar's own footprint shrank by, Decision
+10 — the row needs less horizontal space for the smaller avatar+padding
+column, and text itself is unscaled so it needs the same width it always
+did to remain legible, hence the width reduction is exactly avatar-driven,
+not text-driven). This is a plan-level UX judgment call (spec explicitly
+defers the "exact scale factor" to "an implementation-time visual-tuning
+decision," FR4.4) — flagged as a defensible default subject to visual
+re-tuning during manual verification (Risk 12), not a hard requirement.
+
+### 12. Pinned own-profile row (FR5.1–FR5.5): a second `FriendSummary` accessor on `FriendsDataSource`, resolved by `FriendsService` via its own new `SteamUser` instance, reusing the existing avatar path
+`FriendsDataSource` (interface, `features/friends-sidebar/services/`) gains:
+```java
+Optional<FriendSummary> localProfile();
+```
+`NoopFriendsService.localProfile()` returns `Optional.empty()` (FR0.2 no-op
+discipline, same shape as its other methods). `FriendsService` gains a
+`SteamUser steamUser` field, constructed alongside the existing
+`steamFriends`/`steamUtils` fields in its constructor (`this.steamUser = new
+SteamUser(new UserCallback());` — a new no-op `SteamUserCallback`
+implementation, same shape as the existing no-op `UtilsCallback`, since this
+feature has no use for `SteamUserCallback`'s own events beyond the
+zero-arg `getSteamID()` query itself; **exact `SteamUserCallback` method
+signatures unconfirmed this pass, Risk 10**, first concrete implementation
+step for this one field, mirroring the v1 plan's own already-resolved
+Risk 4 precedent for `SteamFriendsCallback`). `localProfile()`:
+```java
+public Optional<FriendSummary> localProfile() {
+    try {
+        SteamID self = steamUser.getSteamID();
+        long steamId64 = SteamID.getNativeHandle(self);
+        String personaName = steamFriends.getPersonaName();
+        int personaState = steamFriends.getPersonaState().ordinal();
+        if (avatarsById.get(steamId64) == null) {
+            resolveAvatar(self); // reuses the exact existing per-friend avatar path, FR5.4
+        }
+        return Optional.of(new FriendSummary(steamId64, personaName, personaState, 0, false, false, null));
+    } catch (RuntimeException e) {
+        warnLogger.accept("Failed to resolve local Steam profile: " + e.getMessage());
+        return Optional.empty();
+    }
+}
+```
+called once per `tick()`'s refresh sweep (cheap, same cadence as the
+existing friend refresh — no separate interval needed). `resolveAvatar(SteamID)`
+already exists and is `SteamID`-parameterized, not friend-list-specific
+(Existing Implementation, v1 section, `FriendsService.resolveAvatar`) — it
+is reused completely unchanged, satisfying FR5.4's explicit requirement that
+this **not** be a new parallel Steamworks call site. `FriendsSidebarFacade`
+gains a mirroring `Optional<FriendSummary> localProfile()` (delegating to
+`dataSource.localProfile()`, refreshed alongside `friends()` in
+`refresh()`), satisfying spec Public API item 5.5's `FriendSummary
+localProfile()`-shaped accessor requirement — this plan's concrete choice
+is `Optional<FriendSummary>` rather than a bare `FriendSummary`, so the
+"not yet resolved" state (e.g. before the first refresh sweep, or if the
+local player's Steam identity fails to resolve for any reason) is
+represented without a sentinel/null `FriendSummary`, consistent with this
+class's own existing `avatarRgba(...)`-shaped `Optional` convention.
+
+**Rendering (FR5.1/FR5.2)**: `FriendSidebarWidget` renders the pinned row
+(from `facade.localProfile()`, when present) as row index `-1`, always at
+`getY()` (the sidebar's own fixed top edge), **before** the scrollable
+friends-list loop (Decision 13's scroll region starts one `ROW_HEIGHT` lower
+than today, i.e. `getY() + ROW_HEIGHT + SEPARATOR_HEIGHT`, not `getY()`) —
+it is drawn unconditionally every frame regardless of scroll offset,
+satisfying "remains visible... even while the friends list beneath it is
+scrolled" (FR5.2). Row-drawing itself reuses the exact same `drawRow(...)`
+private method already used for every friend row (same avatar-blit/
+placeholder-fill/text-draw code path, Decision 3/5/10/11 unchanged) — no
+separate rendering code path for the pinned row beyond choosing its
+`FriendSummary` source and its fixed (non-scrolling) Y position.
+
+### 13. Scrollable friends list + borders (FR5.6–FR5.9): scroll offset lives on `FriendSidebarStateMachine`, clipping/translation happens in `FriendSidebarWidget`, borders drawn with `fill(...)` (Decision, confirmed safe per Existing Implementation above)
+`FriendSidebarStateMachine` (pure, `net.minecraft.*`-free, NFR1) gains:
+```java
+public int clampScroll(int currentScrollOffset, int deltaRows, int totalRows, int visibleRows);
+```
+— given the current offset (in *rows*, not pixels, so it stays resolution/
+`ROW_HEIGHT`-agnostic and trivially unit-testable), a signed row delta from
+one mouse-wheel event, the total friend count, and how many rows currently
+fit in the sidebar's scrollable region, returns the new offset clamped to
+`[0, max(0, totalRows - visibleRows)]` — pure integer arithmetic, directly
+unit-testable (Decision 8's existing precedent, extended). `FriendSidebarWidget`
+owns the mutable `scrollOffsetRows` field itself (widget-instance state, the
+same ownership shape `expanded` already has today — not pushed into the
+stateless facade/state-machine beyond the pure clamp calculation), and
+implements that platform's own mouse-scroll widget method
+(`mouseScrolled(double mouseX, double mouseY, double horizontalAmount,
+double verticalAmount)` on 26.x's `AbstractWidget`/1.21.11's
+`ClickableWidget` — both already extended by this class today, Existing
+Implementation; exact override signature not independently `javap`-confirmed
+this pass, new Risk 13, same low-risk class as the v1 plan's already-resolved
+Risk 6) — only when the scroll event's `mouseX`/`mouseY` falls within the
+*scrollable region's* bounds specifically (below the pinned row + separator,
+Decision 12), not the pinned row or outside the sidebar entirely, mirroring
+FR5.6's own explicit "don't consume input intended for the underlying screen
+when the pointer is outside the sidebar's own bounds" cross-reference to
+FR2.1. The scrollable region's render pass (the existing per-friend
+`for (FriendSummary friend : friends)` loop) starts iterating from
+`scrollOffsetRows` instead of `0`, and stops once it would draw past the
+sidebar's own bottom edge — no `GuiGraphics`/`DrawContext` scissor/clip API
+is introduced (the row loop's own start/stop bounds naturally clip content,
+since a row that would render off the bottom is simply never drawn, the
+same "stop the loop early" technique `MAX_ROWS` already uses today for the
+non-scrolling v1 list) — no new cross-version clipping-API research needed.
+
+**Borders (FR5.7–FR5.9)**, all via the already-confirmed-safe `fill(...)`
+call (Existing Implementation above):
+- **FR5.7 (left-edge sidebar border)**: one `fill(getX(), getY(), getX() + BORDER_WIDTH, getY() + totalHeight, 0xFFFFFFFF)`-shaped call (a thin, e.g. `1`–`2`px, full-opacity light line) drawn once per frame at the sidebar's current left edge (which now moves per Decision 9 as the sidebar expands/collapses — the border moves with it, always staying on the side facing into the screen, opposite the flush-right edge, exactly matching FR5.7's own "opposite the flush right edge" framing).
+- **FR5.8 (own-profile/friends-list separator)**: one `fill(...)`-shaped horizontal line at `getY() + ROW_HEIGHT` (immediately below the pinned row, Decision 12), spanning the sidebar's current width.
+- **FR5.9 (per-row status-color border)**: one thin `fill(...)`-shaped rectangle along **the row's left edge only** (not a full outline — the smallest-effort choice FR5.9 explicitly leaves open, "exact border placement... is an implementation-time visual decision"; a full 4-sided outline is deferred as a possible visual refinement during manual verification, not committed here), tinted by `Decision 14`'s status-color mapping, drawn for both the pinned own-profile row and every friend row (same per-row helper called from both call sites, Decision 12's "no separate rendering code path" choice extended to borders too).
+
+### 14. Real status text + Steam-standard colors (FR5.10/FR5.11): `PersonaState` ordinal → `(color, label)` mapping lives on `FriendSidebarStateMachine`; rich-presence text is a best-effort upgrade over the plain persona-state label
+`FriendSidebarStateMachine` gains two pure methods (NFR1, unit-testable,
+zero `net.minecraft.*`/steamworks4j import — the method signatures below use
+only `int` ordinals and `String`, never `SteamFriends.PersonaState` itself,
+so this class stays plain-JVM per its own established discipline):
+```java
+public int statusColorArgb(int personaState);   // full-alpha ARGB int
+public String statusLabel(int personaState);    // "Online" / "Away" / "Busy" / "Offline" / ...
+```
+Mapping uses the confirmed real `PersonaState` ordinals (Existing
+Implementation above — **not** FR5.11's prose order): `0 Offline` → grey;
+`1 Online` → green; `2 Busy` → red; `3 Away` / `4 Snooze` → yellow/amber;
+`5 LookingToTrade` / `6 LookingToPlay` → green (same family as Online, per
+Steam's own client convention of treating these as "available" states, not
+a distinct fifth color FR5.11 doesn't ask for); `7 Invisible` → grey (same
+as Offline, since Invisible presents identically to other users on Steam).
+Concrete hex values (implementation starting point only — **not**
+independently confirmed against a live Steam client this planning pass,
+sourced from a community skin-customization reference via `WebSearch`,
+`github.com/Borophyll/SteamFriendsList`'s own `.ini`, which cites
+`FCGreen=144,186,60,255` / `FCBlue=87,203,222,255` for Steam's own
+"online"/text-link colors — an imperfect but reasonable starting citation,
+not a Valve first-party source): `Online/LookingTo*` `0xFF5BA32F` (green),
+`Away/Snooze` `0xFFE3A008` (amber), `Busy` `0xFFD54141` (red),
+`Offline/Invisible` `0xFF898989` (grey). **FR5.11 itself already mandates**
+these exact values be "confirmed visually against the real Steam client
+during manual testing" before sign-off — this decision's chosen hex values
+are therefore explicitly a tunable starting point, re-confirmed/adjusted
+during the manual verification pass (new Risk 14), not a value this plan
+claims final authority over the way Decision 6's `OverlayToUserDialog`
+enum values (independently corroborated by Valve's own docs) are.
+
+`statusLabel(...)` supplies FR5.10's fallback text ("Online"/"Away"/"Busy"/
+"Offline"/etc.) for every row. **Rich-presence status text upgrade**: for a
+friend currently `inGame` (`FriendSummary.inGame()`, already resolved
+per-friend, Existing Implementation v1 section), `FriendsService.resolveFriend(...)`
+additionally calls `steamFriends.getFriendRichPresence(friend, "status")`
+(Valve's own conventional key name for a human-readable status string, the
+same key most Steamworks-integrated games populate via `setRichPresence`
+— **not independently confirmed as the specific key this repo's own
+target games would populate**, since v1.1 has no games actually setting
+rich presence to test against; a `null`/empty return is treated as "no
+rich presence available," falling back to `statusLabel(...)`, never
+throwing) — this is added as a new, `null`-safe field read into a
+**new** `FriendSummary` — no, this plan avoids widening the shared `api`-module
+`FriendSummary` record for one platform-rendering-only string; instead,
+`FriendsDataSource` gains a small additional accessor:
+```java
+Optional<String> richPresenceStatus(long steamId64);
+```
+(`FriendsService` returns the last-resolved rich-presence string per friend
+from the same `friendsByIdSnapshot`-adjacent cache the refresh sweep
+already populates; `NoopFriendsService` returns `Optional.empty()`). Row
+rendering: `richPresenceStatus(...).orElse(stateMachine.statusLabel(friend.personaState()))`
+— rich presence text if present, else the plain persona-state label, always
+something legible, never blank (FR5.10's own "rather than a placeholder or
+the raw enum name" requirement, satisfied either way). The local player's
+own row (FR5.1) uses `stateMachine.statusLabel(...)` only (`SteamFriends.getPersonaState()`,
+FR5.3) — no rich-presence lookup for the local player, since FR5.10 only
+asks for "the equivalent status text derived from `getPersonaState()`" on
+that one row, not a rich-presence upgrade.
+
+### 15. `javap`-confirm every v1.1 steamworks4j citation against this repo's own resolved jar as the mandatory first implementation step for `FriendsService`'s new `SteamUser`/rich-presence code — not an open design question
+Spec's own Overview amendment note is explicit: this revision's research pass
+had no `javap`/shell tool available, so every new steamworks4j citation
+above (`SteamUser.getSteamID()`, `SteamFriends.getPersonaName()`/
+`getPersonaState()` called on the local user, `getFriendRichPresence`,
+`requestFriendRichPresence`) is `WebFetch`-sourced only, not independently
+`javap`-confirmed against this repo's own resolved
+`steamworks4j-1.10.0.jar` (present at
+`platform/fabric-*/build/processIncludeJars/steamworks4j-1.10.0.jar`). This
+plan resolves that gap the same way it resolves every other citation-
+confidence gap in this document (Risk 1's screen-class confirmation, the v1
+plan's own Risk 4 for `SteamFriendsCallback`): **planning defers final
+confirmation to a mandatory pre-code `javap` step**, run before any of
+Decision 12/14's `SteamUser`/rich-presence code is written, not treated as an
+open design question left for implementation to improvise on.
+
+**Concrete first step**, before `FriendsService` gains its `steamUser` field
+or its `getFriendRichPresence`/`requestFriendRichPresence` call sites:
+```
+javap -p -cp platform/fabric-26.2/build/processIncludeJars/steamworks4j-1.10.0.jar \
+  com.codedisaster.steamworks.SteamUser \
+  com.codedisaster.steamworks.SteamFriends \
+  com.codedisaster.steamworks.SteamUserCallback
+```
+(any one platform module's resolved copy is sufficient — steamworks4j is not
+per-Minecraft-version, the same jar is Jar-in-Jar'd into all three per
+Dependencies). Read the output and confirm, or apply the fallback, for each
+citation:
+
+- **`SteamUser.getSteamID()`** — expected `public SteamID getSteamID()`,
+  zero-arg. **If confirmed**, implement Decision 12 exactly as written. **If
+  no such zero-arg method exists on `SteamUser`** (different name, an added
+  parameter, or `SteamUser` structured differently than a simple
+  `SteamUserCallback`-constructed wrapper): scan the same `javap` output for
+  whichever zero-arg method returns a `SteamID` (Valve's API guarantees some
+  such accessor exists — `ISteamUser::GetSteamID` is one of the most
+  fundamental calls in the whole API) and use that instead; if genuinely none
+  is found, FR1.6/Decision 12's own-profile row is blocked pending a second
+  research pass — log this explicitly, do not guess further, and do not
+  silently drop the pinned own-profile row (FR4.4/FR5.1's "always show"
+  guarantee) without recording why.
+- **`SteamFriends.getPersonaName()`/`getPersonaState()` (no-arg, self-only
+  overloads)**, used by Decision 12's `localProfile()` — these are already
+  cited in the v1 plan/spec as `javap`-confirmed against this repo's own
+  resolved jar (Existing Implementation, v1.1 addendum, "treated as confirmed
+  per the spec's own citation"); this `javap` pass should still positively
+  re-confirm both resolve for the local `SteamID` specifically (not merely
+  that the methods exist), since a signature existing is not the same as it
+  returning valid data for the local user — if either throws or returns
+  empty/garbage for the local player specifically, `localProfile()`'s
+  `try`/`catch` (Decision 12) already degrades to `Optional.empty()` per
+  NFR2, so no code-shape fallback is needed here, only a confirmation that
+  the happy path is real.
+- **`getFriendRichPresence(SteamID, String)` / `requestFriendRichPresence(SteamID)`**
+  — expected `String getFriendRichPresence(SteamID, String key)` /
+  `void requestFriendRichPresence(SteamID)`. **If confirmed with these exact
+  shapes**, Decision 14's `"status"`-keyed lookup proceeds as written — but
+  note Decision 14 as currently written calls only `getFriendRichPresence`,
+  never `requestFriendRichPresence` first; this `javap` step's confirmation
+  must also settle whether a value is returned without an explicit
+  `requestFriendRichPresence(...)` call having been made at least once per
+  friend (Valve's docs say Rich Presence values are cached locally and only
+  refresh on request) — if `getFriendRichPresence` alone returns consistently
+  stale/empty results in practice, `FriendsService.refresh()`'s per-friend
+  loop (Decision 14) must add one `requestFriendRichPresence(friend)` call
+  per friend per sweep, immediately before reading the value, before Decision
+  14 is considered complete. **If either method's signature differs** (e.g.
+  an index-based key lookup, a different parameter order, or
+  `requestFriendRichPresence` returning something other than `void`): adapt
+  the call site to whatever `javap` shows, keeping the same `"status"` key
+  literal unless the output itself reveals a different key-enumeration
+  mechanism. **If neither method exists on `SteamFriends` at all** in this
+  steamworks4j version: FR5.10/FR1.7's rich-presence upgrade is not
+  implementable as specified — fall back to omitting it entirely
+  (`richPresenceStatus(...)` stays permanently `Optional.empty()`, every row
+  always shows `statusLabel(...)`'s plain persona-state word) and log this
+  explicitly as a shipped-scope reduction versus the spec in the verification
+  report, not a silent no-op — this is the one fallback among these four that
+  changes visible product behavior, so it must be called out even though it
+  degrades gracefully to pre-v1.1 parity (no rich-presence text existed
+  before this revision either).
+- **`SteamUserCallback`'s declared methods** — already tracked as Risk 10
+  above; this `javap` pass is the same concrete step that resolves Risk 10,
+  not a separate action.
+
+This Decision states the resolved procedure and every fallback; the residual
+fact that the procedure has not yet actually been run is tracked as Risk 15
+below (the same Decision-states-the-approach / Risk-tracks-what's-still-
+unconfirmed split this plan uses throughout, e.g. Decision 1 vs. Risk 1/2,
+Decision 6 vs. Risk 5).
+
+## Files to Create (v1.1 additions)
+- No new top-level classes — every v1.1 addition is a method/field addition
+  to an already-planned/already-existing class (`FriendsDataSource`,
+  `FriendsService`, `NoopFriendsService`, `FriendsSidebarFacade`,
+  `FriendSidebarStateMachine`, `FriendSidebarWidget` ×3 platform modules,
+  `FabricFriendsSidebarInjector` ×3 for the `setScreenWidth(...)` call site)
+  — see Files to Modify below for the complete list. This is a deliberate
+  scope observation, not an oversight: v1.1's requirements are layout/data
+  refinements over an already-shipped v1 shape, not new architectural
+  surface.
+
+## Files to Modify (v1.1)
+- `features/friends-sidebar/src/main/java/de/lazuli/features/friendssidebar/services/FriendsDataSource.java`
+  — add `Optional<FriendSummary> localProfile();` (Decision 12) and
+  `Optional<String> richPresenceStatus(long steamId64);` (Decision 14).
+- `features/friends-sidebar/src/main/java/de/lazuli/features/friendssidebar/services/FriendsService.java`
+  — add `SteamUser steamUser` field + no-op `UserCallback implements
+  SteamUserCallback` inner class (Decision 12); `localProfile()` (Decision
+  12); extend `resolveFriend(...)` to also resolve/cache rich-presence
+  status (Decision 14); `richPresenceStatus(long)` accessor.
+- `features/friends-sidebar/src/main/java/de/lazuli/features/friendssidebar/services/NoopFriendsService.java`
+  — add `localProfile()` (returns `Optional.empty()`) and
+  `richPresenceStatus(long)` (returns `Optional.empty()`) overrides.
+- `features/friends-sidebar/src/main/java/de/lazuli/features/friendssidebar/services/FriendsSidebarFacade.java`
+  — add `localProfile()` delegating accessor, refreshed in `refresh()`
+  alongside `friends()` (Decision 12); add `richPresenceStatus(long)`
+  passthrough (Decision 14).
+- `features/friends-sidebar/src/main/java/de/lazuli/features/friendssidebar/services/FriendSidebarStateMachine.java`
+  — add `clampScroll(...)` (Decision 13), `statusColorArgb(int)` /
+  `statusLabel(int)` (Decision 14).
+- `platform/fabric-{26.2,26.1,1.21.11}/src/main/java/de/lazuli/friends/FriendSidebarWidget.java`
+  (×3) — constants `DISPLAY_SIZE`/`ROW_PADDING`/`COLLAPSED_WIDTH`/
+  `EXPANDED_WIDTH`/`ROW_HEIGHT` updated (Decision 10/11); `setScreenWidth(int)`
+  + per-frame `setX(...)` recompute (Decision 9); pinned-row rendering
+  (Decision 12); `scrollOffsetRows` field + `mouseScrolled(...)` override +
+  scroll-aware row-loop start/stop (Decision 13); left-edge/separator/
+  per-row status-border `fill(...)` calls (Decision 13); status-text draw
+  call sourced from `richPresenceStatus(...).orElse(statusLabel(...))`
+  (Decision 14).
+- `platform/fabric-{26.2,26.1,1.21.11}/src/main/java/de/lazuli/friends/FabricFriendsSidebarInjector.java`
+  (×3) — `onScreenInit(...)` calls `sidebar.setScreenWidth(scaledWidth)`
+  (Decision 9); no allow-list/injection-shape change otherwise.
+- `.claude/context/minecraft.md` — gains a new row once implementation
+  confirms (via real compile) the exact `mouseScrolled(...)` override
+  signature per platform module (Decision 13, Risk 13) and `SteamUserCallback`'s
+  real declared methods (Decision 12, Risk 10) — not modified by this
+  planning pass itself, per the file's own living-record convention.
+
+## Test Strategy (v1.1 additions)
+- `FriendSidebarStateMachineTest` (existing file, extended): `clampScroll(...)`
+  — zero-delta no-op; scrolling past the top clamps to `0`; scrolling past
+  the bottom clamps to `max(0, totalRows - visibleRows)`; `totalRows <=
+  visibleRows` always clamps to `0` (nothing to scroll). `statusColorArgb(...)`/
+  `statusLabel(...)` — every real `PersonaState` ordinal (`0`–`7`) maps to a
+  non-null label and a full-alpha (`0xFF......`) color; **explicit regression
+  assertion that `Online` (`1`)/`LookingToTrade` (`5`)/`LookingToPlay` (`6`)
+  all map to the *same* green** and `Offline` (`0`)/`Invisible` (`7`) map to
+  the *same* grey (Decision 14's stated grouping, the single highest-value
+  regression guard for this mapping given the ordinal-vs-prose-order trap
+  Existing Implementation flags above).
+- `FriendSidebarWidget`/`FabricFriendsSidebarInjector`/`FriendsService`'s new
+  v1.1 surface (right-edge math, pinned-row rendering, scroll input,
+  border drawing, rich-presence resolution) are **not** unit-testable on a
+  plain JVM, same NFR1/`ui-guidelines.md` constraint the v1 plan's own Test
+  Strategy already states for this class of code — verified manually only.
+- **Manual in-game verification matrix additions** (run alongside the
+  existing v1 matrix, same three platform modules, same "Steam running with
+  ≥1 friend" and "Steam not running" pairing):
+  - **FR4.1/FR4.2**: on each of the six allow-listed screen types
+    individually (per spec FR4.2's own explicit "verified... on each of the
+    six screens individually" requirement, not just `TitleScreen`), confirm
+    the sidebar's right edge sits flush (zero visible gap) against the
+    window's right edge, both collapsed and expanded (Decision 9's
+    per-state `setX(...)` recompute).
+  - **FR4.3/FR4.4**: visually confirm avatars read as roughly half their
+    old size with no leftover vertical whitespace between rows, and that
+    persona-name text remains clearly legible at the new row height
+    (Decision 10/11's chosen constants, `DISPLAY_SIZE=16`/`ROW_PADDING=2`/
+    `EXPANDED_WIDTH=154`, subject to visual re-tuning if it reads as
+    cramped, per Decision 11's own stated tunable-default framing).
+  - **FR5.1/FR5.2**: the local player's own avatar+name renders as the
+    first row, both collapsed and expanded, and stays pinned/visible while
+    scrolling the friends list beneath it (requires **no** test friend —
+    exercisable with any Steam account, partially mitigating Risk 9).
+  - **FR5.6**: with more friends online than fit in the sidebar's visible
+    height, mouse-wheel scrolling over the friends-list region moves the
+    list; scrolling over the pinned row or outside the sidebar's bounds
+    does nothing to the sidebar and does not consume the scroll event from
+    whatever vanilla widget is underneath (e.g. a scrollable vanilla list
+    on the same screen, if any is present at that position).
+  - **FR5.7/FR5.8/FR5.9**: visually confirm a left-edge sidebar border, a
+    separator between the pinned row and the friends list, and a
+    per-row/per-pinned-row status-color-tinted left-edge border, all
+    render as intended (not clipped, not overlapping the avatar/text).
+  - **FR5.10/FR5.11**: with a friend in at least two different persona
+    states (e.g. Online and Away, toggled via the Steam client's own status
+    menu) and, if a rich-presence-populating game is available, one friend
+    actively in such a game, confirm status text updates correctly and
+    status-border/text colors visually match Steam's real client palette —
+    **explicitly re-tune Decision 14's starting hex values against the real
+    Steam client during this pass** (Risk 14), not just spot-check them.
+
+## Dependencies (v1.1)
+- **No new external Maven/Gradle dependency.** `SteamUser`/`SteamUserCallback`
+  (Decision 12) and `getFriendRichPresence` (Decision 14) are both part of
+  the already-pinned `steamworks4j 1.10.0` (`gradle.properties:41`) — same
+  jar already resolved in this repo's Gradle cache, no new coordinate.
+  `SteamUser`'s class/constructor/`getSteamID()` signatures and
+  `getFriendRichPresence`'s signature both confirmed via direct `WebFetch`
+  of `https://raw.githubusercontent.com/code-disaster/steamworks4j/1.10.0/java-wrapper/src/main/java/com/codedisaster/steamworks/{SteamUser,SteamFriends}.java`
+  (Existing Implementation, v1.1 addendum, above) — the same citation
+  discipline the v1 plan's own Dependencies section already established.
+  `SteamUserCallback`'s own declared interface methods were **not**
+  retrieved this pass (Risk 10, mirrors the v1 plan's already-resolved
+  Risk 4 for `SteamFriendsCallback`).
+- No new internal (inter-module) dependency edges — v1.1 adds methods to
+  already-existing, already-wired classes only (Files to Create v1.1
+  addendum, above).
+
+## Risks (v1.1 additions, continuing the v1 plan's numbering)
+10. **`SteamUserCallback`'s exact declared method signatures were not
+    retrieved by this planning pass's `WebFetch` attempt** (Decision 12) —
+    mirrors the v1 plan's own already-resolved Risk 4 for
+    `SteamFriendsCallback`; `FriendsService`'s new `SteamUser` field/
+    `UserCallback` inner class is the first concrete implementation step
+    needing a fresh, successful fetch/read of that interface's real source
+    (or a real compile against the already-resolved jar) before being
+    written.
+11. **`scaledWidth`'s freshness across a window resize is not independently
+    re-verified this pass** (Decision 9) — this plan's working assumption
+    (a resize re-triggers `Screen.init()`, which re-fires
+    `ScreenEvents.AFTER_INIT`, which re-calls `setScreenWidth(...)`) is
+    standard, well-documented Minecraft/Fabric behavior but not
+    independently `javap`/compile-confirmed this pass; low-severity even if
+    wrong (a stale right-edge position for at most one resize event is a
+    cosmetic glitch, not a crash or functional break) — confirm during
+    implementation's first real in-game resize test.
+12. **Decision 10/11's exact new pixel constants (`DISPLAY_SIZE=16`,
+    `ROW_PADDING=2`, `EXPANDED_WIDTH=154`) are a plan-level visual-tuning
+    default, not a spec-mandated value** (spec FR4.3/FR4.4 both explicitly
+    defer the exact factor to implementation-time visual tuning) — flagged
+    so the verification phase treats a "looks cramped"/"looks too sparse"
+    finding as an expected, in-scope tuning adjustment rather than a
+    plan-conformance defect.
+13. **The exact `mouseScrolled(...)` override signature per platform module
+    is not independently `javap`-confirmed this pass** (Decision 13) —
+    same low-risk class as the v1 plan's already-resolved Risk 6 for the
+    widget's own top-level renderable interface; confirm via real compile
+    at implementation time.
+14. **Decision 14's Steam-standard status-color hex values are a
+    `WebSearch`-sourced, community-skin-reference starting point, not an
+    independently confirmed Valve first-party palette** — FR5.11 itself
+    already mandates a manual visual re-confirmation against the real
+    Steam client before sign-off (Test Strategy v1.1 addendum, above); this
+    risk exists specifically so that re-confirmation step is not skipped or
+    treated as a formality, given how weak this plan's own color-value
+    citation is relative to, e.g., Decision 6's `OverlayToUserDialog`
+    citation.
+15. **Decision 15's `javap` verification procedure is fully specified but has
+    not actually been run** — this planning pass, like the specification's
+    own v1.1 authoring pass (Overview amendment note), had no `javap`/shell
+    tool available. `SteamUser.getSteamID()`'s exact signature,
+    `getFriendPersonaName`/`getPersonaState()`-for-the-local-user's
+    real behavior, and `getFriendRichPresence`/`requestFriendRichPresence`'s
+    exact signatures and required call order all remain at
+    "`WebFetch`-sourced, not `javap`-confirmed" until implementation's
+    mandatory first step (Decision 15) actually runs the command and records
+    the result in `.claude/context/minecraft.md`, per that file's own
+    "append a row whenever implementation work turns up a real divergence"
+    convention. This is the v1.1-amendment equivalent of the v1 plan's own
+    Risk 1/Risk 4 (screen-class and `SteamFriendsCallback` confirmation) and
+    must be resolved with the same priority — first concrete implementation
+    step for any of Decision 12/14's `SteamUser`/rich-presence code, not
+    deferred to the end of the implementation phase or skipped because
+    Decision 15 already names a fallback for each case.
+
+## Acceptance Criteria (v1.1 additions)
+- **FR4.1/FR4.2** — In-game, on each of the six FR2.2-allow-listed screen
+  types individually: sidebar's right edge sits flush (no visible gap)
+  against the window's right edge, in both collapsed and expanded state.
+- **FR4.3/FR4.4** — In-game: avatars visually read as roughly half their
+  pre-v1.1 size with rows tightly stacked (no leftover vertical
+  whitespace); expanded persona-name text remains clearly legible.
+- **FR5.1–FR5.5** — In-game (any Steam account, no test friend required):
+  the local player's own avatar+persona name renders as the sidebar's
+  first row in both collapsed/expanded state, stays visible while the
+  friends list beneath it is scrolled; code review confirms
+  `FriendsService.localProfile()` reuses `resolveAvatar(SteamID)`
+  unchanged (FR5.4's explicit "not a new parallel Steamworks call site"
+  requirement) and that `FriendsDataSource`/`FriendsSidebarFacade` expose
+  this data through the existing Feature/Platform boundary, not a new
+  ad hoc platform-layer Steamworks call.
+- **FR5.6** — `FriendSidebarStateMachineTest.clampScroll(...)` covers
+  clamp-at-top/clamp-at-bottom/no-op cases; in-game, with more friends
+  than fit visibly, mouse-wheel scrolling moves the friends list while the
+  pinned own-profile row stays fixed, and scrolling outside the sidebar's
+  bounds does not consume the event.
+- **FR5.7–FR5.9** — In-game: left-edge sidebar border, own-profile/
+  friends-list separator, and per-row status-color-tinted border all
+  render visibly and correctly positioned on every allow-listed screen the
+  sidebar itself already renders on.
+- **FR5.10/FR5.11** — `FriendSidebarStateMachineTest` covers the full
+  `PersonaState`-ordinal-to-`(color, label)` mapping, including the
+  Online/LookingToTrade/LookingToPlay-share-green and
+  Offline/Invisible-share-grey grouping assertions; in-game, with a friend
+  toggled through at least two persona states, status text and
+  status-color borders update correctly and are visually re-confirmed
+  against the real Steam client's own palette (explicitly not just
+  spot-checked against this plan's own starting hex values, per Risk 14).
+- **NFR1 (v1.1 re-check)** — `grep`-spot-check confirms the v1.1 additions
+  to `FriendsDataSource`/`NoopFriendsService`/`FriendsSidebarFacade`/
+  `FriendSidebarStateMachine` introduce zero new `net.minecraft.*`/
+  `com.codedisaster.steamworks.*` imports outside `FriendsService.java`
+  (the same single named exception the v1 plan's own NFR1 acceptance
+  criterion already established, unchanged by v1.1).
+
+## Open Questions (v1.1)
+- None remaining from specification v1.1's own explicitly-flagged
+  planning-phase items — the pinned-row data-flow question (spec FR5.5's
+  "exact method name/signature is a planning-time decision") is resolved
+  as Decision 12; the scroll-state-ownership question (spec FR5.6's "exact
+  scroll-input mechanism... an implementation-time UI decision") is
+  resolved as Decision 13; the border-placement question (spec FR5.9's
+  "exact border placement... is an implementation-time visual decision")
+  is resolved as Decision 13 (left-edge-only, not full outline); the
+  status-color-palette question (spec FR5.11's own "exact hex values
+  sourced from Steam's own published/observed client palette") is resolved
+  as Decision 14 with an explicit, flagged caveat (Risk 14) that the
+  starting values need manual re-confirmation, which the spec itself
+  already mandates as a manual-testing step regardless; the "no `javap` tool
+  available this research pass" gap the spec's own Overview amendment note
+  raises for `SteamUser.getSteamID()`/`getFriendRichPresence`/
+  `requestFriendRichPresence` is resolved as Decision 15 — planning defers
+  final confirmation to a mandatory pre-code `javap` step with a fully
+  spelled-out fallback per method, not treated as an open design question.
+  Any further questions should surface during implementation as concrete
+  compile-time/`javap`-confirmation findings (Risks 10, 11, 13, 15) or the
+  manual visual-tuning/re-confirmation passes the spec itself already
+  calls for (Risks 12, 14), not as open design questions.
