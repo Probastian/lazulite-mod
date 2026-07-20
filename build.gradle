@@ -17,6 +17,13 @@ subprojects {
 	java {
 		sourceCompatibility = JavaVersion.VERSION_21
 		targetCompatibility = JavaVersion.VERSION_21
+
+		// Pins the JDK used to compile this module, regardless of the JAVA_HOME/PATH
+		// on the machine running the build. Gradle downloads a matching JDK if needed
+		// (see the foojay-resolver-convention plugin in settings.gradle).
+		toolchain {
+			languageVersion = JavaLanguageVersion.of(21)
+		}
 	}
 
 	tasks.withType(JavaCompile).configureEach {

@@ -9,6 +9,12 @@ pluginManagement {
 	}
 }
 
+plugins {
+	// Lets Gradle auto-download a matching JDK for each subproject's
+	// java.toolchain block, instead of depending on JAVA_HOME/PATH.
+	id 'org.gradle.toolchains.foojay-resolver-convention' version '1.0.0'
+}
+
 rootProject.name = 'lazuli'
 
 include 'api'
