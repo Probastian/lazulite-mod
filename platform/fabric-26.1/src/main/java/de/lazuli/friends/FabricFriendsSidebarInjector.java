@@ -2,6 +2,8 @@ package de.lazuli.friends;
 
 import de.lazuli.LazuliMod;
 import de.lazuli.api.friends.FriendSummary;
+import de.lazuli.api.worldhosting.FriendHostingStatusReader;
+import de.lazuli.api.worldhosting.WorldJoinRequester;
 import de.lazuli.features.friendssidebar.services.FriendsSidebarFacade;
 
 import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
@@ -26,7 +28,7 @@ import java.util.List;
 
 /**
  * Version Adapter for the Friends Sidebar overlay + context menu on
- * Minecraft 26.2 (Mojang-mapped, unobfuscated) -- implementation plan
+ * Minecraft 26.1 (Mojang-mapped, unobfuscated) -- implementation plan
  * Decision 1 (Pattern 1, one injector, no mixin), Decision 2's FR2.2
  * allow-list, Decision 4's context-menu dismissal.
  *
@@ -44,12 +46,26 @@ public final class FabricFriendsSidebarInjector {
 
     private final FriendsSidebarFacade facade;
     private final AvatarTextureCache avatarTextureCache;
+    private final WorldJoinRequester worldJoinRequester;
+    private final FriendHostingStatusReader hostingStatusReader;
 
     private FriendContextMenuWidget openMenu;
     private Screen openMenuScreen;
+    private FriendSidebarWidget activeSidebar;
+    private Screen activeSidebarScreen;
 
-    public FabricFriendsSidebarInjector(FriendsSidebarFacade facade) {
+    /**
+     * @param worldJoinRequester  Steam World Hosting's join operation for the
+     *                            reused "Join game" context-menu slot
+     *                            (Decision 4), threaded into every
+     *                            {@link FriendContextMenuWidget}
+     * @param hostingStatusReader gate for that slot's enablement (Decision 4)
+     */
+    public FabricFriendsSidebarInjector(FriendsSidebarFacade facade, WorldJoinRequester worldJoinRequester,
+            FriendHostingStatusReader hostingStatusReader) {
         this.facade = facade;
+        this.worldJoinRequester = worldJoinRequester;
+        this.hostingStatusReader = hostingStatusReader;
         this.avatarTextureCache = new AvatarTextureCache(LazuliMod.LOGGER::warn);
         ScreenEvents.AFTER_INIT.register(this::onScreenInit);
     }
@@ -68,19 +84,87 @@ public final class FabricFriendsSidebarInjector {
             return;
         }
 
+        // Some screens (e.g. SelectWorldScreen on a list refresh/search) fire
+        // AFTER_INIT more than once on the same screen instance without
+        // clearing their own widget list first -- drop any sidebar we
+        // previously added there so it doesn't end up duplicated/overlapping.
+        if (activeSidebar != null && activeSidebarScreen != null) {
+            Screens.getWidgets(activeSidebarScreen).remove(activeSidebar);
+        }
+
+        // Only the main menu and pause menu get the always-visible avatar
+        // strip by default; every other allow-listed screen starts as a
+        // small click-to-open handle instead (FR4.11).
+        boolean handleOnly = !(screen instanceof TitleScreen || screen instanceof PauseScreen);
         FriendSidebarWidget sidebar = new FriendSidebarWidget(facade, avatarTextureCache,
-                (friend, mouseX, mouseY, button, isOwnProfile) -> openContextMenu(screen, friend, mouseX, mouseY, isOwnProfile));
-        sidebar.setScreenSize(scaledWidth, scaledHeight);
+                (friend, mouseX, mouseY, button, isOwnProfile) -> openContextMenu(screen, friend, mouseX, mouseY, isOwnProfile),
+                handleOnly);
         Screens.getWidgets(screen).add(sidebar);
+        activeSidebar = sidebar;
+        activeSidebarScreen = screen;
 
         ScreenMouseEvents.beforeMouseClick(screen).register(this::onBeforeMouseClick);
+        ScreenMouseEvents.allowMouseClick(screen).register(this::onAllowMouseClick);
+        ScreenMouseEvents.allowMouseScroll(screen).register(this::onAllowMouseScroll);
         ScreenKeyboardEvents.allowKeyPress(screen).register(this::onAllowKeyPress);
+        ScreenEvents.afterExtract(screen).register(this::onAfterExtract);
+    }
+
+    /**
+     * Draws the sidebar and (if open) the context menu last, after the
+     * screen's own extract pass (including e.g. TitleScreen's logo), in
+     * {@link de.lazuli.api.friends.FriendsSidebarZOrder} order -- sidebar
+     * first, menu on top of it -- so neither ever renders behind other
+     * screen content or each other, regardless of widget-list order.
+     */
+    private void onAfterExtract(Screen screen, net.minecraft.client.gui.GuiGraphicsExtractor guiGraphics, int mouseX,
+            int mouseY, float delta) {
+        if (screen == activeSidebarScreen && activeSidebar != null) {
+            activeSidebar.renderNow(guiGraphics, mouseX, mouseY, delta);
+        }
+        if (openMenu != null && screen == openMenuScreen) {
+            openMenu.renderNow(guiGraphics, mouseX, mouseY, delta);
+        }
+    }
+
+    /**
+     * Some vanilla screens (e.g. {@code SelectWorldScreen}'s own world list)
+     * consume scroll-wheel input broadly rather than only when the mouse is
+     * exactly over their own widget bounds, so the sidebar's own
+     * {@code mouseScrolled} (registered as just another child widget) never
+     * gets a turn once such a screen is showing. Intercepting here, before
+     * vanilla's own dispatch, lets the sidebar claim the event first when the
+     * mouse is actually over it.
+     */
+    private boolean onAllowMouseScroll(Screen screen, double mouseX, double mouseY, double horizontalAmount,
+            double verticalAmount) {
+        if (screen == activeSidebarScreen && activeSidebar != null
+                && activeSidebar.mouseScrolled(mouseX, mouseY, horizontalAmount, verticalAmount)) {
+            return false;
+        }
+        return true;
+    }
+
+    /** Same reasoning as {@link #onAllowMouseScroll}, but for clicks. */
+    private boolean onAllowMouseClick(Screen screen, MouseButtonEvent event) {
+        if (openMenu != null && screen == openMenuScreen && openMenu.mouseClicked(event, false)) {
+            return false;
+        }
+        if (screen == activeSidebarScreen && activeSidebar != null && activeSidebar.mouseClicked(event, false)) {
+            return false;
+        }
+        return true;
     }
 
     private void openContextMenu(Screen screen, FriendSummary friend, int mouseX, int mouseY, boolean isOwnProfile) {
         closeMenu();
-        int menuX = Math.min(mouseX, screen.width - FriendContextMenuWidget.WIDTH);
-        FriendContextMenuWidget menu = new FriendContextMenuWidget(menuX, mouseY, friend, facade, this::closeMenu, isOwnProfile);
+        // Default to opening below-left of the cursor (the sidebar lives on
+        // the right edge, so opening to the right would usually run off
+        // screen) -- clamped so it never overflows either screen edge.
+        int menuX = Math.max(0, Math.min(mouseX - FriendContextMenuWidget.WIDTH, screen.width - FriendContextMenuWidget.WIDTH));
+        int menuY = Math.min(mouseY, screen.height - FriendContextMenuWidget.HEIGHT);
+        FriendContextMenuWidget menu = new FriendContextMenuWidget(menuX, menuY, friend, facade, this::closeMenu,
+                isOwnProfile, worldJoinRequester, hostingStatusReader);
         List<AbstractWidget> widgets = Screens.getWidgets(screen);
         widgets.add(menu);
         openMenu = menu;

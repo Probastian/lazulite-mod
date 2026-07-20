@@ -1,7 +1,10 @@
 package de.lazuli;
 
+import de.lazuli.services.steamworks.NoopSteamFriendsGateway;
 import de.lazuli.services.steamworks.SteamAppIdResolver;
+import de.lazuli.services.steamworks.SteamFriendsGateway;
 import de.lazuli.services.steamworks.SteamworksService;
+import de.lazuli.services.steamworks.SteamworksSteamFriendsGateway;
 
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
@@ -54,6 +57,15 @@ public final class SteamworksClientInitializer implements ClientModInitializer {
         SteamworksService steamworksService =
                 SteamworksService.create(appId, nativeLibraryDirectory, LazuliMod.LOGGER::warn);
         SteamworksServiceHandoff.publish(steamworksService);
+
+        // Extract-on-second-use (plan Decision 1): construct the single shared
+        // SteamFriends/SteamUtils/SteamUser-owning gateway right after the
+        // bootstrap, so both friends-sidebar and steam-world-hosting consume
+        // one instance instead of each constructing their own.
+        SteamFriendsGateway steamFriendsGateway = steamworksService.isSteamAvailable()
+                ? new SteamworksSteamFriendsGateway(LazuliMod.LOGGER::warn)
+                : new NoopSteamFriendsGateway();
+        SteamFriendsGatewayHandoff.publish(steamFriendsGateway);
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> steamworksService.pumpCallbacks());
         ClientLifecycleEvents.CLIENT_STOPPING.register(client -> steamworksService.shutdown());

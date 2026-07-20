@@ -1,0 +1,16 @@
+dependencies {
+	// api-module worldhosting contracts (HostedWorldStatus/WorldJoinRequester/
+	// FriendHostingStatusReader) appear in this feature's own public
+	// signatures (HostingLifecycle, HostingPresenceScanner), so they leak to
+	// consumers -- hence `api`, not `implementation` (same rationale as the
+	// other feature modules).
+	api project(':api')
+
+	// SteamFriendsGateway (the shared services-layer seam, Decision 1) is
+	// consumed by this feature's HostingLifecycle/HostingPresenceScanner but
+	// never re-exposed on its own public surface -- so `services` stays
+	// `implementation`.
+	implementation project(':services')
+
+	// JUnit 5/AssertJ/Mockito are provided to every subproject by the root build.gradle.
+}

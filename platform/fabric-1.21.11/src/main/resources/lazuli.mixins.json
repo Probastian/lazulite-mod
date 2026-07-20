@@ -4,7 +4,13 @@
 	"compatibilityLevel": "JAVA_21",
 	"mixins": [
 		"ExampleMixin",
-		"WorldEntrySyncIconMixin"
+		"WorldEntrySyncIconMixin",
+		"IntegratedServerWorldHostingMixin",
+		"ServerConnectionListenerCaptureMixin",
+		"ConnectionSteamChannelMixin",
+		"ClientHandshakeStubDigestMixin",
+		"ServerLoginStubDigestMixin",
+		"ServerKeyPacketMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1

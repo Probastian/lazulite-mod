@@ -7,7 +7,10 @@ import de.lazuli.features.friendssidebar.services.FriendsService;
 import de.lazuli.features.friendssidebar.services.FriendSidebarStateMachine;
 import de.lazuli.features.friendssidebar.services.FriendsSidebarFacade;
 import de.lazuli.features.friendssidebar.services.NoopFriendsService;
+import de.lazuli.api.worldhosting.FriendHostingStatusReader;
+import de.lazuli.api.worldhosting.WorldJoinRequester;
 import de.lazuli.friends.FabricFriendsSidebarInjector;
+import de.lazuli.services.steamworks.SteamFriendsGateway;
 import de.lazuli.services.steamworks.SteamworksService;
 
 import net.fabricmc.api.ClientModInitializer;
@@ -37,6 +40,7 @@ public final class FriendsSidebarClientInitializer implements ClientModInitializ
     @Override
     public void onInitializeClient() {
         SteamworksService steamworksService = SteamworksServiceHandoff.require();
+        SteamFriendsGateway gateway = SteamFriendsGatewayHandoff.require();
 
         Path configDir = FabricLoader.getInstance().getConfigDir();
         Path configFilePath = configDir.resolve("friends-sidebar.json");
@@ -48,7 +52,7 @@ public final class FriendsSidebarClientInitializer implements ClientModInitializ
         FriendsSidebarConfig config = configResult.config();
 
         FriendsDataSource dataSource = (steamworksService.isSteamAvailable() && config.enabled())
-                ? new FriendsService(config, LazuliMod.LOGGER::warn)
+                ? new FriendsService(gateway, config, LazuliMod.LOGGER::warn)
                 : new NoopFriendsService();
 
         FriendsSidebarFacade facade = new FriendsSidebarFacade(dataSource, new FriendSidebarStateMachine());
@@ -59,6 +63,11 @@ public final class FriendsSidebarClientInitializer implements ClientModInitializ
             facade.refresh();
         });
 
-        new FabricFriendsSidebarInjector(facade);
+        // Cross-feature bridge (Decision 4): Steam World Hosting publishes
+        // these before this initializer runs (entrypoint order load-bearing).
+        WorldJoinRequester worldJoinRequester = WorldHostingBridgeHandoff.requireJoinRequester();
+        FriendHostingStatusReader hostingStatusReader = WorldHostingBridgeHandoff.requireHostingStatusReader();
+
+        new FabricFriendsSidebarInjector(facade, worldJoinRequester, hostingStatusReader);
     }
 }

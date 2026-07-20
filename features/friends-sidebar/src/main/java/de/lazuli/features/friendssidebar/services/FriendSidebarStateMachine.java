@@ -95,6 +95,25 @@ public final class FriendSidebarStateMachine {
     }
 
     /**
+     * Pixel-precision variant of {@link #clampScroll(int, int, int, int)} --
+     * lets a single scroll-wheel notch move a fraction of a row instead of
+     * always snapping a full {@code rowHeight} at a time.
+     *
+     * @param currentOffsetPx current offset, in pixels
+     * @param deltaPx         signed pixel delta from one scroll-wheel event
+     * @param totalRows       total friend-row count
+     * @param visibleRows     how many friend rows currently fit in the
+     *                        sidebar's scrollable region
+     * @param rowHeight       pixel height of one row
+     * @return the new offset, clamped to {@code [0, max(0, totalRows - visibleRows) * rowHeight]}
+     */
+    public float clampScrollPixels(float currentOffsetPx, float deltaPx, int totalRows, int visibleRows, int rowHeight) {
+        float maxOffsetPx = Math.max(0, totalRows - visibleRows) * (float) rowHeight;
+        float next = currentOffsetPx + deltaPx;
+        return Math.max(0, Math.min(next, maxOffsetPx));
+    }
+
+    /**
      * Maps a {@code SteamFriends.PersonaState} ordinal (0-7, see
      * {@code FriendSummary#personaState()}) to Steam's own status-color
      * convention (FR4.9/FR4.10) -- full-alpha ARGB, {@code 0xFF} alpha byte
@@ -106,11 +125,39 @@ public final class FriendSidebarStateMachine {
      */
     public int statusColorArgb(int personaState) {
         return switch (personaState) {
-            case 1, 5, 6 -> 0xFF5BA32F; // Online, LookingToTrade, LookingToPlay
-            case 3, 4 -> 0xFFE3A008;    // Away, Snooze
-            case 2 -> 0xFFD54141;       // Busy
-            default -> 0xFF898989;     // Offline (0) / Invisible (7)
+            case 1, 5, 6 -> 0xFF5BA32F; // Online, LookingToTrade, LookingToPlay (green)
+            case 3, 4 -> 0xFF4A90D9;    // Away, Snooze (blue)
+            case 2 -> 0xFFE3A008;       // Busy (yellow)
+            default -> 0xFF898989;     // Offline (0) / Invisible (7) (grey)
         };
+    }
+
+    /**
+     * Sort tier matching Steam's own friends-list ordering (FR4.9-adjacent):
+     * green (online-ish) first, blue (away/snooze) second, yellow (busy)
+     * third, grey (offline) last. Ties within a tier are broken
+     * alphabetically by the caller.
+     */
+    public int statusSortRank(int personaState) {
+        return switch (personaState) {
+            case 1, 5, 6 -> 0;
+            case 3, 4 -> 1;
+            case 2 -> 2;
+            default -> 3;
+        };
+    }
+
+    /**
+     * Sorts friends the way Steam's own friends list does: by
+     * {@link #statusSortRank(int)}, then alphabetically (case-insensitive)
+     * by persona name. Pure/stateless; does not mutate the input list.
+     */
+    public java.util.List<FriendSummary> sortForDisplay(java.util.List<FriendSummary> friends) {
+        return friends.stream()
+                .sorted(java.util.Comparator
+                        .comparingInt((FriendSummary f) -> statusSortRank(f.personaState()))
+                        .thenComparing(f -> f.personaName() == null ? "" : f.personaName(), String.CASE_INSENSITIVE_ORDER))
+                .toList();
     }
 
     /**

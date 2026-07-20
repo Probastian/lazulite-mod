@@ -25,15 +25,16 @@ import java.util.Optional;
  * (either mouse button, FR2.5) to a supplied listener rather than handling
  * the context menu itself (owned by {@code FabricFriendsSidebarInjector}).
  *
- * <p>Docks flush to the screen's right edge (FR4.1/FR4.2) -- {@code x} is
- * recomputed every frame from the last {@link #setScreenWidth(int)} value
- * and the sidebar's current (collapsed/expanded) width, so the right edge
- * never moves; {@code y} is always {@code 0} (flush to the top).
+ * <p>Docks flush to the screen's right edge (FR4.1/FR4.2) and fills the full
+ * available height. Width/height are re-read every frame directly from
+ * {@code MinecraftClient.getInstance().getWindow()} rather than cached from
+ * a screen-init event -- caching meant a GUI Scale change (which resizes the
+ * window without necessarily re-firing screen init) left the sidebar
+ * positioned/sized against stale dimensions until the next screen switch.
  *
  * <p>Usage example (from {@code FabricFriendsSidebarInjector}):
  * <pre>{@code
  * FriendSidebarWidget sidebar = new FriendSidebarWidget(facade, avatarTextureCache, this::onRowClicked);
- * sidebar.setScreenWidth(scaledWidth);
  * Screens.getButtons(screen).add(sidebar);
  * }</pre>
  */
@@ -54,45 +55,86 @@ public final class FriendSidebarWidget extends ClickableWidget {
     private static final int BORDER_WIDTH = 1;
     private static final int DEFAULT_MAX_ROWS = 12;
 
-    // Non-status-colored borders (FR4.5/FR4.6) -- opaque grey so it reads
-    // consistently regardless of what's drawn behind it.
-    private static final int SIDEBAR_OUTER_BORDER = 0xFFAAAAAA;
-    private static final int OWN_PROFILE_SEPARATOR = 0xFFAAAAAA;
+    // The hover-to-open handle shown instead of the full avatar strip on
+    // non-main-menu/pause screens (see handleOnly).
+    private static final int HANDLE_WIDTH = 10;
+    private static final int HANDLE_HEIGHT = 28;
+    private static final String HANDLE_GLYPH = "F";
+
+    // How long the panel/expanded state survives after the mouse leaves its
+    // hover zone before actually collapsing.
+    private static final long COYOTE_NANOS = 250_000_000L;
+
+    // Linear animation speeds, in pixels/second real time.
+    private static final float WIDTH_ANIM_PX_PER_SECOND = (EXPANDED_WIDTH - COLLAPSED_WIDTH) / 0.12f;
+
+    // Non-status-colored borders (FR4.5/FR4.6) -- opaque grey.
+    private static final int SIDEBAR_OUTER_BORDER = 0xFF808080;
+    private static final int OWN_PROFILE_SEPARATOR = 0xFF808080;
 
     private final FriendsSidebarFacade facade;
     private final AvatarTextureCache avatarTextureCache;
     private final RowClickListener rowClickListener;
+    private final boolean handleOnly;
 
     private boolean expanded;
+    private boolean panelOpen;
     private int screenWidth = EXPANDED_WIDTH;
+    private int screenHeight;
     private int maxRows = DEFAULT_MAX_ROWS;
-    private int scrollOffsetRows;
+    private float animatedWidth = COLLAPSED_WIDTH;
+    private float scrollPixelOffset;
+    private long lastAnimNanos;
+    private long lastHoverNanos;
 
     public interface RowClickListener {
         void onRowClicked(FriendSummary friend, int mouseX, int mouseY, int button, boolean isOwnProfile);
     }
 
+    /**
+     * @param handleOnly {@code true} on screens where the sidebar should
+     *                   default to a small click-to-open handle instead of
+     *                   the always-visible avatar strip (every allow-listed
+     *                   screen except the main menu/pause menu) -- FR4.11.
+     */
     public FriendSidebarWidget(FriendsSidebarFacade facade, AvatarTextureCache avatarTextureCache,
-            RowClickListener rowClickListener) {
+            RowClickListener rowClickListener, boolean handleOnly) {
         super(0, 0, EXPANDED_WIDTH, listTopOffset() + ROW_HEIGHT * DEFAULT_MAX_ROWS, Text.literal("Friends"));
         this.facade = facade;
         this.avatarTextureCache = avatarTextureCache;
         this.rowClickListener = rowClickListener;
+        this.handleOnly = handleOnly;
+        this.panelOpen = !handleOnly;
+        this.animatedWidth = handleOnly ? HANDLE_WIDTH : COLLAPSED_WIDTH;
+    }
+
+    private int handleX() {
+        return screenWidth - HANDLE_WIDTH;
+    }
+
+    private int handleY() {
+        return (screenHeight - HANDLE_HEIGHT) / 2;
+    }
+
+    private boolean isOverHandle(double mouseX, double mouseY) {
+        int hx = handleX();
+        int hy = handleY();
+        return mouseX >= hx && mouseX < hx + HANDLE_WIDTH && mouseY >= hy && mouseY < hy + HANDLE_HEIGHT;
     }
 
     private static int listTopOffset() {
         return ROW_HEIGHT + SEPARATOR_GAP + SEPARATOR_HEIGHT + SEPARATOR_GAP;
     }
 
-    /**
-     * Called by {@code FabricFriendsSidebarInjector.onScreenInit(...)} once
-     * per (re-)init -- the current screen's size, used to keep the sidebar's
-     * right edge flush (FR4.1/FR4.2) and to fill the full available height
-     * with rows regardless of GUI Scale, rather than a fixed row count.
-     */
-    public void setScreenSize(int scaledWidth, int scaledHeight) {
-        this.screenWidth = scaledWidth;
-        this.maxRows = Math.max(1, (scaledHeight - listTopOffset()) / ROW_HEIGHT);
+    private void refreshScreenSize() {
+        var window = MinecraftClient.getInstance().getWindow();
+        screenWidth = window.getScaledWidth();
+        screenHeight = window.getScaledHeight();
+        maxRows = Math.max(1, (screenHeight - listTopOffset()) / ROW_HEIGHT);
+    }
+
+    private List<FriendSummary> sortedFriends() {
+        return facade.stateMachine().sortForDisplay(facade.friends());
     }
 
     private int visibleFriendRows(int totalFriends) {
@@ -103,44 +145,138 @@ public final class FriendSidebarWidget extends ClickableWidget {
         return listTopOffset() + Math.max(ROW_HEIGHT, visibleFriendRows(totalFriends) * ROW_HEIGHT);
     }
 
+    private static float moveTowards(float current, float target, float maxDelta) {
+        if (Math.abs(target - current) <= maxDelta) {
+            return target;
+        }
+        return current + Math.signum(target - current) * maxDelta;
+    }
+
+    /** @return real elapsed seconds since the last call, 0 on the first call */
+    private float tickAnimClock() {
+        long now = System.nanoTime();
+        float dt = lastAnimNanos == 0 ? 0f : (now - lastAnimNanos) / 1_000_000_000f;
+        lastAnimNanos = now;
+        return dt;
+    }
+
     @Override
     protected void renderWidget(DrawContext context, int mouseX, int mouseY, float delta) {
+        // Deliberately empty: this widget is drawn manually, later, via
+        // renderNow() from FabricFriendsSidebarInjector's
+        // ScreenEvents.afterRender hook, so it always paints on top of the
+        // screen's own content (e.g. TitleScreen's logo) instead of
+        // whatever order it happens to sit in the normal widget list.
+        // Mouse/keyboard input still routes through this widget normally
+        // (it stays in Screens.getButtons(screen)), only rendering is moved.
+    }
+
+    /**
+     * The real render logic, invoked once per frame by
+     * {@code FabricFriendsSidebarInjector}'s {@code ScreenEvents.afterRender}
+     * hook -- after the screen's own render pass, so this always draws on
+     * top.
+     */
+    public void renderNow(DrawContext context, int mouseX, int mouseY, float delta) {
         if (!facade.isEnabled()) {
             return;
         }
-        List<FriendSummary> friends = facade.friends();
+        refreshScreenSize();
+
+        List<FriendSummary> friends = sortedFriends();
         Optional<FriendSummary> own = facade.localProfile();
         int height = totalHeight(friends.size());
+        if (friends.size() >= maxRows) {
+            height = screenHeight;
+        }
 
-        // Hover hit-test always against the collapsed-state anchor -- using
-        // the live (possibly expanded) getX() flip-flops every frame.
-        int collapsedX = screenWidth - COLLAPSED_WIDTH;
-        expanded = facade.stateMachine().isExpanded(mouseX, mouseY, collapsedX, getY(), COLLAPSED_WIDTH, height);
+        boolean overHandle = handleOnly && isOverHandle(mouseX, mouseY);
+        if (overHandle) {
+            // Opens on hover, not click -- matches the same hover-driven
+            // interaction as the rest of the sidebar.
+            panelOpen = true;
+        }
 
-        int width = expanded ? EXPANDED_WIDTH : COLLAPSED_WIDTH;
+        // Hysteresis: while already expanded, test against the wider
+        // expanded footprint (so moving left within it doesn't collapse);
+        // while collapsed, test against the narrow collapsed footprint.
+        int testWidth = expanded ? EXPANDED_WIDTH : COLLAPSED_WIDTH;
+        int testX = screenWidth - testWidth;
+        boolean overPanel = panelOpen && facade.stateMachine().isExpanded(mouseX, mouseY, testX, 0, testWidth, height);
+
+        // Coyote time: expanding/opening on hover is instant, but collapsing
+        // back only happens after a short grace period with no qualifying
+        // hover at all.
+        long now = System.nanoTime();
+        boolean hovering = overPanel || overHandle;
+        if (hovering) {
+            lastHoverNanos = now;
+        }
+        boolean coyoteExpired = lastHoverNanos != 0 && (now - lastHoverNanos) >= COYOTE_NANOS;
+        if (coyoteExpired) {
+            expanded = false;
+            if (handleOnly) {
+                panelOpen = false;
+            }
+        } else if (overPanel) {
+            expanded = true;
+        }
+
+        // The width animates continuously toward whichever target currently
+        // applies -- handle size, collapsed, or expanded -- so opening from
+        // (and closing back to) the handle slides just like the
+        // collapsed<->expanded transition, instead of snapping.
+        float dt = tickAnimClock();
+        float targetWidth = (handleOnly && !panelOpen) ? HANDLE_WIDTH : (expanded ? EXPANDED_WIDTH : COLLAPSED_WIDTH);
+        animatedWidth = moveTowards(animatedWidth, targetWidth, WIDTH_ANIM_PX_PER_SECOND * dt);
+        int width = Math.round(animatedWidth);
+
+        // Only once the close animation has actually finished shrinking down
+        // to handle size do we switch to drawing the standalone handle --
+        // otherwise the panel keeps rendering (shrinking) as normal.
+        if (handleOnly && !panelOpen && width <= HANDLE_WIDTH + 1) {
+            int hx = handleX();
+            int hy = handleY();
+            setX(hx);
+            setY(hy);
+            context.fill(hx, hy, hx + HANDLE_WIDTH, hy + HANDLE_HEIGHT, SIDEBAR_OUTER_BORDER);
+            var textRenderer = MinecraftClient.getInstance().textRenderer;
+            int glyphX = hx + (HANDLE_WIDTH - textRenderer.getWidth(HANDLE_GLYPH)) / 2;
+            int glyphY = hy + (HANDLE_HEIGHT - 8) / 2;
+            context.drawTextWithShadow(textRenderer, HANDLE_GLYPH, glyphX, glyphY, 0xFFFFFFFF);
+            return;
+        }
+
+        boolean showText = expanded && width >= EXPANDED_WIDTH - 2;
+
         setX(screenWidth - width);
         setY(0);
 
         context.fill(getX(), getY(), getX() + width, getY() + height, 0x99000000);
         context.fill(getX(), getY(), getX() + BORDER_WIDTH, getY() + height, SIDEBAR_OUTER_BORDER);
 
-        own.ifPresent(profile -> drawRow(context, profile, getX(), getY()));
+        own.ifPresent(profile -> drawRow(context, profile, getX(), getY(), width, showText));
 
         int separatorY = getY() + ROW_HEIGHT + SEPARATOR_GAP;
         context.fill(getX(), separatorY, getX() + width, separatorY + SEPARATOR_HEIGHT, OWN_PROFILE_SEPARATOR);
 
-        int maxOffset = Math.max(0, friends.size() - maxRows);
-        scrollOffsetRows = Math.max(0, Math.min(scrollOffsetRows, maxOffset));
+        float maxOffsetPx = Math.max(0, friends.size() - maxRows) * (float) ROW_HEIGHT;
+        scrollPixelOffset = Math.max(0, Math.min(scrollPixelOffset, maxOffsetPx));
 
-        int rowY = getY() + listTopOffset();
-        int end = Math.min(friends.size(), scrollOffsetRows + maxRows);
-        for (int i = scrollOffsetRows; i < end; i++) {
-            drawRow(context, friends.get(i), getX(), rowY);
+        int rowsTop = getY() + listTopOffset();
+        int rowsBottom = getY() + height;
+        context.enableScissor(getX(), rowsTop, getX() + width, rowsBottom);
+        int startIndex = Math.max(0, (int) (scrollPixelOffset / ROW_HEIGHT));
+        float subPixel = scrollPixelOffset - startIndex * (float) ROW_HEIGHT;
+        int rowY = rowsTop - Math.round(subPixel);
+        for (int i = startIndex; i < friends.size() && rowY < rowsBottom; i++) {
+            drawRow(context, friends.get(i), getX(), rowY, width, showText);
             rowY += ROW_HEIGHT;
         }
+        context.disableScissor();
     }
 
-    private void drawRow(DrawContext context, FriendSummary friend, int x, int y) {
+    private void drawRow(DrawContext context, FriendSummary friend, int x, int y, int width, boolean showText) {
         int statusColor = facade.stateMachine().statusColorArgb(friend.personaState());
         context.fill(x, y, x + BORDER_WIDTH, y + ROW_HEIGHT, statusColor);
 
@@ -154,17 +290,18 @@ public final class FriendSidebarWidget extends ClickableWidget {
                     y + ROW_PADDING + DISPLAY_SIZE, personaColor(friend));
         }
 
-        if (expanded) {
+        if (showText) {
+            // drawTextWithShadow -> drawText ultimately checks
+            // ColorHelper.getAlpha(color) and silently no-ops if it's 0 --
+            // same alpha-zero-skip pitfall as the Mojang-mapped side's
+            // GuiGraphicsExtractor.text(), just not previously confirmed
+            // here. Colors must carry a real (0xFF) alpha byte.
             context.drawTextWithShadow(MinecraftClient.getInstance().textRenderer, friend.personaName(),
-                    x + ROW_PADDING + DISPLAY_SIZE + 6, y + 2, 0xFFFFFF);
+                    x + ROW_PADDING + DISPLAY_SIZE + 6, y + 2, 0xFFFFFFFF);
             String status = facade.richPresenceStatus(friend.steamId64())
-                    .orElse(facade.stateMachine().statusLabel(friend.personaState()));
-            // drawTextWithShadow on this side takes a plain RGB int (alpha
-            // implied opaque by the method itself) -- mask off the alpha
-            // byte statusColorArgb() always sets, same convention already
-            // established by this row's own persona-name draw call above.
+                    .orElseGet(() -> friend.inGame() ? "In Game" : facade.stateMachine().statusLabel(friend.personaState()));
             context.drawTextWithShadow(MinecraftClient.getInstance().textRenderer, status,
-                    x + ROW_PADDING + DISPLAY_SIZE + 6, y + 11, statusColor & 0xFFFFFF);
+                    x + ROW_PADDING + DISPLAY_SIZE + 6, y + 11, statusColor);
         }
     }
 
@@ -174,7 +311,18 @@ public final class FriendSidebarWidget extends ClickableWidget {
 
     @Override
     public boolean mouseClicked(Click click, boolean doubleClick) {
-        if (!facade.isEnabled() || !isMouseOver(click.x(), click.y())) {
+        if (!facade.isEnabled()) {
+            return false;
+        }
+        if (handleOnly && !panelOpen) {
+            if (isOverHandle(click.x(), click.y())) {
+                panelOpen = true;
+                lastHoverNanos = System.nanoTime();
+                return true;
+            }
+            return false;
+        }
+        if (!isMouseOver(click.x(), click.y())) {
             return false;
         }
         int relativeY = (int) click.y() - getY();
@@ -183,12 +331,12 @@ public final class FriendSidebarWidget extends ClickableWidget {
                     rowClickListener.onRowClicked(profile, (int) click.x(), (int) click.y(), click.button(), true));
             return true;
         }
-        int scrollAreaRelativeY = relativeY - ROW_HEIGHT - SEPARATOR_HEIGHT;
+        int scrollAreaRelativeY = relativeY - listTopOffset();
         if (scrollAreaRelativeY < 0) {
             return true;
         }
-        int index = scrollOffsetRows + scrollAreaRelativeY / ROW_HEIGHT;
-        List<FriendSummary> friends = facade.friends();
+        int index = (int) ((scrollPixelOffset + scrollAreaRelativeY) / ROW_HEIGHT);
+        List<FriendSummary> friends = sortedFriends();
         if (index >= 0 && index < friends.size()) {
             rowClickListener.onRowClicked(friends.get(index), (int) click.x(), (int) click.y(), click.button(), false);
         }
@@ -197,25 +345,31 @@ public final class FriendSidebarWidget extends ClickableWidget {
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
-        if (!facade.isEnabled()) {
+        if (!facade.isEnabled() || (handleOnly && !panelOpen)) {
             return false;
         }
-        List<FriendSummary> friends = facade.friends();
+        List<FriendSummary> friends = sortedFriends();
         int width = expanded ? EXPANDED_WIDTH : COLLAPSED_WIDTH;
-        int scrollAreaY = getY() + ROW_HEIGHT + SEPARATOR_HEIGHT;
+        int scrollAreaY = getY() + listTopOffset();
         int scrollAreaHeight = Math.max(ROW_HEIGHT, visibleFriendRows(friends.size()) * ROW_HEIGHT);
         boolean withinScrollArea = mouseX >= getX() && mouseX < getX() + width
                 && mouseY >= scrollAreaY && mouseY < scrollAreaY + scrollAreaHeight;
         if (!withinScrollArea) {
             return false;
         }
-        int delta = verticalAmount > 0 ? -1 : (verticalAmount < 0 ? 1 : 0);
-        scrollOffsetRows = facade.stateMachine().clampScroll(scrollOffsetRows, delta, friends.size(), MAX_ROWS);
+        // A fraction of a row per notch, rather than a full row, so the
+        // wheel supports fine-grained micro-scrolling.
+        float step = ROW_HEIGHT / 3f;
+        float deltaPx = (float) (-verticalAmount * step);
+        scrollPixelOffset = facade.stateMachine().clampScrollPixels(scrollPixelOffset, deltaPx, friends.size(), maxRows, ROW_HEIGHT);
         return true;
     }
 
     @Override
     public boolean isMouseOver(double mouseX, double mouseY) {
+        if (handleOnly && !panelOpen) {
+            return isOverHandle(mouseX, mouseY);
+        }
         int height = totalHeight(facade.friends().size());
         int width = expanded ? EXPANDED_WIDTH : COLLAPSED_WIDTH;
         return mouseX >= getX() && mouseX < getX() + width && mouseY >= getY() && mouseY < getY() + height;

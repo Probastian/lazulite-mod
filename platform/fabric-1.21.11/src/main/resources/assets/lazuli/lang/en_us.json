@@ -1,0 +1,5 @@
+{
+	"lazuli.worldhosting.disconnect.host_closed": "The host closed the world.",
+	"lazuli.worldhosting.disconnect.not_friend": "You are not a Steam friend of the host.",
+	"lazuli.worldhosting.disconnect.steam_error": "Steam P2P connection failed: %s"
+}
