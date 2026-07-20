@@ -1,0 +1,44 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "java",
+      "name": "Minecraft Client (26.2)",
+      "request": "launch",
+      "cwd": "${workspaceFolder}/platform/fabric-26.2/run",
+      "console": "integratedTerminal",
+      "stopOnEntry": false,
+      "mainClass": "net.fabricmc.devlaunchinjector.Main",
+      "vmArgs": "-Dfabric.dli.config=\"${workspaceFolder}/.gradle/loom-cache/projects/platform/fabric-26.2/launch.cfg\" -Dfabric.dli.env=client -Dfabric.dli.main=net.fabricmc.loader.impl.launch.knot.KnotClient --sun-misc-unsafe-memory-access=allow --enable-native-access=ALL-UNNAMED",
+      "args": "",
+      "env": {},
+      "projectName": "fabric-26.2"
+    },
+    {
+      "type": "java",
+      "name": "Minecraft Client (26.1)",
+      "request": "launch",
+      "cwd": "${workspaceFolder}/platform/fabric-26.1/run",
+      "console": "integratedTerminal",
+      "stopOnEntry": false,
+      "mainClass": "net.fabricmc.devlaunchinjector.Main",
+      "vmArgs": "-Dfabric.dli.config=\"${workspaceFolder}/.gradle/loom-cache/projects/platform/fabric-26.1/launch.cfg\" -Dfabric.dli.env=client -Dfabric.dli.main=net.fabricmc.loader.impl.launch.knot.KnotClient --sun-misc-unsafe-memory-access=allow --enable-native-access=ALL-UNNAMED",
+      "args": "",
+      "env": {},
+      "projectName": "fabric-26.1"
+    },
+    {
+      "type": "java",
+      "name": "Minecraft Client (1.21.11)",
+      "request": "launch",
+      "cwd": "${workspaceFolder}/platform/fabric-1.21.11/run",
+      "console": "integratedTerminal",
+      "stopOnEntry": false,
+      "mainClass": "net.fabricmc.devlaunchinjector.Main",
+      "vmArgs": "-Dfabric.dli.config=\"${workspaceFolder}/.gradle/loom-cache/projects/platform/fabric-1.21.11/launch.cfg\" -Dfabric.dli.env=client -Dfabric.dli.main=net.fabricmc.loader.impl.launch.knot.KnotClient --enable-native-access=ALL-UNNAMED",
+      "args": "",
+      "env": {},
+      "projectName": "fabric-1.21.11"
+    }
+  ]
+}
