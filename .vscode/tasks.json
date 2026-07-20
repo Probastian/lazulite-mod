@@ -1,0 +1,59 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Configure client launch (26.2)",
+      "type": "shell",
+      "command": "${workspaceFolder}/gradlew.bat",
+      "windows": {
+        "command": "${workspaceFolder}/gradlew.bat"
+      },
+      "linux": {
+        "command": "${workspaceFolder}/gradlew"
+      },
+      "osx": {
+        "command": "${workspaceFolder}/gradlew"
+      },
+      "args": [":platform:fabric-26.2:configureClientLaunch"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": [],
+      "presentation": { "reveal": "silent" }
+    },
+    {
+      "label": "Configure client launch (26.1)",
+      "type": "shell",
+      "command": "${workspaceFolder}/gradlew.bat",
+      "windows": {
+        "command": "${workspaceFolder}/gradlew.bat"
+      },
+      "linux": {
+        "command": "${workspaceFolder}/gradlew"
+      },
+      "osx": {
+        "command": "${workspaceFolder}/gradlew"
+      },
+      "args": [":platform:fabric-26.1:configureClientLaunch"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": [],
+      "presentation": { "reveal": "silent" }
+    },
+    {
+      "label": "Configure client launch (1.21.11)",
+      "type": "shell",
+      "command": "${workspaceFolder}/gradlew.bat",
+      "windows": {
+        "command": "${workspaceFolder}/gradlew.bat"
+      },
+      "linux": {
+        "command": "${workspaceFolder}/gradlew"
+      },
+      "osx": {
+        "command": "${workspaceFolder}/gradlew"
+      },
+      "args": [":platform:fabric-1.21.11:configureClientLaunch"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": [],
+      "presentation": { "reveal": "silent" }
+    }
+  ]
+}
