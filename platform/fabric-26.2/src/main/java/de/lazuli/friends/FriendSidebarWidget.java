@@ -1,7 +1,9 @@
 package de.lazuli.friends;
 
 import de.lazuli.api.friends.FriendSummary;
+import de.lazuli.features.friendssidebar.api.JoinPolicy;
 import de.lazuli.features.friendssidebar.services.FriendsSidebarFacade;
+import de.lazuli.ui.DropdownWidget;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -54,6 +56,22 @@ public final class FriendSidebarWidget extends AbstractWidget {
     private static final int BORDER_WIDTH = 1;
     private static final int DEFAULT_MAX_ROWS = 12;
 
+    // Reserves a top strip, on handleOnly screens only, that this overlay
+    // never paints into or claims for hit-testing -- other allow-listed
+    // screens (JoinMultiplayerScreen today, per server-browser's spec FR
+    // "top right of the screen") are free to inject their own top-right
+    // button there via Screens.getWidgets without this widget's open/
+    // expanded panel (which otherwise starts at y=0 and spans the full
+    // right-edge column) visually covering it AND -- the more serious half
+    // of the bug this fixes -- without FabricFriendsSidebarInjector's
+    // allowMouseClick interceptor swallowing the click before the button
+    // ever gets a chance to run (MouseHandlerMixin#invokeMouseClickedEvents
+    // skips Screen.mouseClicked entirely, for every widget, whenever any
+    // allowMouseClick callback returns false). The main menu/pause menu's
+    // always-visible strip (handleOnly == false) keeps the original flush-
+    // to-top position since no screen-level button shares that corner there.
+    private static final int TOP_INSET = 30;
+
     // The hover-to-open handle shown instead of the full avatar strip on
     // non-main-menu/pause screens (see handleOnly).
     private static final int HANDLE_WIDTH = 10;
@@ -82,6 +100,13 @@ public final class FriendSidebarWidget extends AbstractWidget {
     private static final int STATUS_INDICATOR_COLOR = 0xFFD54141;
     private static final int STATUS_BORDER_WIDTH = 3;
 
+    // v1.3 amendment: "who can join" dropdown strip's closed/option row
+    // height (FR7.3/FR7.4, Decision 1/2) -- owned by this embedding widget,
+    // not by DropdownWidget itself (platform/ui/specification.md UI section
+    // -- layout constants are the embedder's own choice); background/text
+    // colors are now owned entirely by DropdownWidget (v1.4).
+    private static final int DROPDOWN_HEIGHT = ROW_HEIGHT;
+
     private final FriendsSidebarFacade facade;
     private final AvatarTextureCache avatarTextureCache;
     private final RowClickListener rowClickListener;
@@ -97,6 +122,23 @@ public final class FriendSidebarWidget extends AbstractWidget {
     private long lastAnimNanos;
     private long lastHoverNanos;
 
+    // v1.3 amendment: the dropdown strip's own screen-space bounds for this
+    // frame (Risk 2) -- null when not rendered (collapsed state), so
+    // mouseClicked()'s hit-test and renderNow()'s hover-description use the
+    // exact same bounds computed once per frame, never independently.
+    private int dropdownX;
+    private int dropdownY;
+    private int dropdownWidth;
+    private boolean dropdownVisible;
+
+    // v1.4 amendment: the join-policy control is now a DropdownWidget
+    // (platform/ui/specification.md); lastDropdownHeight caches its
+    // reported per-frame total height for listTopOffset() (v1.4-FR7.14) --
+    // defaults to the closed-row height before the first render / while not
+    // visible, so listTopOffset() never reads an uninitialized 0.
+    private final DropdownWidget joinPolicyDropdown;
+    private int lastDropdownHeight = DROPDOWN_HEIGHT;
+
     public interface RowClickListener {
         void onRowClicked(FriendSummary friend, int mouseX, int mouseY, int button, boolean isOwnProfile);
     }
@@ -109,13 +151,30 @@ public final class FriendSidebarWidget extends AbstractWidget {
      */
     public FriendSidebarWidget(FriendsSidebarFacade facade, AvatarTextureCache avatarTextureCache,
             RowClickListener rowClickListener, boolean handleOnly) {
-        super(0, 0, EXPANDED_WIDTH, listTopOffset() + ROW_HEIGHT * DEFAULT_MAX_ROWS, Component.literal("Friends"));
+        super(0, 0, EXPANDED_WIDTH, listTopOffset(true, DROPDOWN_HEIGHT) + ROW_HEIGHT * DEFAULT_MAX_ROWS, Component.literal("Friends"));
         this.facade = facade;
         this.avatarTextureCache = avatarTextureCache;
         this.rowClickListener = rowClickListener;
         this.handleOnly = handleOnly;
         this.panelOpen = !handleOnly;
         this.animatedWidth = handleOnly ? HANDLE_WIDTH : COLLAPSED_WIDTH;
+        // v1.4 amendment: fixed Nobody/Friends/Everyone display order
+        // (unchanged from v1.3) mapped explicitly rather than via
+        // JoinPolicy.values(), per implementation-plan-v1.4 Risk R1 --
+        // JoinPolicy's declared enum order happens to already match this
+        // order, but this stays explicit rather than relying on that.
+        JoinPolicy[] displayOrder = { JoinPolicy.NOBODY, JoinPolicy.FRIENDS, JoinPolicy.EVERYONE };
+        List<DropdownWidget.Option> options = new java.util.ArrayList<>();
+        int initialSelectedIndex = 0;
+        for (int i = 0; i < displayOrder.length; i++) {
+            JoinPolicy policy = displayOrder[i];
+            options.add(new DropdownWidget.Option(joinPolicyShortLabel(policy), joinPolicyDescription(policy)));
+            if (policy == facade.joinPolicy()) {
+                initialSelectedIndex = i;
+            }
+        }
+        this.joinPolicyDropdown = new DropdownWidget(options, initialSelectedIndex,
+                index -> facade.selectJoinPolicy(displayOrder[index]));
     }
 
     private int handleX() {
@@ -132,15 +191,35 @@ public final class FriendSidebarWidget extends AbstractWidget {
         return mouseX >= hx && mouseX < hx + HANDLE_WIDTH && mouseY >= hy && mouseY < hy + HANDLE_HEIGHT;
     }
 
-    private static int listTopOffset() {
-        return ROW_HEIGHT + SEPARATOR_GAP + SEPARATOR_HEIGHT + SEPARATOR_GAP;
+    /**
+     * The boundary between the pinned own-profile row and the scrollable
+     * friends list. Instance-scoped since v1.3 (Decision 2/Risk 1): includes
+     * the join-policy dropdown strip's own height only while {@code expanded}
+     * is currently {@code true} for this frame (the dropdown is not rendered
+     * at all while collapsed, FR7.3) -- every call site within one
+     * {@code renderNow()} invocation observes a consistent value because
+     * {@code this.expanded} is only ever mutated earlier in the same method,
+     * before any of these call sites run.
+     */
+    private int listTopOffset() {
+        return listTopOffset(expanded, lastDropdownHeight);
+    }
+
+    private static int listTopOffset(boolean expanded, int dropdownHeight) {
+        int base = ROW_HEIGHT + SEPARATOR_GAP + SEPARATOR_HEIGHT + SEPARATOR_GAP;
+        return expanded ? base + dropdownHeight : base;
+    }
+
+    /** @see #TOP_INSET */
+    private int topInset() {
+        return handleOnly ? TOP_INSET : 0;
     }
 
     private void refreshScreenSize() {
         var window = Minecraft.getInstance().getWindow();
         screenWidth = window.getGuiScaledWidth();
         screenHeight = window.getGuiScaledHeight();
-        maxRows = Math.max(1, (screenHeight - listTopOffset()) / ROW_HEIGHT);
+        maxRows = Math.max(1, (screenHeight - topInset() - listTopOffset()) / ROW_HEIGHT);
     }
 
     private List<FriendSummary> sortedFriends() {
@@ -190,6 +269,7 @@ public final class FriendSidebarWidget extends AbstractWidget {
      */
     public void renderNow(GuiGraphicsExtractor guiGraphics, int mouseX, int mouseY, float delta) {
         if (!facade.isEnabled()) {
+            dropdownVisible = false;
             return;
         }
         refreshScreenSize();
@@ -197,12 +277,13 @@ public final class FriendSidebarWidget extends AbstractWidget {
         boolean steamAvailable = facade.isSteamAvailable();
         List<FriendSummary> friends = steamAvailable ? sortedFriends() : List.of();
         Optional<FriendSummary> own = steamAvailable ? facade.localProfile() : Optional.empty();
-        int height = steamAvailable ? totalHeight(friends.size()) : screenHeight;
+        int topInset = topInset();
+        int height = steamAvailable ? totalHeight(friends.size()) : screenHeight - topInset;
         if (steamAvailable && friends.size() >= maxRows) {
             // The list fills (or overflows) the available height -- extend
             // exactly to the window edge rather than leaving a rounding
             // remainder below the last row.
-            height = screenHeight;
+            height = screenHeight - topInset;
         }
 
         boolean overHandle = handleOnly && isOverHandle(mouseX, mouseY);
@@ -221,7 +302,7 @@ public final class FriendSidebarWidget extends AbstractWidget {
         // the position flip-flopping every frame.
         int testWidth = expanded ? EXPANDED_WIDTH : COLLAPSED_WIDTH;
         int testX = screenWidth - testWidth;
-        boolean overPanel = panelOpen && facade.stateMachine().isExpanded(mouseX, mouseY, testX, 0, testWidth, height);
+        boolean overPanel = panelOpen && facade.stateMachine().isExpanded(mouseX, mouseY, testX, topInset, testWidth, height);
 
         // Coyote time: expanding/opening on hover is instant, but collapsing
         // back only happens after a short grace period with no qualifying
@@ -255,6 +336,7 @@ public final class FriendSidebarWidget extends AbstractWidget {
         // to handle size do we switch to drawing the standalone handle --
         // otherwise the panel keeps rendering (shrinking) as normal.
         if (handleOnly && !panelOpen && width <= HANDLE_WIDTH + 1) {
+            dropdownVisible = false;
             int hx = handleX();
             int hy = handleY();
             setX(hx);
@@ -272,12 +354,20 @@ public final class FriendSidebarWidget extends AbstractWidget {
         boolean showText = expanded && width >= EXPANDED_WIDTH - 2;
 
         setX(screenWidth - width);
-        setY(0);
+        setY(topInset);
 
         guiGraphics.fill(getX(), getY(), getX() + width, getY() + height, 0x99000000);
         guiGraphics.fill(getX(), getY(), getX() + BORDER_WIDTH, getY() + height, SIDEBAR_OUTER_BORDER);
 
         if (!steamAvailable) {
+            // FR7.6: no persisted config value is edited from this state --
+            // the dropdown is simply not reachable (mouseClicked's own
+            // top-of-method isSteamAvailable() gate already covers this).
+            // v1.4-FR7.6a: also close the DropdownWidget itself, not merely
+            // stop rendering it, so it doesn't reopen stale on the next
+            // steamAvailable transition.
+            dropdownVisible = false;
+            joinPolicyDropdown.close();
             drawStatus(guiGraphics, getX(), getY(), width, height, showText);
             return;
         }
@@ -286,6 +376,24 @@ public final class FriendSidebarWidget extends AbstractWidget {
 
         int separatorY = getY() + ROW_HEIGHT + SEPARATOR_GAP;
         guiGraphics.fill(getX(), separatorY, getX() + width, separatorY + SEPARATOR_HEIGHT, OWN_PROFILE_SEPARATOR);
+
+        // v1.3 amendment: "who can join" dropdown strip (FR7.3) -- only
+        // rendered/hit-testable once expanded, reusing the exact same
+        // showText condition the avatar-name text already uses (Risk 2), so
+        // the render call and the stored click-hit bounds never drift apart
+        // across an animation frame.
+        dropdownVisible = expanded && showText;
+        if (dropdownVisible) {
+            dropdownX = getX();
+            dropdownY = separatorY + SEPARATOR_HEIGHT + SEPARATOR_GAP;
+            dropdownWidth = width;
+            lastDropdownHeight = joinPolicyDropdown.render(guiGraphics, dropdownX, dropdownY, dropdownWidth,
+                    DROPDOWN_HEIGHT, mouseX, mouseY);
+        } else {
+            dropdownX = 0;
+            dropdownY = 0;
+            dropdownWidth = 0;
+        }
 
         float maxOffsetPx = Math.max(0, friends.size() - maxRows) * (float) ROW_HEIGHT;
         scrollPixelOffset = Math.max(0, Math.min(scrollPixelOffset, maxOffsetPx));
@@ -354,6 +462,29 @@ public final class FriendSidebarWidget extends AbstractWidget {
         return lines;
     }
 
+    /**
+     * v1.4 amendment: label/description source for {@link DropdownWidget.Option}
+     * entries built at construction time (retained verbatim from v1.3 per
+     * implementation-plan-v1.4's Architecture item 2) -- the actual
+     * rendering of the "who can join" control is now owned entirely by
+     * {@link #joinPolicyDropdown}.
+     */
+    private static String joinPolicyShortLabel(JoinPolicy policy) {
+        return switch (policy) {
+            case NOBODY -> "Nobody";
+            case FRIENDS -> "Friends";
+            case EVERYONE -> "Everyone";
+        };
+    }
+
+    private static String joinPolicyDescription(JoinPolicy policy) {
+        return switch (policy) {
+            case NOBODY -> "No one can join your hosted world.";
+            case FRIENDS -> "Your Steam friends can join your hosted world (default).";
+            case EVERYONE -> "Any Steam user can join your hosted world. A real Mojang account is still required to connect.";
+        };
+    }
+
     private void drawRow(GuiGraphicsExtractor guiGraphics, FriendSummary friend, int x, int y, int width, boolean showText) {
         int statusColor = facade.stateMachine().statusColorArgb(friend.personaState());
         guiGraphics.fill(x, y, x + BORDER_WIDTH, y + ROW_HEIGHT, statusColor);
@@ -405,6 +536,10 @@ public final class FriendSidebarWidget extends AbstractWidget {
         if (!isMouseOver(event.x(), event.y())) {
             return false;
         }
+        if (dropdownVisible && joinPolicyDropdown.mouseClicked(event.x(), event.y(),
+                dropdownX, dropdownY, dropdownWidth, DROPDOWN_HEIGHT)) {
+            return true;
+        }
         int relativeY = (int) event.y() - getY();
         if (relativeY < ROW_HEIGHT) {
             facade.localProfile().ifPresent(profile ->
@@ -450,7 +585,7 @@ public final class FriendSidebarWidget extends AbstractWidget {
         if (handleOnly && !panelOpen) {
             return isOverHandle(mouseX, mouseY);
         }
-        int height = facade.isSteamAvailable() ? totalHeight(facade.friends().size()) : screenHeight;
+        int height = facade.isSteamAvailable() ? totalHeight(facade.friends().size()) : screenHeight - topInset();
         int width = expanded ? EXPANDED_WIDTH : COLLAPSED_WIDTH;
         return mouseX >= getX() && mouseX < getX() + width && mouseY >= getY() && mouseY < getY() + height;
     }

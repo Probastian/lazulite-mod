@@ -1,5 +1,7 @@
 package de.lazuli.features.friendssidebar.services;
 
+import de.lazuli.features.friendssidebar.api.JoinPolicy;
+
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -14,7 +16,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 class FriendsSidebarFacadeTest {
 
     private final FriendsSidebarFacade facade =
-            new FriendsSidebarFacade(new NoopFriendsService(), new FriendSidebarStateMachine());
+            new FriendsSidebarFacade(new NoopFriendsService(), new FriendSidebarStateMachine(),
+                    JoinPolicy.FRIENDS, policy -> { });
 
     @Test
     void isEnabledAndIsSteamAvailableDefaultToTrue() {
@@ -54,6 +57,22 @@ class FriendsSidebarFacadeTest {
 
         assertThat(facade.isEnabled()).isTrue();
         assertThat(facade.isSteamAvailable()).isTrue();
+    }
+
+    @Test
+    void selectJoinPolicySetsValueDirectlyAndInvokesWriter() {
+        // v1.4 amendment: the DropdownWidget-backed replacement for
+        // cycleJoinPolicy()'s click-to-cycle interaction -- sets the value
+        // directly (not via the fixed cycle order) and republishes it
+        // through the same persistence/bridge-republish callback.
+        JoinPolicy[] written = new JoinPolicy[1];
+        FriendsSidebarFacade facadeWithCapture = new FriendsSidebarFacade(new NoopFriendsService(),
+                new FriendSidebarStateMachine(), JoinPolicy.FRIENDS, policy -> written[0] = policy);
+
+        facadeWithCapture.selectJoinPolicy(JoinPolicy.EVERYONE);
+
+        assertThat(facadeWithCapture.joinPolicy()).isEqualTo(JoinPolicy.EVERYONE);
+        assertThat(written[0]).isEqualTo(JoinPolicy.EVERYONE);
     }
 
     @Test

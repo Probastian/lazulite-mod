@@ -2,16 +2,21 @@ package de.lazuli;
 
 import de.lazuli.api.worldhosting.FriendHostingStatusReader;
 import de.lazuli.api.worldhosting.WorldJoinRequester;
+import de.lazuli.features.friendssidebar.api.FriendsSidebarConfig;
+import de.lazuli.features.friendssidebar.api.JoinPolicy;
+import de.lazuli.features.friendssidebar.config.FriendsSidebarConfigIO;
 import de.lazuli.features.worldhosting.api.SteamWorldHostingConfig;
 import de.lazuli.features.worldhosting.config.SteamWorldHostingConfigIO;
 import de.lazuli.features.worldhosting.services.ConnectStringCodec;
 import de.lazuli.features.worldhosting.services.HostGateway;
 import de.lazuli.features.worldhosting.services.HostingLifecycle;
 import de.lazuli.features.worldhosting.services.HostingPresenceScanner;
+import de.lazuli.features.worldhosting.services.JoinGatePolicy;
 import de.lazuli.features.worldhosting.services.NoopFriendHostingStatusReader;
 import de.lazuli.features.worldhosting.services.NoopWorldJoinRequester;
 import de.lazuli.services.steamworks.SteamFriendsGateway;
 import de.lazuli.services.steamworks.SteamworksService;
+import de.lazuli.worldhosting.JoinPolicyBridge;
 import de.lazuli.worldhosting.SteamAmbientSession;
 import de.lazuli.worldhosting.WorldHostingHookHolder;
 
@@ -69,10 +74,23 @@ public final class SteamWorldHostingClientInitializer implements ClientModInitia
         }
 
         HostingLifecycle lifecycle = new HostingLifecycle(gateway);
-        HostGateway hostGateway = new HostGateway(gateway::isDirectFriend);
         HostingPresenceScanner scanner = new HostingPresenceScanner(gateway);
 
-        WorldHostingHookHolder.publish(lifecycle, hostGateway::canJoin);
+        // v1.3 amendment bridge point 1: friends-sidebar.json owns the
+        // joinPolicy value; this is a second, independent load of that file
+        // (this class runs before FriendsSidebarClientInitializer, so no
+        // FriendsSidebarFacade exists yet to read it from).
+        Path friendsSidebarConfigPath = FabricLoader.getInstance().getConfigDir().resolve("friends-sidebar.json");
+        FriendsSidebarConfigIO.ParseResult friendsSidebarConfigResult =
+                new FriendsSidebarConfigIO().load(friendsSidebarConfigPath);
+        if (friendsSidebarConfigResult.warning() != null) {
+            LazuliMod.LOGGER.warn(friendsSidebarConfigResult.warning());
+        }
+        JoinPolicy joinPolicy = friendsSidebarConfigResult.config().joinPolicy();
+        JoinGatePolicy gatePolicy = JoinPolicyBridge.toGatePolicy(joinPolicy);
+        HostGateway hostGateway = HostGateway.forPolicy(gatePolicy, gateway::isDirectFriend);
+
+        WorldHostingHookHolder.publish(lifecycle, hostGateway::canJoin, gatePolicy != JoinGatePolicy.NOBODY);
 
         WorldJoinRequester joinRequester = SteamAmbientSession.INSTANCE::connectToSteamPeer;
         FriendHostingStatusReader statusReader = scanner;

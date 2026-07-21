@@ -1,6 +1,7 @@
 package de.lazuli;
 
 import de.lazuli.features.friendssidebar.api.FriendsSidebarConfig;
+import de.lazuli.features.friendssidebar.api.JoinPolicy;
 import de.lazuli.features.friendssidebar.config.FriendsSidebarConfigIO;
 import de.lazuli.features.friendssidebar.services.FriendsDataSource;
 import de.lazuli.features.friendssidebar.services.FriendsService;
@@ -9,15 +10,21 @@ import de.lazuli.features.friendssidebar.services.FriendsSidebarFacade;
 import de.lazuli.features.friendssidebar.services.NoopFriendsService;
 import de.lazuli.api.worldhosting.FriendHostingStatusReader;
 import de.lazuli.api.worldhosting.WorldJoinRequester;
+import de.lazuli.features.worldhosting.services.HostGateway;
+import de.lazuli.features.worldhosting.services.JoinGatePolicy;
 import de.lazuli.friends.FabricFriendsSidebarInjector;
 import de.lazuli.services.steamworks.SteamFriendsGateway;
 import de.lazuli.services.steamworks.SteamworksService;
+import de.lazuli.worldhosting.JoinPolicyBridge;
+import de.lazuli.worldhosting.WorldHostingHookHolder;
 
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.loader.api.FabricLoader;
 
+import java.io.IOException;
 import java.nio.file.Path;
+import java.util.function.Consumer;
 
 /**
  * Client-only composition root for the Friends Sidebar feature on this
@@ -55,7 +62,25 @@ public final class FriendsSidebarClientInitializer implements ClientModInitializ
                 ? new FriendsService(gateway, config, LazuliMod.LOGGER::warn)
                 : new NoopFriendsService();
 
-        FriendsSidebarFacade facade = new FriendsSidebarFacade(dataSource, new FriendSidebarStateMachine());
+        // v1.3 amendment bridge point 2: dropdown click -> persist -> re-publish
+        // (FR7.11). Persists unconditionally; only re-publishes the live
+        // predicate if Steam World Hosting itself is enabled.
+        Consumer<JoinPolicy> onJoinPolicyChanged = newPolicy -> {
+            FriendsSidebarConfig updated = new FriendsSidebarConfig(config.enabled(), config.refreshIntervalSeconds(), newPolicy);
+            try {
+                new FriendsSidebarConfigIO().save(configFilePath, updated);
+            } catch (IOException | RuntimeException e) {
+                LazuliMod.LOGGER.warn("Failed to persist friends-sidebar.json: " + e.getClass().getSimpleName() + ": " + e.getMessage());
+            }
+            if (WorldHostingHookHolder.isEnabled()) {
+                JoinGatePolicy gatePolicy = JoinPolicyBridge.toGatePolicy(newPolicy);
+                HostGateway hostGateway = HostGateway.forPolicy(gatePolicy, gateway::isDirectFriend);
+                WorldHostingHookHolder.updateJoinPolicy(hostGateway::canJoin, gatePolicy != JoinGatePolicy.NOBODY);
+            }
+        };
+
+        FriendsSidebarFacade facade = new FriendsSidebarFacade(dataSource, new FriendSidebarStateMachine(),
+                config.joinPolicy(), onJoinPolicyChanged);
         facade.setEnabled(config.enabled());
         facade.setSteamAvailable(steamworksService.isSteamAvailable());
 

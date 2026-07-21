@@ -2,9 +2,11 @@ package de.lazuli.features.friendssidebar.services;
 
 import de.lazuli.api.friends.FriendSidebarHook;
 import de.lazuli.api.friends.FriendSummary;
+import de.lazuli.features.friendssidebar.api.JoinPolicy;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Consumer;
 
 /**
  * Implements {@link FriendSidebarHook} and {@code FriendActionListener}
@@ -22,7 +24,8 @@ import java.util.Optional;
  *
  * <p>Usage example (from a platform composition root):
  * <pre>{@code
- * FriendsSidebarFacade facade = new FriendsSidebarFacade(dataSource, new FriendSidebarStateMachine());
+ * FriendsSidebarFacade facade = new FriendsSidebarFacade(dataSource, new FriendSidebarStateMachine(),
+ *         config.joinPolicy(), onJoinPolicyChanged);
  * facade.setEnabled(config.enabled());
  * facade.setSteamAvailable(steamworksService.isSteamAvailable());
  * ClientTickEvents.END_CLIENT_TICK.register(client -> {
@@ -47,15 +50,28 @@ public final class FriendsSidebarFacade implements FriendSidebarHook {
 
     private final FriendsDataSource dataSource;
     private final FriendSidebarStateMachine stateMachine;
+    private final Consumer<JoinPolicy> joinPolicyWriter;
 
     private volatile List<FriendSummary> friends = List.of();
     private volatile Optional<FriendSummary> localProfile = Optional.empty();
     private volatile boolean enabled = true;
     private volatile boolean steamAvailable = true;
+    private volatile JoinPolicy joinPolicy;
 
-    public FriendsSidebarFacade(FriendsDataSource dataSource, FriendSidebarStateMachine stateMachine) {
+    /**
+     * @param initialJoinPolicy the persisted policy value at construction
+     *                          time (v1.3 amendment, Decision 3)
+     * @param joinPolicyWriter  invoked with the new value every time
+     *                          {@link #cycleJoinPolicy()} is called -- the
+     *                          composition-root persistence + bridge-republish
+     *                          callback (Decision 5)
+     */
+    public FriendsSidebarFacade(FriendsDataSource dataSource, FriendSidebarStateMachine stateMachine,
+            JoinPolicy initialJoinPolicy, Consumer<JoinPolicy> joinPolicyWriter) {
         this.dataSource = dataSource;
         this.stateMachine = stateMachine;
+        this.joinPolicy = initialJoinPolicy;
+        this.joinPolicyWriter = joinPolicyWriter;
     }
 
     /**
@@ -157,5 +173,38 @@ public final class FriendsSidebarFacade implements FriendSidebarHook {
     /** @return the pure hover/expand/menu-availability state machine. */
     public FriendSidebarStateMachine stateMachine() {
         return stateMachine;
+    }
+
+    /**
+     * @return the currently-active "who can join" policy (v1.3 amendment,
+     *         FR7.5) -- reflects the standing config value regardless of
+     *         whether a world is currently hosted
+     */
+    public JoinPolicy joinPolicy() {
+        return joinPolicy;
+    }
+
+    /**
+     * Advances {@link #joinPolicy()} to the next value in the fixed cycle
+     * (FR7.3) and invokes the persistence/bridge-republish callback with the
+     * new value. Never itself starts/stops/affects a hosting session (FR7.7).
+     */
+    public void cycleJoinPolicy() {
+        JoinPolicy next = stateMachine.nextJoinPolicy(joinPolicy);
+        joinPolicy = next;
+        joinPolicyWriter.accept(next);
+    }
+
+    /**
+     * Sets {@link #joinPolicy()} directly to {@code policy} and invokes the
+     * persistence/bridge-republish callback with the new value (v1.4
+     * amendment, Public API item 11) -- the {@code DropdownWidget}-backed
+     * replacement for {@link #cycleJoinPolicy()}'s click-to-cycle
+     * interaction. Never itself starts/stops/affects a hosting session
+     * (FR7.7).
+     */
+    public void selectJoinPolicy(JoinPolicy policy) {
+        joinPolicy = policy;
+        joinPolicyWriter.accept(policy);
     }
 }

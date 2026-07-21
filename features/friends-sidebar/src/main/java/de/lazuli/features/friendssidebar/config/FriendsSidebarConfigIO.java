@@ -1,6 +1,7 @@
 package de.lazuli.features.friendssidebar.config;
 
 import de.lazuli.features.friendssidebar.api.FriendsSidebarConfig;
+import de.lazuli.features.friendssidebar.api.JoinPolicy;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -54,6 +55,23 @@ public final class FriendsSidebarConfigIO {
         private static ParseResult fallback(String reason) {
             return new ParseResult(FriendsSidebarConfig.DEFAULT, reason);
         }
+    }
+
+    /**
+     * Serializes {@code config} and writes it to {@code path}, creating any
+     * missing parent directories (implementation plan Decision 4) -- the
+     * composition-root save-on-click path (v1.3 amendment FR7.1/Configuration).
+     *
+     * @param path   the config file's location
+     * @param config the config to persist
+     * @throws IOException if the write fails
+     */
+    public void save(Path path, FriendsSidebarConfig config) throws IOException {
+        Path parent = path.toAbsolutePath().normalize().getParent();
+        if (parent != null) {
+            Files.createDirectories(parent);
+        }
+        Files.writeString(path, serialize(config), StandardCharsets.UTF_8);
     }
 
     /**
@@ -114,7 +132,8 @@ public final class FriendsSidebarConfigIO {
         StringBuilder sb = new StringBuilder();
         sb.append("{\n");
         sb.append("  \"enabled\": ").append(config.enabled()).append(",\n");
-        sb.append("  \"refreshIntervalSeconds\": ").append(config.refreshIntervalSeconds()).append('\n');
+        sb.append("  \"refreshIntervalSeconds\": ").append(config.refreshIntervalSeconds()).append(",\n");
+        sb.append("  \"joinPolicy\": \"").append(config.joinPolicy().name()).append("\"\n");
         sb.append("}\n");
         return sb.toString();
     }
@@ -147,6 +166,7 @@ public final class FriendsSidebarConfigIO {
         FriendsSidebarConfig parseConfig() {
             Boolean enabled = null;
             Integer refreshIntervalSeconds = null;
+            JoinPolicy joinPolicy = null;
 
             skipWhitespace();
             expect('{');
@@ -176,6 +196,12 @@ public final class FriendsSidebarConfigIO {
                         }
                         refreshIntervalSeconds = parseInt();
                     }
+                    case "joinPolicy" -> {
+                        if (joinPolicy != null) {
+                            throw new MalformedConfigException("duplicate key \"joinPolicy\"");
+                        }
+                        joinPolicy = parseJoinPolicy();
+                    }
                     default -> throw new MalformedConfigException("unknown key \"" + key + "\"");
                 }
 
@@ -201,7 +227,21 @@ public final class FriendsSidebarConfigIO {
                 throw new MalformedConfigException("refreshIntervalSeconds must be positive");
             }
 
-            return new FriendsSidebarConfig(enabled, refreshIntervalSeconds);
+            // joinPolicy is optional (backward-compatible schema evolution,
+            // Decision 4): absent -> defaults to FRIENDS, preserving whatever
+            // enabled/refreshIntervalSeconds an upgrading install already has.
+            JoinPolicy resolvedJoinPolicy = joinPolicy != null ? joinPolicy : JoinPolicy.FRIENDS;
+
+            return new FriendsSidebarConfig(enabled, refreshIntervalSeconds, resolvedJoinPolicy);
+        }
+
+        private JoinPolicy parseJoinPolicy() {
+            String value = parseString();
+            try {
+                return JoinPolicy.valueOf(value);
+            } catch (IllegalArgumentException e) {
+                throw new MalformedConfigException("invalid joinPolicy value \"" + value + "\"");
+            }
         }
 
         private boolean parseBoolean() {

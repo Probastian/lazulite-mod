@@ -8,7 +8,8 @@ package de.lazuli.features.friendssidebar.api;
  * <pre>{@code
  * {
  *   "enabled": true,
- *   "refreshIntervalSeconds": 5
+ *   "refreshIntervalSeconds": 5,
+ *   "joinPolicy": "FRIENDS"
  * }
  * }</pre>
  *
@@ -28,12 +29,15 @@ package de.lazuli.features.friendssidebar.api;
  *                                is re-queried (FR1.4); this feature's own
  *                                planning-time addition (implementation
  *                                plan Decision 7), not fixed by the spec
+ * @param joinPolicy              who may join the local player's Steam-P2P-hosted
+ *                                singleplayer world (v1.3 amendment FR7.1),
+ *                                default {@link JoinPolicy#FRIENDS}
  */
-public record FriendsSidebarConfig(boolean enabled, int refreshIntervalSeconds) {
+public record FriendsSidebarConfig(boolean enabled, int refreshIntervalSeconds, JoinPolicy joinPolicy) {
 
     /**
      * The default configuration used when no config file exists yet, or when
      * an existing file fails to parse.
      */
-    public static final FriendsSidebarConfig DEFAULT = new FriendsSidebarConfig(true, 5);
+    public static final FriendsSidebarConfig DEFAULT = new FriendsSidebarConfig(true, 5, JoinPolicy.FRIENDS);
 }

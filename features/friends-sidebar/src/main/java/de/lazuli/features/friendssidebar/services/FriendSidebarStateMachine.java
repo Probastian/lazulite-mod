@@ -1,6 +1,7 @@
 package de.lazuli.features.friendssidebar.services;
 
 import de.lazuli.api.friends.FriendSummary;
+import de.lazuli.features.friendssidebar.api.JoinPolicy;
 
 /**
  * Plain-JVM-testable hover/expand and context-menu-option-availability logic
@@ -165,6 +166,21 @@ public final class FriendSidebarStateMachine {
      * @return the plain-text status word for that state (FR1.8/FR4.8) --
      *         used whenever no Rich Presence value is available
      */
+    /**
+     * Pure cycle function for the v1.3 "who can join" dropdown (FR7.3):
+     * {@code NOBODY -> FRIENDS -> EVERYONE -> NOBODY -> ...}.
+     *
+     * @param current the currently-active policy
+     * @return the next policy in the fixed cycle order
+     */
+    public JoinPolicy nextJoinPolicy(JoinPolicy current) {
+        return switch (current) {
+            case NOBODY -> JoinPolicy.FRIENDS;
+            case FRIENDS -> JoinPolicy.EVERYONE;
+            case EVERYONE -> JoinPolicy.NOBODY;
+        };
+    }
+
     public String statusLabel(int personaState) {
         return switch (personaState) {
             case 1 -> "Online";

@@ -1,6 +1,7 @@
 package de.lazuli.features.friendssidebar.services;
 
 import de.lazuli.api.friends.FriendSummary;
+import de.lazuli.features.friendssidebar.api.JoinPolicy;
 
 import org.junit.jupiter.api.Test;
 
@@ -106,5 +107,12 @@ class FriendSidebarStateMachineTest {
         for (int personaState = 0; personaState <= 7; personaState++) {
             assertThat(stateMachine.statusLabel(personaState)).isNotNull().isNotBlank();
         }
+    }
+
+    @Test
+    void nextJoinPolicyCyclesInFixedOrderIncludingWrapAround() {
+        assertThat(stateMachine.nextJoinPolicy(JoinPolicy.NOBODY)).isEqualTo(JoinPolicy.FRIENDS);
+        assertThat(stateMachine.nextJoinPolicy(JoinPolicy.FRIENDS)).isEqualTo(JoinPolicy.EVERYONE);
+        assertThat(stateMachine.nextJoinPolicy(JoinPolicy.EVERYONE)).isEqualTo(JoinPolicy.NOBODY);
     }
 }

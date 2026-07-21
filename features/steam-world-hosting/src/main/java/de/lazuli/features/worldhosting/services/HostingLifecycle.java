@@ -41,10 +41,46 @@ public final class HostingLifecycle {
      * (FR1.2/FR2.1). Idempotent: a redundant call re-asserts the same state.
      */
     public void start() {
+        start(true);
+    }
+
+    /**
+     * Marks hosting active (FR1.2) and, per {@code advertise}, either
+     * advertises the local host via Rich Presence or suppresses it entirely
+     * (v1.3 amendment FR7.8's "Nobody" mechanism) -- suppression here never
+     * touches {@code hosting}/{@code localSteamId64}. Idempotent.
+     *
+     * @param advertise {@code false} to skip setting the Rich Presence
+     *                  {@code "connect"} key (join-policy "Nobody")
+     */
+    public void start(boolean advertise) {
         long id = gateway.localSteamId64();
         this.localSteamId64 = id;
         this.hosting = true;
-        gateway.setLocalRichPresence(CONNECT_KEY, ConnectStringCodec.encode(id));
+        if (advertise) {
+            gateway.setLocalRichPresence(CONNECT_KEY, ConnectStringCodec.encode(id));
+        } else {
+            gateway.clearLocalRichPresence();
+        }
+    }
+
+    /**
+     * Live-toggles Rich Presence advertising without affecting hosting/session
+     * state (v1.3 amendment FR7.11/FR7.13) -- never touches
+     * {@code hosting}/{@code localSteamId64}, never disconnects a peer. No-op
+     * if not currently hosting.
+     *
+     * @param advertise the new advertising state
+     */
+    public void updateAdvertising(boolean advertise) {
+        if (!hosting) {
+            return;
+        }
+        if (advertise) {
+            gateway.setLocalRichPresence(CONNECT_KEY, ConnectStringCodec.encode(localSteamId64));
+        } else {
+            gateway.clearLocalRichPresence();
+        }
     }
 
     /**

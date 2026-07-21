@@ -25,6 +25,7 @@ public final class WorldHostingHookHolder {
 
     private static volatile HostingLifecycle lifecycle;
     private static volatile LongPredicate canJoin;
+    private static volatile boolean advertise = true;
 
     private static volatile ChannelHandler capturedChildHandler;
     private static volatile EventLoopGroup capturedGroup;
@@ -39,11 +40,35 @@ public final class WorldHostingHookHolder {
      * no-op (world hosts as vanilla).
      *
      * @param hostingLifecycle the real {@link HostingLifecycle}
-     * @param joinGate         {@code gateway::isDirectFriend}-backed FR1.3 gate
+     * @param joinGate         the resolved join-gate predicate (FR1.3/v1.3
+     *                         amendment FR7.8-FR7.10)
+     * @param advertiseEnabled whether the Rich Presence "connect" key should
+     *                         be set while hosting (v1.3 amendment FR7.8's
+     *                         "Nobody" suppression -- {@code false} only when
+     *                         the resolved policy is {@code NOBODY})
      */
-    public static void publish(HostingLifecycle hostingLifecycle, LongPredicate joinGate) {
+    public static void publish(HostingLifecycle hostingLifecycle, LongPredicate joinGate, boolean advertiseEnabled) {
         lifecycle = hostingLifecycle;
         canJoin = joinGate;
+        advertise = advertiseEnabled;
+    }
+
+    /**
+     * Bridge point 2 (v1.3 amendment FR7.11): re-derives the join gate and
+     * advertising flag without a restart, live-toggling Rich Presence
+     * advertising if the flag changed (FR7.12/FR7.13: never touches hosting/
+     * session state).
+     *
+     * @param joinGate         the newly-resolved join-gate predicate
+     * @param advertiseEnabled the newly-resolved advertising flag
+     */
+    public static synchronized void updateJoinPolicy(LongPredicate joinGate, boolean advertiseEnabled) {
+        canJoin = joinGate;
+        boolean changed = advertise != advertiseEnabled;
+        advertise = advertiseEnabled;
+        if (changed && lifecycle != null) {
+            lifecycle.updateAdvertising(advertiseEnabled);
+        }
     }
 
     /** @return {@code true} once {@link #publish} has run (feature enabled). */
@@ -83,7 +108,7 @@ public final class WorldHostingHookHolder {
         SteamSession newSession = new SteamSession(handler, group, canJoin);
         session = newSession;
         newSession.startAsync();
-        lifecycle.start();
+        lifecycle.start(advertise);
     }
 
     /**

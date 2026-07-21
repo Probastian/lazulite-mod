@@ -39,4 +39,24 @@ public final class HostGateway {
     public boolean canJoin(long friendSteamId64) {
         return friendRelationshipLookup.test(friendSteamId64);
     }
+
+    /**
+     * Maps a {@link JoinGatePolicy} to the concrete {@link LongPredicate}
+     * this class enforces (implementation plan Decision 5, FR7.8-FR7.10):
+     * {@code NOBODY} always rejects, {@code FRIENDS} delegates to
+     * {@code isDirectFriend} unchanged (today's only-ever-shipped behavior),
+     * {@code EVERYONE} always accepts.
+     *
+     * @param policy         which of the three states to enforce
+     * @param isDirectFriend {@code gateway::isDirectFriend}-backed lookup,
+     *                       used only for {@code FRIENDS}
+     * @return a new {@link HostGateway} enforcing that policy
+     */
+    public static HostGateway forPolicy(JoinGatePolicy policy, LongPredicate isDirectFriend) {
+        return switch (policy) {
+            case NOBODY -> new HostGateway(id -> false);
+            case FRIENDS -> new HostGateway(isDirectFriend);
+            case EVERYONE -> new HostGateway(id -> true);
+        };
+    }
 }
