@@ -62,6 +62,12 @@ public final class SteamWorldHostingClientInitializer implements ClientModInitia
             return;
         }
 
+        if (FabricLoader.getInstance().isDevelopmentEnvironment()) {
+            LazuliMod.LOGGER.info("[WorldHosting] Fabric development environment detected -- "
+                    + "Mojang session verification will be bypassed for Steam P2P connections on this host "
+                    + "(ServerLoginStubDigestMixin/ClientHandshakeStubDigestMixin's debug-only auth bypass).");
+        }
+
         HostingLifecycle lifecycle = new HostingLifecycle(gateway);
         HostGateway hostGateway = new HostGateway(gateway::isDirectFriend);
         HostingPresenceScanner scanner = new HostingPresenceScanner(gateway);
