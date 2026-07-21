@@ -8,6 +8,8 @@ import net.minecraft.network.encryption.NetworkEncryptionException;
 import net.minecraft.network.encryption.NetworkEncryptionUtils;
 import net.minecraft.network.packet.s2c.login.LoginHelloS2CPacket;
 
+import net.fabricmc.loader.api.FabricLoader;
+
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -39,6 +41,9 @@ public class ClientHandshakeStubDigestMixin {
             at = @At(value = "INVOKE",
                     target = "Lnet/minecraft/network/packet/s2c/login/LoginHelloS2CPacket;getPublicKey()Ljava/security/PublicKey;"))
     private PublicKey lazuli$nullifyPublicKey(LoginHelloS2CPacket instance) throws NetworkEncryptionException {
+        if (!FabricLoader.getInstance().isDevelopmentEnvironment()) {
+            return instance.getPublicKey();
+        }
         if (connection.getAddress() instanceof SteamAddress) {
             return null;
         }
@@ -49,6 +54,9 @@ public class ClientHandshakeStubDigestMixin {
             at = @At(value = "INVOKE",
                     target = "Lnet/minecraft/network/encryption/NetworkEncryptionUtils;computeServerId(Ljava/lang/String;Ljava/security/PublicKey;Ljavax/crypto/SecretKey;)[B"))
     private byte[] lazuli$stubServerId(String serverId, PublicKey pubKey, SecretKey secretKey) throws NetworkEncryptionException {
+        if (!FabricLoader.getInstance().isDevelopmentEnvironment()) {
+            return NetworkEncryptionUtils.computeServerId(serverId, pubKey, secretKey);
+        }
         if (connection.getAddress() instanceof SteamAddress) {
             return new byte[20];
         }

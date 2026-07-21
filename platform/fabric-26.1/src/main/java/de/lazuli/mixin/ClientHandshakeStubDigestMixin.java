@@ -8,6 +8,8 @@ import net.minecraft.network.protocol.login.ClientboundHelloPacket;
 import net.minecraft.util.Crypt;
 import net.minecraft.util.CryptException;
 
+import net.fabricmc.loader.api.FabricLoader;
+
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -41,6 +43,9 @@ public class ClientHandshakeStubDigestMixin {
             at = @At(value = "INVOKE",
                     target = "Lnet/minecraft/network/protocol/login/ClientboundHelloPacket;getPublicKey()Ljava/security/PublicKey;"))
     private PublicKey lazuli$nullifyPublicKey(ClientboundHelloPacket instance) throws CryptException {
+        if (!FabricLoader.getInstance().isDevelopmentEnvironment()) {
+            return instance.getPublicKey();
+        }
         if (connection.getRemoteAddress() instanceof SteamAddress) {
             return null;
         }
@@ -51,6 +56,9 @@ public class ClientHandshakeStubDigestMixin {
             at = @At(value = "INVOKE",
                     target = "Lnet/minecraft/util/Crypt;digestData(Ljava/lang/String;Ljava/security/PublicKey;Ljavax/crypto/SecretKey;)[B"))
     private byte[] lazuli$stubDigestData(String serverId, PublicKey pubKey, SecretKey secretKey) throws CryptException {
+        if (!FabricLoader.getInstance().isDevelopmentEnvironment()) {
+            return Crypt.digestData(serverId, pubKey, secretKey);
+        }
         if (connection.getRemoteAddress() instanceof SteamAddress) {
             return new byte[20];
         }

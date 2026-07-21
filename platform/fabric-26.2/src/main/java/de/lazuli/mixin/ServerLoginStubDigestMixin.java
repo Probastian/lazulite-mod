@@ -8,6 +8,8 @@ import net.minecraft.server.network.ServerLoginPacketListenerImpl;
 import net.minecraft.util.Crypt;
 import net.minecraft.util.CryptException;
 
+import net.fabricmc.loader.api.FabricLoader;
+
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -45,6 +47,9 @@ public class ServerLoginStubDigestMixin {
     @Redirect(method = "handleHello",
             at = @At(value = "INVOKE", target = "Ljava/security/PublicKey;getEncoded()[B"))
     private byte[] lazuli$suppressPublicKey(PublicKey instance) {
+        if (!FabricLoader.getInstance().isDevelopmentEnvironment()) {
+            return instance.getEncoded();
+        }
         if (connection.getRemoteAddress() instanceof SteamAddress) {
             return new byte[0];
         }
@@ -55,6 +60,9 @@ public class ServerLoginStubDigestMixin {
             at = @At(value = "INVOKE",
                     target = "Lnet/minecraft/network/protocol/login/ServerboundKeyPacket;isChallengeValid([BLjava/security/PrivateKey;)Z"))
     private boolean lazuli$bypassChallengeValidation(ServerboundKeyPacket instance, byte[] challenge, PrivateKey key) {
+        if (!FabricLoader.getInstance().isDevelopmentEnvironment()) {
+            return instance.isChallengeValid(challenge, key);
+        }
         if (connection.getRemoteAddress() instanceof SteamAddress) {
             return true;
         }
@@ -65,6 +73,9 @@ public class ServerLoginStubDigestMixin {
             at = @At(value = "INVOKE",
                     target = "Lnet/minecraft/network/protocol/login/ServerboundKeyPacket;getSecretKey(Ljava/security/PrivateKey;)Ljavax/crypto/SecretKey;"))
     private SecretKey lazuli$nullifySecretKey(ServerboundKeyPacket instance, PrivateKey key) throws CryptException {
+        if (!FabricLoader.getInstance().isDevelopmentEnvironment()) {
+            return instance.getSecretKey(key);
+        }
         if (connection.getRemoteAddress() instanceof SteamAddress) {
             return null;
         }
@@ -74,6 +85,9 @@ public class ServerLoginStubDigestMixin {
     @Redirect(method = "handleKey",
             at = @At(value = "INVOKE", target = "Lnet/minecraft/util/Crypt;getCipher(ILjava/security/Key;)Ljavax/crypto/Cipher;"))
     private Cipher lazuli$nullifyCipher(int mode, Key key) throws CryptException {
+        if (!FabricLoader.getInstance().isDevelopmentEnvironment()) {
+            return Crypt.getCipher(mode, key);
+        }
         if (connection.getRemoteAddress() instanceof SteamAddress) {
             return null;
         }
@@ -84,6 +98,9 @@ public class ServerLoginStubDigestMixin {
             at = @At(value = "INVOKE",
                     target = "Lnet/minecraft/util/Crypt;digestData(Ljava/lang/String;Ljava/security/PublicKey;Ljavax/crypto/SecretKey;)[B"))
     private byte[] lazuli$stubDigestData(String serverId, PublicKey pubKey, SecretKey secretKey) throws CryptException {
+        if (!FabricLoader.getInstance().isDevelopmentEnvironment()) {
+            return Crypt.digestData(serverId, pubKey, secretKey);
+        }
         if (connection.getRemoteAddress() instanceof SteamAddress) {
             return new byte[20];
         }
