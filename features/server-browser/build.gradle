@@ -1,0 +1,17 @@
+dependencies {
+	// ServerBrowserSession/ServerBrowserSessionFactory/ServerBrowserRow etc.
+	// (api-module types) appear in this feature's own public service
+	// signatures (ServerBrowserSessionImpl/ServerBrowserSessionFactoryImpl),
+	// so it must leak to consumers -- hence `api`, not `implementation` (same
+	// rationale already used in features/friends-sidebar/build.gradle).
+	api project(':api')
+
+	// SteamAvailability plus the steamworks4j SteamMatchmaking* surface
+	// (ServerBrowserQuery, the sole importer per NFR3) are only ever
+	// consulted by this feature's own internal services -- this feature
+	// never re-exposes a steamworks4j type in its own public surface, so
+	// `services` stays `implementation`, not `api`.
+	implementation project(':services')
+
+	// JUnit 5/AssertJ/Mockito are provided to every subproject by the root build.gradle.
+}

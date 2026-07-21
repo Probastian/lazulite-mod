@@ -16,6 +16,7 @@ dependencies {
 	implementation project(':features:steam-cloud-sync')
 	implementation project(':features:friends-sidebar')
 	implementation project(':features:steam-world-hosting')
+	implementation project(':features:server-browser')
 	implementation project(':services')
 
 	// To change the versions see the gradle.properties file
