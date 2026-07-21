@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
+import java.util.zip.Deflater;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
@@ -70,6 +71,7 @@ public final class WorldSaveSyncService {
     private final boolean allowSelectiveFallback;
     private final Consumer<String> warningLogger;
     private final Consumer<String> playerNotifier;
+    private final WorldSyncStatusTracker statusTracker;
     private final WorldFingerprintIO fingerprintIO = new WorldFingerprintIO();
 
     /**
@@ -97,6 +99,11 @@ public final class WorldSaveSyncService {
      *                               player-visible message for the FR6.4/
      *                               FR6.6/FR6.7 notifications this service
      *                               must surface
+     * @param statusTracker          receives per-world sync-status updates at
+     *                               the same checkpoints
+     *                               {@code warningLogger}/{@code playerNotifier}
+     *                               are already called (FRU.3 of the
+     *                               diagnostics/UI/compression companion spec)
      */
     public WorldSaveSyncService(
             WorldArchiveCloudStore archiveStore,
@@ -108,7 +115,8 @@ public final class WorldSaveSyncService {
             int maxWorldArchiveSizeMb,
             boolean allowSelectiveFallback,
             Consumer<String> warningLogger,
-            Consumer<String> playerNotifier) {
+            Consumer<String> playerNotifier,
+            WorldSyncStatusTracker statusTracker) {
         this.archiveStore = Objects.requireNonNull(archiveStore, "archiveStore");
         this.cloudFileStore = Objects.requireNonNull(cloudFileStore, "cloudFileStore");
         this.preferenceService = Objects.requireNonNull(preferenceService, "preferenceService");
@@ -119,6 +127,7 @@ public final class WorldSaveSyncService {
         this.allowSelectiveFallback = allowSelectiveFallback;
         this.warningLogger = Objects.requireNonNull(warningLogger, "warningLogger");
         this.playerNotifier = Objects.requireNonNull(playerNotifier, "playerNotifier");
+        this.statusTracker = Objects.requireNonNull(statusTracker, "statusTracker");
     }
 
     /**
@@ -215,6 +224,7 @@ public final class WorldSaveSyncService {
             if (strategy == SyncStrategy.SKIPPED) {
                 playerNotifier.accept("World \"" + displayName + "\" (" + formatMb(sizeBytes) + " MB) exceeds the "
                         + maxWorldArchiveSizeMb + " MB Cloud sync threshold; not synced this session.");
+                statusTracker.markSkippedTooLarge(worldSlug);
                 return;
             }
 
@@ -236,18 +246,24 @@ public final class WorldSaveSyncService {
                 boolean written = archiveStore.streamWrite(archiveFileName, archiveBytes);
                 if (written) {
                     updateFingerprint(worldSlug, displayName);
+                    statusTracker.markSynced(worldSlug);
                 } else {
-                    warningLogger.accept("Failed to sync world \"" + displayName + "\" to Steam Cloud.");
+                    String message = "Failed to sync world \"" + displayName + "\" (" + archiveBytes.length
+                            + " bytes) to Steam Cloud; see the preceding Steam Cloud log line for the specific cause.";
+                    warningLogger.accept(message);
+                    statusTracker.markError(worldSlug, message);
                 }
             });
         } catch (IOException e) {
             warningLogger.accept("Failed to build Cloud archive for world \"" + displayName + "\": " + e);
+            statusTracker.markError(worldSlug, e.getMessage());
         }
     }
 
     private byte[] buildWholeArchive(Path worldFolder) throws IOException {
         ByteArrayOutputStream buffer = new ByteArrayOutputStream();
         try (ZipOutputStream zip = new ZipOutputStream(buffer)) {
+            zip.setLevel(Deflater.BEST_COMPRESSION);
             try (Stream<Path> stream = Files.walk(worldFolder)) {
                 for (Path path : (Iterable<Path>) stream.filter(Files::isRegularFile)::iterator) {
                     addZipEntry(zip, worldFolder, path);
@@ -260,6 +276,7 @@ public final class WorldSaveSyncService {
     private byte[] buildSelectiveArchive(Path worldFolder) throws IOException {
         ByteArrayOutputStream buffer = new ByteArrayOutputStream();
         try (ZipOutputStream zip = new ZipOutputStream(buffer)) {
+            zip.setLevel(Deflater.BEST_COMPRESSION);
             for (String entryName : SELECTIVE_FALLBACK_ENTRIES) {
                 Path entryPath = worldFolder.resolve(entryName);
                 if (!Files.exists(entryPath)) {
@@ -302,7 +319,12 @@ public final class WorldSaveSyncService {
     private void ensureQuota(int neededBytes, String worldSlugBeingWritten) {
         long[] total = new long[1];
         long[] available = new long[1];
-        if (!archiveStore.getQuota(total, available) || available[0] >= neededBytes) {
+        if (!archiveStore.getQuota(total, available)) {
+            warningLogger.accept("Steam Cloud quota check failed for world \"" + worldSlugBeingWritten
+                    + "\" (Steam getQuota() call did not succeed); proceeding without a quota pre-check.");
+            return;
+        }
+        if (available[0] >= neededBytes) {
             return;
         }
 
@@ -310,16 +332,24 @@ public final class WorldSaveSyncService {
         candidates.removeIf(fingerprint -> fingerprint.worldSlug().equals(worldSlugBeingWritten));
         candidates.sort(Comparator.comparingLong(WorldFingerprint::syncedAtTimestamp));
 
+        int evicted = 0;
         for (WorldFingerprint candidate : candidates) {
             if (available[0] >= neededBytes) {
                 break;
             }
             if (archiveStore.forget(archiveFileName(candidate.worldSlug()))) {
+                evicted++;
                 playerNotifier.accept("World \"" + candidate.displayName()
                         + "\" is no longer Cloud-backed (still fully playable locally) -- "
                         + "Cloud quota was needed for another world.");
                 archiveStore.getQuota(total, available);
             }
+        }
+
+        if (available[0] < neededBytes) {
+            warningLogger.accept("Cloud quota still insufficient for world \"" + worldSlugBeingWritten
+                    + "\" after evicting " + evicted + " older world(s): need " + neededBytes + " bytes, have "
+                    + available[0] + " of " + total[0] + " bytes total. The write that follows is expected to fail.");
         }
     }
 

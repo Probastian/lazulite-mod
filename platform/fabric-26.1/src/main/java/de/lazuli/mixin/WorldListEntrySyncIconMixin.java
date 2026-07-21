@@ -1,13 +1,17 @@
 package de.lazuli.mixin;
 
 import de.lazuli.LazuliMod;
+import de.lazuli.WorldSyncStatusHookHolder;
 import de.lazuli.WorldSyncToggleHookHolder;
+import de.lazuli.api.cloudsync.WorldSyncStatusHook;
+import de.lazuli.api.cloudsync.WorldSyncStatusHook.SyncStatus;
 import de.lazuli.api.cloudsync.WorldSyncToggleHook;
 import de.lazuli.cloudsync.WorldListEntryReflection;
 
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.worldselection.WorldSelectionList;
 import net.minecraft.client.input.MouseButtonEvent;
+import net.minecraft.network.chat.Component;
 import net.minecraft.world.level.storage.LevelSummary;
 
 import org.spongepowered.asm.mixin.Mixin;
@@ -54,6 +58,9 @@ public abstract class WorldListEntrySyncIconMixin {
     private static final int ICON_MARGIN = 4;
     private static final int COLOR_ENABLED = 0xFF3399FF;
     private static final int COLOR_DISABLED = 0xFF808080;
+    private static final int COLOR_SYNCED = 0xFF33CC33;
+    private static final int COLOR_SYNC_ERROR = 0xFFCC3333;
+    private static final int COLOR_SKIPPED = 0xFFCCAA33;
 
     @Inject(method = "extractContent", at = @At("TAIL"))
     private void lazuli$drawSyncIcon(
@@ -68,6 +75,29 @@ public abstract class WorldListEntrySyncIconMixin {
         int left = lazuli$iconLeft();
         int top = lazuli$iconTop();
         graphics.fill(left, top, left + ICON_SIZE, top + ICON_SIZE, enabled ? COLOR_ENABLED : COLOR_DISABLED);
+
+        WorldSyncStatusHook statusHook = WorldSyncStatusHookHolder.getOrNull();
+        if (statusHook == null) {
+            return;
+        }
+        SyncStatus status = statusHook.statusFor(summary.getLevelId());
+        if (status == SyncStatus.NOT_SYNCED) {
+            return;
+        }
+        int statusColor = status == SyncStatus.SYNCED ? COLOR_SYNCED
+                : status == SyncStatus.SYNC_ERROR ? COLOR_SYNC_ERROR
+                : COLOR_SKIPPED;
+        int statusLeft = left - ICON_MARGIN - ICON_SIZE;
+        graphics.fill(statusLeft, top, statusLeft + ICON_SIZE, top + ICON_SIZE, statusColor);
+
+        if (hovered && mouseX >= statusLeft && mouseX < statusLeft + ICON_SIZE && mouseY >= top && mouseY < top + ICON_SIZE) {
+            if (status == SyncStatus.SYNC_ERROR) {
+                String error = statusHook.lastErrorFor(summary.getLevelId());
+                graphics.setTooltipForNextFrame(Component.literal(error != null ? error : "Steam Cloud sync failed."), mouseX, mouseY);
+            } else if (status == SyncStatus.SKIPPED_TOO_LARGE) {
+                graphics.setTooltipForNextFrame(Component.literal("World is too large to sync automatically."), mouseX, mouseY);
+            }
+        }
     }
 
     @Inject(method = "mouseClicked", at = @At("HEAD"), cancellable = true)

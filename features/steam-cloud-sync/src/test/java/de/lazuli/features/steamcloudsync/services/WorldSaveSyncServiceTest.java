@@ -13,6 +13,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalLong;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -26,6 +28,8 @@ class WorldSaveSyncServiceTest {
         final Map<String, byte[]> archives = new HashMap<>();
         long totalQuota = 1000L;
         long availableQuota = 1000L;
+        boolean failStreamWrite = false;
+        boolean failGetQuota = false;
 
         @Override
         public boolean isAvailable() {
@@ -34,6 +38,9 @@ class WorldSaveSyncServiceTest {
 
         @Override
         public boolean streamWrite(String fileName, byte[] data) {
+            if (failStreamWrite) {
+                return false;
+            }
             archives.put(fileName, data);
             return true;
         }
@@ -62,6 +69,9 @@ class WorldSaveSyncServiceTest {
 
         @Override
         public boolean getQuota(long[] totalBytes, long[] availableBytes) {
+            if (failGetQuota) {
+                return false;
+            }
             totalBytes[0] = totalQuota;
             availableBytes[0] = availableQuota;
             return true;
@@ -158,7 +168,8 @@ class WorldSaveSyncServiceTest {
 
         WorldSaveSyncService service = new WorldSaveSyncService(
                 archiveStore, cloudFileStore, preferenceService, worker,
-                tempDir.resolve("world-fingerprint-cache.json"), "test-device", 50, true, w -> { }, notifications::add);
+                tempDir.resolve("world-fingerprint-cache.json"), "test-device", 50, true, w -> { }, notifications::add,
+                new WorldSyncStatusTracker());
 
         service.syncWorldNow("my_world", worldFolder, "My World");
         worker.pumpTickWork();
@@ -166,6 +177,134 @@ class WorldSaveSyncServiceTest {
         assertThat(archiveStore.archives).containsKey("lazuli-world-my_world.zip");
         assertThat(cloudFileStore.files).containsKey("lazuli-world-fingerprints.json");
         assertThat(Files.exists(tempDir.resolve("world-fingerprint-cache.json"))).isTrue();
+    }
+
+    @Test
+    void successfulSyncMarksStatusTrackerSynced(@TempDir Path tempDir) throws IOException {
+        Path worldFolder = Files.createDirectory(tempDir.resolve("my_world"));
+        Files.writeString(worldFolder.resolve("level.dat"), "fake level data");
+
+        FakeWorldArchiveCloudStore archiveStore = new FakeWorldArchiveCloudStore();
+        FakeCloudFileStore cloudFileStore = new FakeCloudFileStore();
+        WorldSyncPreferenceService preferenceService =
+                new WorldSyncPreferenceService(tempDir.resolve("world-sync-preferences.json"), w -> { });
+        preferenceService.load();
+        CloudSyncWorker worker = new CloudSyncWorker(w -> { });
+        WorldSyncStatusTracker statusTracker = new WorldSyncStatusTracker();
+
+        WorldSaveSyncService service = new WorldSaveSyncService(
+                archiveStore, cloudFileStore, preferenceService, worker,
+                tempDir.resolve("world-fingerprint-cache.json"), "test-device", 50, true, w -> { }, m -> { },
+                statusTracker);
+
+        service.syncWorldNow("my_world", worldFolder, "My World");
+        worker.pumpTickWork();
+
+        assertThat(statusTracker.statusFor("my_world")).isEqualTo(de.lazuli.api.cloudsync.WorldSyncStatusHook.SyncStatus.SYNCED);
+    }
+
+    @Test
+    void writeFailureLogsByteCountAndMarksStatusTrackerError(@TempDir Path tempDir) throws IOException {
+        Path worldFolder = Files.createDirectory(tempDir.resolve("my_world"));
+        Files.writeString(worldFolder.resolve("level.dat"), "fake level data");
+
+        FakeWorldArchiveCloudStore archiveStore = new FakeWorldArchiveCloudStore();
+        archiveStore.failStreamWrite = true;
+        FakeCloudFileStore cloudFileStore = new FakeCloudFileStore();
+        WorldSyncPreferenceService preferenceService =
+                new WorldSyncPreferenceService(tempDir.resolve("world-sync-preferences.json"), w -> { });
+        preferenceService.load();
+        CloudSyncWorker worker = new CloudSyncWorker(w -> { });
+        List<String> warnings = new ArrayList<>();
+        WorldSyncStatusTracker statusTracker = new WorldSyncStatusTracker();
+
+        WorldSaveSyncService service = new WorldSaveSyncService(
+                archiveStore, cloudFileStore, preferenceService, worker,
+                tempDir.resolve("world-fingerprint-cache.json"), "test-device", 50, true, warnings::add, m -> { },
+                statusTracker);
+
+        service.syncWorldNow("my_world", worldFolder, "My World");
+        worker.pumpTickWork();
+
+        assertThat(warnings).anyMatch(message -> message.contains("Failed to sync world \"My World\"") && message.contains("bytes"));
+        assertThat(statusTracker.statusFor("my_world")).isEqualTo(de.lazuli.api.cloudsync.WorldSyncStatusHook.SyncStatus.SYNC_ERROR);
+        assertThat(statusTracker.lastErrorFor("my_world")).contains("bytes");
+    }
+
+    @Test
+    void skippedTooLargeMarksStatusTrackerSkipped(@TempDir Path tempDir) throws IOException {
+        Path worldFolder = Files.createDirectory(tempDir.resolve("big_world"));
+        Files.write(worldFolder.resolve("region.dat"), new byte[2048]);
+
+        FakeWorldArchiveCloudStore archiveStore = new FakeWorldArchiveCloudStore();
+        FakeCloudFileStore cloudFileStore = new FakeCloudFileStore();
+        WorldSyncPreferenceService preferenceService =
+                new WorldSyncPreferenceService(tempDir.resolve("world-sync-preferences.json"), w -> { });
+        preferenceService.load();
+        CloudSyncWorker worker = new CloudSyncWorker(w -> { });
+        WorldSyncStatusTracker statusTracker = new WorldSyncStatusTracker();
+
+        WorldSaveSyncService service = new WorldSaveSyncService(
+                archiveStore, cloudFileStore, preferenceService, worker,
+                tempDir.resolve("world-fingerprint-cache.json"), "test-device", 0, false, w -> { }, m -> { },
+                statusTracker);
+
+        service.syncWorldNow("big_world", worldFolder, "Big World");
+        worker.pumpTickWork();
+
+        assertThat(statusTracker.statusFor("big_world")).isEqualTo(de.lazuli.api.cloudsync.WorldSyncStatusHook.SyncStatus.SKIPPED_TOO_LARGE);
+    }
+
+    @Test
+    void quotaCheckFailureLogsSpecificWarning(@TempDir Path tempDir) throws IOException {
+        Path worldFolder = Files.createDirectory(tempDir.resolve("my_world"));
+        Files.writeString(worldFolder.resolve("level.dat"), "fake level data");
+
+        FakeWorldArchiveCloudStore archiveStore = new FakeWorldArchiveCloudStore();
+        archiveStore.failGetQuota = true;
+        FakeCloudFileStore cloudFileStore = new FakeCloudFileStore();
+        WorldSyncPreferenceService preferenceService =
+                new WorldSyncPreferenceService(tempDir.resolve("world-sync-preferences.json"), w -> { });
+        preferenceService.load();
+        CloudSyncWorker worker = new CloudSyncWorker(w -> { });
+        List<String> warnings = new ArrayList<>();
+
+        WorldSaveSyncService service = new WorldSaveSyncService(
+                archiveStore, cloudFileStore, preferenceService, worker,
+                tempDir.resolve("world-fingerprint-cache.json"), "test-device", 50, true, warnings::add, m -> { },
+                new WorldSyncStatusTracker());
+
+        service.syncWorldNow("my_world", worldFolder, "My World");
+        worker.pumpTickWork();
+
+        assertThat(warnings).anyMatch(message -> message.contains("Steam Cloud quota check failed") && message.contains("my_world"));
+    }
+
+    @Test
+    void quotaStillInsufficientAfterEvictionLogsSpecificWarning(@TempDir Path tempDir) throws IOException {
+        Path worldFolder = Files.createDirectory(tempDir.resolve("new_world"));
+        Files.writeString(worldFolder.resolve("level.dat"), "x".repeat(100));
+
+        FakeWorldArchiveCloudStore archiveStore = new FakeWorldArchiveCloudStore();
+        archiveStore.availableQuota = 0L; // no candidates to evict -> stays insufficient
+
+        FakeCloudFileStore cloudFileStore = new FakeCloudFileStore();
+        WorldSyncPreferenceService preferenceService =
+                new WorldSyncPreferenceService(tempDir.resolve("world-sync-preferences.json"), w -> { });
+        preferenceService.load();
+        CloudSyncWorker worker = new CloudSyncWorker(w -> { });
+        List<String> warnings = new ArrayList<>();
+
+        WorldSaveSyncService service = new WorldSaveSyncService(
+                archiveStore, cloudFileStore, preferenceService, worker,
+                tempDir.resolve("world-fingerprint-cache.json"), "test-device", 50, true, warnings::add, m -> { },
+                new WorldSyncStatusTracker());
+
+        service.syncWorldNow("new_world", worldFolder, "New World");
+        worker.pumpTickWork();
+
+        assertThat(warnings).anyMatch(message -> message.contains("Cloud quota still insufficient")
+                && message.contains("new_world") && message.contains("evicting 0 older world(s)"));
     }
 
     @Test
@@ -185,7 +324,8 @@ class WorldSaveSyncServiceTest {
         // maxWorldArchiveSizeMb=0 -> even a tiny world is "over threshold"; fallback disallowed.
         WorldSaveSyncService service = new WorldSaveSyncService(
                 archiveStore, cloudFileStore, preferenceService, worker,
-                tempDir.resolve("world-fingerprint-cache.json"), "test-device", 0, false, w -> { }, notifications::add);
+                tempDir.resolve("world-fingerprint-cache.json"), "test-device", 0, false, w -> { }, notifications::add,
+                new WorldSyncStatusTracker());
 
         service.syncWorldNow("big_world", worldFolder, "Big World");
         worker.pumpTickWork();
@@ -212,7 +352,8 @@ class WorldSaveSyncServiceTest {
 
         WorldSaveSyncService service = new WorldSaveSyncService(
                 archiveStore, cloudFileStore, preferenceService, worker,
-                tempDir.resolve("world-fingerprint-cache.json"), "test-device", 50, true, w -> { }, notifications::add);
+                tempDir.resolve("world-fingerprint-cache.json"), "test-device", 50, true, w -> { }, notifications::add,
+                new WorldSyncStatusTracker());
 
         // Seed the local fingerprint cache with the "old_world" entry so ensureQuota can find it.
         WorldFingerprintCacheTestHelper.seed(tempDir.resolve("world-fingerprint-cache.json"),
@@ -237,7 +378,8 @@ class WorldSaveSyncServiceTest {
 
         WorldSaveSyncService service = new WorldSaveSyncService(
                 archiveStore, cloudFileStore, preferenceService, worker,
-                tempDir.resolve("world-fingerprint-cache.json"), "test-device", 50, true, w -> { }, m -> { });
+                tempDir.resolve("world-fingerprint-cache.json"), "test-device", 50, true, w -> { }, m -> { },
+                new WorldSyncStatusTracker());
 
         service.onWorldUnload("disabled_world", tempDir, "Disabled World");
 
@@ -256,11 +398,96 @@ class WorldSaveSyncServiceTest {
 
         WorldSaveSyncService service = new WorldSaveSyncService(
                 archiveStore, cloudFileStore, preferenceService, worker,
-                tempDir.resolve("world-fingerprint-cache.json"), "test-device", 50, true, w -> { }, m -> { });
+                tempDir.resolve("world-fingerprint-cache.json"), "test-device", 50, true, w -> { }, m -> { },
+                new WorldSyncStatusTracker());
 
         service.onWorldUnload("enabled_world", tempDir, "Enabled World");
 
         Mockito.verify(worker).submitBackgroundWork(Mockito.any());
+    }
+
+    /**
+     * Realistic, word-salad-style compressible content (not a single repeated
+     * character, which every {@code Deflater} level already compresses down
+     * to the same handful of bytes) -- large enough and varied enough that
+     * level 9's stronger match-finding measurably beats the previous default
+     * level 6 on this exact content, unlike degenerate all-one-character input.
+     */
+    private static String buildCompressibleContent() {
+        String[] words = {"chunk", "region", "player", "world", "block", "entity", "tile", "level", "data", "cache"};
+        java.util.Random random = new java.util.Random(7);
+        StringBuilder builder = new StringBuilder();
+        while (builder.length() < 200_000) {
+            builder.append(words[random.nextInt(words.length)]).append('-').append(random.nextInt(50)).append(' ');
+        }
+        return builder.toString();
+    }
+
+    @Test
+    void wholeArchiveUsesBestCompressionAndRestoresCorrectly(@TempDir Path tempDir) throws Exception {
+        Path worldFolder = Files.createDirectory(tempDir.resolve("my_world"));
+        // Realistic, moderately (not perfectly) compressible content so the
+        // level-9-vs-default-level compression difference is measurable.
+        String content = buildCompressibleContent();
+        Files.writeString(worldFolder.resolve("level.dat"), content);
+
+        FakeWorldArchiveCloudStore archiveStore = new FakeWorldArchiveCloudStore();
+        FakeCloudFileStore cloudFileStore = new FakeCloudFileStore();
+        WorldSyncPreferenceService preferenceService =
+                new WorldSyncPreferenceService(tempDir.resolve("world-sync-preferences.json"), w -> { });
+        preferenceService.load();
+        CloudSyncWorker worker = new CloudSyncWorker(w -> { });
+
+        WorldSaveSyncService service = new WorldSaveSyncService(
+                archiveStore, cloudFileStore, preferenceService, worker,
+                tempDir.resolve("world-fingerprint-cache.json"), "test-device", 50, true, w -> { }, m -> { },
+                new WorldSyncStatusTracker());
+
+        service.syncWorldNow("my_world", worldFolder, "My World");
+        worker.pumpTickWork();
+
+        byte[] level9Archive = archiveStore.archives.get("lazuli-world-my_world.zip");
+        assertThat(level9Archive).isNotNull();
+
+        // Equivalent archive built at the previous default Deflater level (6), for comparison.
+        java.io.ByteArrayOutputStream defaultLevelBuffer = new java.io.ByteArrayOutputStream();
+        try (ZipOutputStream zip = new ZipOutputStream(defaultLevelBuffer)) {
+            zip.putNextEntry(new ZipEntry("level.dat"));
+            zip.write(content.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            zip.closeEntry();
+        }
+        byte[] defaultLevelArchive = defaultLevelBuffer.toByteArray();
+
+        assertThat(level9Archive.length).isLessThan(defaultLevelArchive.length);
+
+        // Round-trip through the existing, unmodified WorldRestoreService reader.
+        Path savesDirectory = Files.createDirectory(tempDir.resolve("saves"));
+        WorldRestoreService restoreService =
+                new WorldRestoreService(archiveStore, preferenceService, worker, savesDirectory, w -> { });
+        java.util.concurrent.CountDownLatch done = new java.util.concurrent.CountDownLatch(1);
+        String[] failureReason = new String[1];
+        restoreService.beginRestore("my_world", new de.lazuli.api.cloudsync.RestoreProgressListener() {
+            @Override
+            public void onProgress(de.lazuli.api.cloudsync.RestoreProgress progress) {
+            }
+
+            @Override
+            public void onComplete(String worldSlug) {
+                done.countDown();
+            }
+
+            @Override
+            public void onFailed(String worldSlug, String reason) {
+                failureReason[0] = reason;
+                done.countDown();
+            }
+        });
+
+        assertThat(done.await(5, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+        assertThat(failureReason[0]).isNull();
+        assertThat(Files.readString(savesDirectory.resolve("my_world").resolve("level.dat"))).isEqualTo(content);
+
+        worker.shutdown();
     }
 
     /** Small local helper writing a raw fingerprint-cache file for the quota test above. */

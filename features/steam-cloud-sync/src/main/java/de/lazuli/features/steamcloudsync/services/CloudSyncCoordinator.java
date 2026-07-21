@@ -64,6 +64,7 @@ public final class CloudSyncCoordinator {
     private final NotesService notesService;
     private final LastPlayedPointerService lastPlayedPointerService;
     private final WorldSyncPreferenceService worldSyncPreferenceService;
+    private final WorldSyncStatusTracker worldSyncStatusTracker;
     private final WorldSaveSyncService worldSaveSyncService;
     private final WorldRestoreService worldRestoreService;
     private final CloudOnlyWorldsHook cloudOnlyWorldsFacade;
@@ -132,9 +133,12 @@ public final class CloudSyncCoordinator {
         Path fingerprintCachePath = featureConfigDir.resolve("world-fingerprint-cache.json");
         String deviceLabel = DeviceLabelResolver.resolve(System.getProperty("user.name"), resolveHostNameOrNull());
 
+        this.worldSyncStatusTracker = new WorldSyncStatusTracker();
+
         this.worldSaveSyncService = new WorldSaveSyncService(
                 archiveStore, cloudFileStore, worldSyncPreferenceService, worker, fingerprintCachePath,
-                deviceLabel, config.maxWorldArchiveSizeMb(), config.allowSelectiveFallback(), warningLogger, playerNotifier);
+                deviceLabel, config.maxWorldArchiveSizeMb(), config.allowSelectiveFallback(), warningLogger, playerNotifier,
+                worldSyncStatusTracker);
         this.worldRestoreService =
                 new WorldRestoreService(archiveStore, worldSyncPreferenceService, worker, savesDirectory, warningLogger);
         this.cloudOnlyWorldsFacade = new CloudOnlyWorldsFacade(fingerprintCachePath, warningLogger);
@@ -191,6 +195,10 @@ public final class CloudSyncCoordinator {
 
     public WorldSyncPreferenceService worldSyncPreferenceService() {
         return worldSyncPreferenceService;
+    }
+
+    public WorldSyncStatusTracker worldSyncStatusTracker() {
+        return worldSyncStatusTracker;
     }
 
     public WorldSaveSyncService worldSaveSyncService() {

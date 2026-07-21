@@ -85,6 +85,7 @@ public final class SteamCloudSyncClientInitializer implements ClientModInitializ
         new FabricBookmarkToggleInjector(coordinator.bookmarkedServersService());
         if (config.enabled() && steamworksService.isSteamAvailable()) {
             WorldSyncToggleHookHolder.publish(coordinator.worldSyncPreferenceService());
+            WorldSyncStatusHookHolder.publish(coordinator.worldSyncStatusTracker());
             LazuliMod.LOGGER.info("Steam Cloud world-sync toggle icon activated (per-row icon should now render on the Singleplayer screen).");
         } else {
             LazuliMod.LOGGER.info(

@@ -67,6 +67,32 @@ public final class SteamRemoteStorageWorldArchiveStore implements WorldArchiveCl
     public SteamRemoteStorageWorldArchiveStore(Consumer<String> warningLogger) {
         this.warningLogger = Objects.requireNonNull(warningLogger, "warningLogger");
         this.remoteStorage = new SteamRemoteStorage(this);
+        logCloudEnablementDiagnostics();
+    }
+
+    /**
+     * One-time diagnostic dump of whether Steam Cloud is actually enabled for
+     * this account/app, plus current quota. Steam Cloud requires quota to be
+     * configured and published for the running App ID on the Steamworks
+     * partner site; writes issued while it's disabled can appear to succeed
+     * locally (steamworks4j returns {@code true}) without ever reaching
+     * Valve's backend, so this is logged unconditionally (not only on
+     * failure) to make that silent-failure mode diagnosable.
+     */
+    private void logCloudEnablementDiagnostics() {
+        try {
+            boolean accountEnabled = remoteStorage.isCloudEnabledForAccount();
+            boolean appEnabled = remoteStorage.isCloudEnabledForApp();
+            long[] total = new long[1];
+            long[] available = new long[1];
+            boolean quotaOk = remoteStorage.getQuota(total, available);
+            warn("Steam Cloud diagnostics: isCloudEnabledForAccount=" + accountEnabled
+                    + ", isCloudEnabledForApp=" + appEnabled
+                    + ", getQuota=" + quotaOk
+                    + (quotaOk ? " (total=" + total[0] + " bytes, available=" + available[0] + " bytes)" : ""));
+        } catch (RuntimeException e) {
+            warn("Failed to read Steam Cloud enablement diagnostics: " + e);
+        }
     }
 
     @Override
@@ -79,7 +105,7 @@ public final class SteamRemoteStorageWorldArchiveStore implements WorldArchiveCl
         try {
             SteamUGCFileWriteStreamHandle handle = remoteStorage.fileWriteStreamOpen(fileName);
             if (handle == null) {
-                warn("Steam Cloud rejected opening a write stream for \"" + fileName + "\".");
+                warn("Steam Cloud rejected opening a write stream for \"" + fileName + "\" (" + data.length + " bytes).");
                 return false;
             }
 
@@ -98,10 +124,11 @@ public final class SteamRemoteStorageWorldArchiveStore implements WorldArchiveCl
                 return remoteStorage.fileWriteStreamClose(handle);
             }
             remoteStorage.fileWriteStreamCancel(handle);
-            warn("Failed to write one or more chunks of Steam Cloud world archive \"" + fileName + "\"; write cancelled.");
+            warn("Failed to write one or more chunks of Steam Cloud world archive \"" + fileName + "\"; write cancelled "
+                    + "(wrote " + offset + " of " + data.length + " bytes).");
             return false;
         } catch (RuntimeException e) {
-            warn("Failed to stream-write Steam Cloud world archive \"" + fileName + "\": " + e);
+            warn("Failed to stream-write Steam Cloud world archive \"" + fileName + "\" (" + data.length + " bytes): " + e);
             return false;
         }
     }
