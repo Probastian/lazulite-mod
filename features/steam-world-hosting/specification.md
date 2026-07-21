@@ -120,6 +120,18 @@ a design reference read during this specification/planning pass.
   connect and play" are **not** verified by this iteration's own workflow —
   this is an accepted, known gap for v1, not a surprise (see also
   Compatibility, Performance).
+- **No handshake/crypto-bypass special-casing for real (non-debug) Steam
+  World Hosting sessions (added by the Auth-Mode Fix correction, 2026-07-21).**
+  A real, non-debug Steam-hosted session must behave, for handshake/
+  session-verification purposes, like a completely normal online-mode server
+  login — real RSA key exchange, real Mojang/Yggdrasil session-hash
+  verification, zero special-casing. FR1.3's Steam-friend gate still applies
+  as it always has, but strictly as an *additional* layer on top of real
+  session verification, never as a replacement for it. The only place any
+  handshake bypass still exists is the Loom dev/debug-launch case (FR5.1),
+  which is unconditional on whether Steam World Hosting is even active. See
+  Requirements FR1.6/FR5.1 and the Amendment section for the full correction
+  and its relationship to the original (now partially reversed) design.
 
 ## Requirements
 
@@ -170,7 +182,10 @@ a design reference read during this specification/planning pass.
   `SteamManager.java:329-353`) — this fixed rule replaces the prototype's
   full `JoinPolicy` enum (Non-goals). A non-friend's connection attempt is
   rejected (P2P session closed) without ever reaching the Minecraft
-  handshake.
+  handshake. **This gate is an additional layer of trust on top of, never a
+  replacement for, real Mojang session verification (FR1.6, corrected
+  2026-07-21) — see the Amendment section for why an earlier draft of this
+  spec briefly (and incorrectly) treated FR1.3 as sufficient on its own.**
 - **FR1.4** While at least one remote peer is connected, the integrated
   server must not pause when the game window loses focus/the pause menu
   opens — reuses the same mechanism the prototype already proved
@@ -188,6 +203,38 @@ a design reference read during this specification/planning pass.
   same seam shape `FriendSidebarStateMachine` already uses relative to
   `FriendsService` (`features/friends-sidebar/specification.md`'s
   Architecture section).
+- **FR1.6 (AMENDED, 2026-07-21 — Auth-Mode Fix; REVERSED same day —
+  corrected version below supersedes the version originally shipped in this
+  amendment).** ~~The originally-drafted version of this requirement said:
+  "whenever Steam World Hosting is active, force the integrated server's
+  online-mode/session-verification flag off for every player, real and debug
+  alike."~~ **That version is wrong and is withdrawn.** The corrected
+  requirement is the opposite:
+
+  Real (non-debug) Steam World Hosting connections **must** undergo genuine
+  Mojang/Yggdrasil session-hash verification, exactly as a normal online-mode
+  server would. Concretely: `ServerLoginStubDigestMixin`
+  (`platform/fabric-26.2/src/main/java/de/lazuli/mixin/ServerLoginStubDigestMixin.java:38-92`,
+  mirrored on fabric-26.1/fabric-1.21.11) — which currently substitutes a
+  fixed `new byte[20]` digest for the real Mojang session-hash on **every**
+  `SteamAddress` connection unconditionally (Networking, "Handshake/auth
+  bypass") — must be scoped so that this stub-digest/crypto-bypass behavior
+  does **not** fire for a real, non-debug Steam World Hosting session. Its
+  documented design rationale ("the Steam-P2P friend check is the real trust
+  boundary, Mojang session verification is meant to be irrelevant for Steam
+  peers") is explicitly reversed by this correction — see the Amendment
+  section and the reversed annotation under Networking's "Handshake/auth
+  bypass" and Resolved Open Questions item 6. FR1.3's Steam-friend gate
+  remains in force as an *additional* layer, unconditionally, alongside this
+  now-restored real session verification — it was never meant to, and no
+  longer does, substitute for it.
+- **FR1.7 (New, 2026-07-21 — Auth-Mode Fix correction).** The only condition
+  under which handshake/session-verification bypass behavior may still occur
+  is the Loom dev/debug-launch case defined by FR5.1, which is **independent
+  of and unconditional on** whether Steam World Hosting is active at all. A
+  real (non-debug) Steam World Hosting session run under a normal, non-dev
+  Minecraft launch gets zero handshake special-casing beyond FR1.3's
+  friend-gate at the transport layer.
 
 **Advertising the host (Rich Presence)**
 - **FR2.1** While hosting (FR1.2) and at least the world is loaded, sets the
@@ -272,6 +319,26 @@ a design reference read during this specification/planning pass.
   Architecture decision (cross-feature bridging), not fixed further here.
 - **FR4.3** Clicking "Join World" invokes FR3.1's connect operation with that
   friend's `steamId64` — no address string is typed by the player.
+
+**Debug/dev launches (AMENDED, 2026-07-21 — Auth-Mode Fix; scope corrected
+same day)**
+- **FR5.1 (corrected scope).** Independent of whether Steam World Hosting is
+  active at all, a dev/debug launch of this mod (Fabric Loom's
+  `runClient`/`runServer` dev environment, e.g. the `.vscode/launch.json`
+  configurations that shell out to `net.fabricmc.devlaunchinjector.Main`/
+  Knot) is the **only** case in which `ServerLoginStubDigestMixin`'s
+  stub-digest/crypto-bypass behavior (Networking) may fire — gated strictly
+  on `FabricLoader.getInstance().isDevelopmentEnvironment()` (Open Question
+  10), and **not** on whether Steam World Hosting is active. Dev-environment
+  Microsoft/offline accounts have no real Mojang session to verify regardless
+  of Steam-hosting state, so this bypass is scoped purely to "is this a Loom
+  dev environment," an OR'd condition independent of FR1.6/FR1.7's now-real
+  session verification for actual Steam-hosted sessions. This may need **no
+  online-mode/`usesAuthentication` setter call at all** — see the Amendment
+  section's corrected mechanism, which reasons that the fix may reduce
+  entirely to guarding `ServerLoginStubDigestMixin` itself on
+  `isDevelopmentEnvironment()`, rather than touching the server's online-mode
+  flag anywhere.
 
 ## Public API
 
@@ -469,7 +536,14 @@ requirement.
 - **Disconnect messaging** (FR3.3) reuses vanilla's own `DisconnectedScreen`
   with a translated reason, the same mechanism the prototype already
   validated (`SteamAmbientSession`'s clean-disconnect callback wiring) —  no
-  new screen, only new translation keys.
+  new screen, only new translation keys. **Corrected note (Auth-Mode Fix):**
+  since real Steam World Hosting sessions now undergo genuine session
+  verification (FR1.6/FR1.7), a real player who fails Mojang session
+  verification (e.g. a pirated/offline account attempting to join a real
+  session) will now also see vanilla's own standard "Invalid session"/
+  authentication-failure disconnect screen where previously the stubbed
+  digest silently masked that failure mode until it surfaced as a confusing,
+  unconditional login error for every player.
 
 ## Configuration
 `config/steam-world-hosting.json`, flat under the config directory (same
@@ -485,6 +559,14 @@ convention as `friends-sidebar.json`/`steam-cloud-sync`'s own config file):
   if planning finds a genuine need for one (e.g. a connect-string-format
   version field for forward compatibility), that is an additive, non-load-bearing
   extension of this same file, not a redesign.
+- **AMENDED (2026-07-21, Auth-Mode Fix), CORRECTED same day.** No new
+  configuration field is added by the auth-mode fix, corrected or otherwise.
+  The corrected fix needs, at most, a `FabricLoader.isDevelopmentEnvironment()`
+  guard directly inside `ServerLoginStubDigestMixin` (FR5.1) — it does
+  **not** force online-mode/`usesAuthentication` off for real Steam World
+  Hosting sessions at all (FR1.6/FR1.7, reversed), so there is no longer any
+  `enabled`-flag-derived online-mode toggle to configure or gate. See the
+  Amendment section for the corrected mechanism.
 
 ## Events
 No new cross-feature event bus entries — this repo has no generic event bus
@@ -535,6 +617,8 @@ probably **not** present, making the legacy surface (as described in this
 section) the likely fallback, but the `javap` check must be done before
 committing to either — this is no longer merely "this spec's default
 recommendation," it is the required verification step planning must execute.
+**Confirmed by the plan/verification-report: only the legacy surface exists
+in this repo's vendored jar; implementation targets it exclusively.**
 
 **Data-plane design** (assuming the legacy `SteamNetworking` surface,
 reused from the prototype almost unchanged):
@@ -568,33 +652,69 @@ reused from the prototype almost unchanged):
   `SteamDisconnectProtocol` design (`SteamSession.stop()`,
   `SteamNettyChannel.doClose()`).
 
-**Handshake/auth bypass.** Minecraft's normal login handshake expects an RSA
-key exchange feeding a Mojang session-server hash check. Since the Steam P2P
-channel already authenticates both peers by real `SteamID` at the transport
-layer, and (per Non-goals) this feature does not attempt a QUIC-style
-keying-material export the way `e4mc`'s Dialtone path does (Steam's legacy
-P2P surface has no equivalent exportable session-key primitive), this
-feature reuses the prototype's simpler approach: server/client login-packet
-mixins substitute a null/empty RSA key and a **fixed constant digest** in
-place of the real Mojang server-hash computation, and disable the
-double-encryption Minecraft would otherwise layer on top of an
-already-Steam-encrypted channel (`ServerLoginPacketListenerImplMixin.java`,
+**Handshake/auth bypass (original design — see the REVERSED annotation
+immediately below; this paragraph is retained verbatim for traceability, not
+because it is still correct as originally scoped).** Minecraft's normal login
+handshake expects an RSA key exchange feeding a Mojang session-server hash
+check. Since the Steam P2P channel already authenticates both peers by real
+`SteamID` at the transport layer, and (per Non-goals) this feature does not
+attempt a QUIC-style keying-material export the way `e4mc`'s Dialtone path
+does (Steam's legacy P2P surface has no equivalent exportable session-key
+primitive), this feature reuses the prototype's simpler approach:
+server/client login-packet mixins substitute a null/empty RSA key and a
+**fixed constant digest** in place of the real Mojang server-hash
+computation, and disable the double-encryption Minecraft would otherwise
+layer on top of an already-Steam-encrypted channel
+(`ServerLoginPacketListenerImplMixin.java`,
 `ClientHandshakePacketListenerImplMixin.java`, `ConnectionMixin.killDoubleEncryption`).
 **This is a real, inherited security simplification** (a fixed stub digest is
 weaker than deriving a per-session secret cryptographically bound to the
 channel, the way `e4mc`'s QUIC-based approach or Mojang's own real auth flow
-both do) — accepted here because (a) it exactly matches the prior working
-prototype's proven design and (b) the actual gate that matters (who may
-connect at all) already happened one layer down, at the Steam-P2P-session
-level via the friend-relationship check (FR1.3) — but it is called out
-explicitly rather than silently ported, and is listed again under Open
-Questions for conscious sign-off rather than an implicit carry-over.
+both do) — originally accepted here because (a) it exactly matches the prior
+working prototype's proven design and (b) the actual gate that matters (who
+may connect at all) was believed to already have happened one layer down, at
+the Steam-P2P-session level via the friend-relationship check (FR1.3). **Item
+(b) of this reasoning is now confirmed wrong (see below).**
 
-**RESOLVED (Open Questions item 6):** the user has acknowledged and accepted
-this fixed-stub-digest handshake simplification as a known security
-weakening for v1, explicitly noting "it will change later on" — proceed with
-it as specified above; no gold-plating of the auth mechanism is required for
-this feature.
+**RESOLVED (Open Questions item 6), then PARTIALLY SUPERSEDED (2026-07-21 —
+Auth-Mode Fix reversal):** the user originally acknowledged and accepted this
+fixed-stub-digest handshake simplification as a known security weakening for
+v1, explicitly noting "it will change later on." **That acceptance is now
+withdrawn for real (non-debug) Steam World Hosting sessions.** The premise it
+rested on — that FR1.3's Steam-friend check is the real trust boundary and
+Mojang session verification is meant to be irrelevant for Steam peers — is
+confirmed wrong: the Steam-friend check is an *additional* gate on top of
+real session verification, never a substitute for it, and real players must
+undergo genuine session verification exactly as they would on any other
+online-mode server. This item's acceptance survives **only** for the Loom
+dev/debug-launch case (FR5.1), where dev/offline accounts have no real
+session to check regardless of Steam-hosting state. This is flagged
+explicitly, per this repo's own "RESOLVED (Open Questions item N)" annotation
+convention, but as a **reversal**, not a resolution, so it remains traceable
+rather than silently overwritten — see the new Open Question 11 for the
+explicit architectural-reversal sign-off this requires, and the Amendment
+section for full reasoning.
+
+**AMENDED then REVERSED (2026-07-21 — Auth-Mode Fix, corrected same day).**
+An earlier draft of this amendment concluded that the confirmed
+"Failed to log in: Invalid session" bug was fixed by *completing* the
+original design's premise — i.e. by also forcing the server's online-mode
+flag off globally whenever Steam World Hosting was active (a former FR1.6),
+so that the already-faked handshake digest would no longer be checked
+against a real online-mode session for anyone. **That conclusion is wrong and
+is reversed.** The user has confirmed the Steam-friend check (FR1.3) is not
+an acceptable substitute for verifying a player owns their Minecraft account.
+The corrected fix runs in the opposite direction: real (non-debug) Steam
+World Hosting sessions must not have their handshake bypassed at all —
+`ServerLoginStubDigestMixin`'s stub-digest substitution must be scoped OFF
+for those sessions, so genuine Mojang session-hash verification runs exactly
+as it would for a normal server (FR1.6/FR1.7). The **only** legitimate
+handshake-bypass condition remaining after this correction is a Loom
+dev/debug launch (FR5.1), entirely independent of Steam World Hosting's own
+active/inactive state. This reverses this subsection's original design and
+Resolved Open Questions item 6's acceptance of it (immediately above) — see
+the corrected Amendment section below and new Open Question 11 for the
+explicit sign-off this architectural reversal requires.
 
 ## Persistence
 None. This feature has no save file, no per-world state, and nothing synced
@@ -623,7 +743,9 @@ world load (mirrors `features/friends-sidebar/specification.md`'s own
   (`.claude/context/minecraft.md`'s "Known Cross-Version API Differences"
   table and its own stated confirmation methodology) — this is flagged as
   the single largest concrete unknown this spec carries forward, not
-  something this document can responsibly guess at.
+  something this document can responsibly guess at. **Now confirmed and
+  logged in `.claude/context/minecraft.md`'s table** (row "Integrated-server
+  Netty/login networking stack") as part of implementation/verification.
 - The 26.1/26.2 side is comparatively lower-risk (both Mojang-mapped, and the
   prototype was itself built against a recent Mojang-mapped Minecraft
   version close in shape to these two) but must still be independently
@@ -638,6 +760,59 @@ world load (mirrors `features/friends-sidebar/specification.md`'s own
   compilation success on all three platform modules and unit tests of the
   plain-JVM logic (friend-gate predicate, connect-string parsing). This is an
   explicitly accepted gap for this iteration.
+
+**AMENDED (2026-07-21, Auth-Mode Fix, per-mapping online-mode API names) —
+NARROWED/LARGELY MOOT per the same-day correction below.** FR1.6/FR5.1's
+mechanism, as originally drafted, needed one additional pair of
+`MinecraftServer` methods (online-mode getter/setter) and, for context,
+vanilla's own "Open to LAN"/publish method, on top of the six classes the
+original Compatibility section above already flagged. Research this pass
+(Fabric Yarn javadoc for 1.21.11-adjacent Yarn builds, `WebFetch`/`WebSearch`
+— no `javap`/decompiler run against this repo's own resolved jars in this
+specification pass, consistent with this repo's own convention of treating
+that as an implementation/planning-phase mandatory step, not a
+specification-phase one):
+- **Yarn (`platform/fabric-1.21.11`) — confirmed via direct fetch of Yarn's
+  own generated Javadoc** (`maven.fabricmc.net/docs/yarn-1.21.5+build.1/net/minecraft/server/MinecraftServer.html`):
+  `MinecraftServer.isOnlineMode()` / `MinecraftServer.setOnlineMode(boolean)`.
+  Vanilla's own "Open to LAN" equivalent on this side is
+  `IntegratedServer.openToLan(@Nullable GameMode, boolean cheatsAllowed, int port)`
+  (confirmed via the same Javadoc source for `IntegratedServer`) — **not**
+  used by this fix, recorded here only because it is the vanilla method whose
+  side effects (real LAN Netty bind, `GameMode`/cheats-allowed
+  reconfiguration) this fix deliberately avoids triggering.
+- **Mojang mapping (`platform/fabric-26.1`/`platform/fabric-26.2`) — NOT yet
+  `javap`-confirmed against this repo's own resolved jars.** Web research
+  this pass (Fabric/Yarn Javadoc pages, GitHub/grep.app code search) could
+  not positively confirm the exact official Mojang-mapped method names before
+  this spec was written. Based on well-established, widely-cited
+  Minecraft-modding community knowledge of Mojang's own official mapping, the
+  expected names are `MinecraftServer.usesAuthentication()` /
+  `MinecraftServer.setUsesAuthentication(boolean)`.
+- **Same-day correction: this entire online-mode-API-name research item is
+  now narrowed to "likely unnecessary" rather than "mandatory `javap` step,"
+  and is retained here only for traceability.** The corrected Auth-Mode Fix
+  (FR1.6/FR1.7/FR5.1) removes the global online-mode-forcing requirement
+  entirely — real Steam World Hosting sessions must leave online-mode/
+  `usesAuthentication` completely untouched, at whatever value vanilla/the
+  logged-in Microsoft account already computed. The only remaining
+  behavior-change surface (FR5.1's debug-launch bypass) most likely needs
+  **no** online-mode getter/setter call at all; it is currently expected to
+  reduce to a `FabricLoader.isDevelopmentEnvironment()` guard added directly
+  inside the existing `ServerLoginStubDigestMixin`, which never needed to
+  read or write the online-mode flag to begin with (see the Amendment
+  section's corrected mechanism). If planning's own analysis finds a genuine
+  remaining need to read/write `usesAuthentication`/`isOnlineMode` for the
+  debug-launch case specifically, the per-mapping method-name research above
+  is still valid and the same `javap -p` verification step against the
+  resolved 26.1/26.2 jars still applies before writing that code — it is
+  narrowed in *scope of applicability*, not deleted, since this document
+  cannot fully rule out planning finding a residual need.
+- Both `usesAuthentication()`/`isOnlineMode()` are plain `boolean` getters
+  with no known cross-version signature divergence beyond the name itself
+  (no overload, no additional parameter) per every source consulted — the
+  setter is a single-`boolean`-argument void method on both sides. Retained
+  for the same reason as above (residual-need contingency only).
 
 ## Performance
 - All native Steam P2P calls are documented by Valve as local, low-latency
@@ -661,6 +836,16 @@ world load (mirrors `features/friends-sidebar/specification.md`'s own
 - No additional per-tick Minecraft-render-thread work is added beyond what
   `SteamworksService.pumpCallbacks()` already performs each client tick
   (existing shared cost, not new).
+- **AMENDED (2026-07-21 — Auth-Mode Fix), CORRECTED same day:** the corrected
+  fix (FR1.6/FR1.7/FR5.1) adds, at most, a single
+  `FabricLoader.isDevelopmentEnvironment()` boolean check inside
+  `ServerLoginStubDigestMixin`'s existing guard, evaluated once per login
+  attempt (not per-tick or per-packet) — negligible, and strictly smaller
+  than the originally-drafted version of this fix (which would have added a
+  getter/setter pair once per world load); real Steam World Hosting sessions
+  now do strictly *more* work than the originally-shipped design (a full real
+  handshake instead of a stubbed one), which is the intended, necessary cost
+  of correct session verification, not a regression to optimize away.
 
 ## Future Extensions
 - Manual join-policy control (Friends / Friends-of-Friends / Everybody /
@@ -681,7 +866,23 @@ world load (mirrors `features/friends-sidebar/specification.md`'s own
   and a future iteration wants the more modern, Valve-recommended surface.
 - Stronger session authentication than the fixed-stub digest (Networking) —
   e.g. deriving a shared secret from something Steam P2P itself exposes, if
-  any such primitive exists in the surface planning ultimately selects.
+  any such primitive exists in the surface planning ultimately selects. **Note
+  (Auth-Mode Fix correction, 2026-07-21):** after the correction, this item
+  applies only to the narrowed debug/dev-launch stub-digest path (FR5.1) —
+  real Steam World Hosting sessions no longer use a stub digest at all
+  (FR1.6/FR1.7), so there is nothing left to harden for real sessions on this
+  axis; the remaining stub-digest surface is inherently low-stakes (dev-only
+  accounts, never internet-facing).
+- ~~**(Added by the Auth-Mode Fix amendment)** A genuinely per-session
+  cryptographic hash bound to the Steam P2P channel (rather than the fixed
+  stub digest, Networking's "Handshake/auth bypass") remains the natural
+  follow-up hardening once online-mode is correctly forced off end-to-end.~~
+  **Withdrawn by the same-day correction:** this item's premise (real
+  sessions still using a stub digest, merely with online-mode forced off) no
+  longer applies — real sessions use the genuine handshake entirely (no
+  stub, no forced-off online-mode), so there is no "per-session hash bound to
+  the Steam channel" gap left to close for real sessions. Only the
+  restated bullet immediately above (scoped to the debug-only path) survives.
 
 ## Open Questions (require explicit user sign-off)
 
@@ -777,7 +978,14 @@ world load (mirrors `features/friends-sidebar/specification.md`'s own
    **RESOLVED:** Acknowledged and accepted by the user as a known, accepted
    security weakening for now — the user notes "it will change later on";
    proceed with this feature's inherited approach without further
-   gold-plating.
+   gold-plating. **PARTIALLY SUPERSEDED (2026-07-21 — Auth-Mode Fix
+   reversal):** this resolution's own stated premise ("the real gate is the
+   Steam-friend check") is now confirmed **not** true, and the acceptance is
+   withdrawn for real (non-debug) Steam World Hosting sessions — see item 11
+   below for the explicit reversal sign-off this requires, and Networking's
+   "Handshake/auth bypass" section for the corrected design. This item's
+   acceptance survives only for the Loom dev/debug-launch stub-digest path
+   (FR5.1).
 
 7. **No live in-game verification of this feature at all in this workflow**
    (Non-goals, Compatibility) — confirming this is an accepted scope
@@ -786,3 +994,288 @@ world load (mirrors `features/friends-sidebar/specification.md`'s own
 
    **RESOLVED:** Confirmed by the user — no live in-game testing in this
    workflow (remote control constraint stands).
+
+8. **(New, 2026-07-21 — Auth-Mode Fix) Mojang-mapped `usesAuthentication`/
+   `setUsesAuthentication` method names — NARROWED/LIKELY MOOT by the
+   same-day correction.** This item originally flagged that these
+   Mojang-mapped names were a research-backed working assumption, not
+   `javap`-confirmed, and needed verification before the (then-drafted)
+   global online-mode-forcing fix could be implemented. **The corrected fix
+   (FR1.6/FR1.7/FR5.1) removes the global online-mode-forcing requirement
+   entirely** — real Steam World Hosting sessions must leave online-mode
+   completely untouched, and the debug-launch case (FR5.1) most likely needs
+   no online-mode getter/setter call at all, only a
+   `FabricLoader.isDevelopmentEnvironment()` guard inside
+   `ServerLoginStubDigestMixin`. This item is therefore narrowed to a
+   contingency: **only if** planning's own analysis of FR5.1 finds a genuine
+   remaining need to read/write `usesAuthentication`/`isOnlineMode`
+   specifically (which is not currently expected), the mandatory `javap -p`
+   verification against the resolved 26.1/26.2 jars from the original item
+   still applies before writing that code. Otherwise this item can be
+   treated as **moot** and closed without further action.
+
+   **Not yet formally resolved — narrowed to a contingency per the
+   correction above; no action expected unless planning finds a residual
+   need.**
+
+9. **(New, 2026-07-21 — Auth-Mode Fix) Mechanism choice for the (withdrawn)
+   global online-mode-forcing fix — WITHDRAWN, no longer applicable.** This
+   item originally asked planning to choose between a direct
+   `setUsesAuthentication(false)`/`setOnlineMode(false)` call at the
+   `IntegratedServerWorldHostingMixin` world-load hook versus routing through
+   vanilla's own `publishServer(...)`/`openToLan(...)`. **Both alternatives
+   are moot** — the corrected fix (FR1.6/FR1.7) does not force online-mode
+   off for real Steam World Hosting sessions at all, so there is no longer
+   any online-mode-forcing call, by either mechanism, to choose between. This
+   item is closed/withdrawn by the same-day correction; no sign-off needed.
+
+   **Withdrawn — superseded by the Auth-Mode Fix correction; no action
+   needed.**
+
+10. **(New, 2026-07-21 — Auth-Mode Fix) FR5.1's mechanism: reusing Fabric
+    Loader's existing `FabricLoader.getInstance().isDevelopmentEnvironment()`
+    flag, rather than a new `server.properties` file, a new JVM system
+    property, or a Loom run-config property (the three mechanisms the task
+    explicitly asked to be investigated).** This spec's finding, based on
+    reading the actual repo state this pass (`.vscode/launch.json`; each
+    platform module's `run/` directory, confirmed via `Glob` to contain only
+    `options.txt`/`usercache.json`/`steam_appid.txt`/crash logs, no
+    `server.properties` on any of the three modules today; each platform
+    module's `build.gradle`, confirmed to have no custom Loom `runs { }`
+    block beyond the pre-existing `generateSteamAppId` task), is that
+    **`server.properties` is not a viable mechanism at all for this fix** —
+    that file is read only by a *dedicated* server
+    (`MinecraftDedicatedServer`), never by `IntegratedServer`, so writing one
+    into `run/` would have zero effect on the singleplayer/integrated-server
+    online-mode flag this fix actually needs to control. A new JVM system
+    property or a Loom run-config property would work, but both require
+    touching `.vscode/launch.json` and/or each module's `build.gradle`'s
+    `loom { runs { ... } }` block to add a new, project-specific flag,
+    whereas Fabric Loader already reliably exposes exactly this
+    "is this a dev/debug launch" boolean with zero configuration and zero
+    new files across all three platform modules today. This spec recommends
+    `FabricLoader.getInstance().isDevelopmentEnvironment()` as the mechanism
+    (see Amendment section) but flags it for explicit sign-off since the
+    task named three specific alternative mechanisms to investigate and this
+    recommendation is a fourth option not originally named. **Still fully
+    applicable after the same-day correction** — this remains the mechanism
+    for FR5.1's debug-launch gate; only the *target* of the gate changed
+    (guarding `ServerLoginStubDigestMixin` directly, rather than gating an
+    online-mode setter call that no longer exists for the real-session case).
+
+    **Not yet resolved — awaiting user sign-off.**
+
+11. **(New, 2026-07-21 — Auth-Mode Fix correction) Reversing
+    `ServerLoginStubDigestMixin`'s existing shipped behavior for real,
+    non-debug Steam World Hosting sessions is a real architectural
+    reversal, not a bug-fix tweak, and requires explicit sign-off separate
+    from (and replacing) the former item 9's now-withdrawn mechanism
+    question.** As shipped, `ServerLoginStubDigestMixin` unconditionally
+    stubs the crypto handshake/digest for **every** `SteamAddress`
+    connection, on the explicit documented premise that "the Steam-P2P
+    friend check is the real trust boundary, Mojang session verification is
+    meant to be irrelevant for Steam peers" (Networking, Resolved Open
+    Questions item 6). This correction requires that mixin's behavior to
+    change so it no longer fires for real (non-debug) sessions — real
+    players will now undergo the full real handshake and real Mojang session
+    verification, something the shipped code has never done for a Steam-P2P
+    connection before. This is architecturally the **opposite direction**
+    from the fix this document previously described (which would have
+    additionally forced online-mode off, doubling down on the bypass rather
+    than reversing it), and changes already-shipped, already-reasoned-about
+    security-relevant code. Given the scope of this reversal, explicit
+    sign-off is requested before implementation proceeds:
+    - Confirm that `ServerLoginStubDigestMixin` (and its
+      `ClientHandshakeStubDigestMixin`/`ConnectionMixin.killDoubleEncryption`
+      counterparts, to the extent they share the same real-vs-debug
+      condition) should be scoped so their bypass behavior fires **only**
+      when `FabricLoader.getInstance().isDevelopmentEnvironment()` is true
+      (FR5.1's condition), and **never** merely because a connection is
+      `SteamAddress`-typed/Steam-World-Hosting-active.
+    - Confirm the corollary: a real (non-dev) Steam World Hosting session
+      will now perform a full, real RSA/session-hash handshake over the
+      Steam P2P channel exactly as it would over real TCP — this is *new*
+      behavior relative to everything shipped and tested so far under this
+      feature, and its interaction with the Steam-P2P transport (e.g.
+      whether the real handshake's packet sizes/ordering behave correctly
+      over the `SteamNettyChannel`/`SteamServerChannel` pipeline, which was
+      never exercised with a real handshake before) is an implementation/
+      verification-phase concern this correction newly introduces and this
+      spec cannot itself validate (Non-goals' no-live-testing scope still
+      applies).
+
+    **Not yet resolved — awaiting explicit user sign-off on this
+    architectural reversal before implementation.**
+
+## Amendment: Auth-Mode Fix (2026-07-21, corrected same day)
+
+This section is the authoritative detail for the "AMENDED"-tagged
+requirements/sections above (FR1.6, FR1.7, FR5.1, and the corresponding
+Networking/Compatibility/Configuration/Performance/Future-Extensions
+annotations). It supersedes an earlier draft of this same amendment section
+that reached the wrong conclusion (see "Corrected premise" below) and does
+not re-litigate anything already RESOLVED elsewhere in this document except
+where explicitly flagged as reversed (Open Questions items 6, 9, 11).
+
+### Confirmed bug (root-caused prior to this spec; restated here only for
+traceability, not re-investigated)
+A friend joining a Steam-P2P-hosted world sees "Failed to log in: Invalid
+session." Root cause chain:
+- `ServerLoginStubDigestMixin` (`platform/fabric-26.2/src/main/java/de/lazuli/mixin/ServerLoginStubDigestMixin.java:38-92`,
+  mirrored on fabric-26.1/fabric-1.21.11) substitutes a fixed `new byte[20]`
+  digest for the real Mojang session-hash on `SteamAddress` connections
+  (Networking's "Handshake/auth bypass"), on the stated premise that FR1.3's
+  Steam-friend check is the real trust boundary.
+- Nothing in the repo ever called `setUsesAuthentication(false)`/
+  `setOnlineMode(false)` or vanilla's own `publishServer(...)`/
+  `openToLan(...)` (confirmed via repo-wide `Grep`, zero hits for
+  `usesAuthentication`/`publishServer`/`onlineMode` anywhere outside this
+  amendment's own text). `IntegratedServerWorldHostingMixin`
+  (`platform/fabric-26.2/src/main/java/de/lazuli/mixin/IntegratedServerWorldHostingMixin.java:31-46`,
+  mirrored on the other two modules) bootstraps the Netty pipeline directly
+  inside `initServer()`/`setupServer()`, bypassing the vanilla publish method
+  entirely — so the server's online-mode flag stays at whatever it already
+  was (`true` for a logged-in Microsoft-account host).
+- Net effect: the crypto handshake is faked, but real Mojang session
+  verification still runs afterward and legitimately fails against the fake
+  digest — for every real player joining a Steam-hosted world, not merely a
+  debug/dev-launch symptom.
+
+### Corrected premise (2026-07-21, same day as the original amendment)
+An earlier draft of this amendment concluded from the bug above that the fix
+was to *complete* `ServerLoginStubDigestMixin`'s original design intent — by
+also forcing the server's online-mode/`usesAuthentication` flag off whenever
+Steam World Hosting was active, so real session verification would no longer
+run at all for anyone, matching the already-faked digest. **The user has
+corrected this: that conclusion is wrong.** The Steam-friend check (FR1.3) is
+not, and was never intended to be, an acceptable substitute for verifying
+that a joining player actually owns their Minecraft account. Doubling down on
+the digest-stubbing design (by also disabling the flag that would otherwise
+have caught it) would have shipped a mod that lets *anyone* who can pass the
+Steam-friend check into a world without ever proving Minecraft-account
+ownership — a strictly worse security posture than either "real
+verification" or "no verification, but at least it's honest about it."
+
+The corrected understanding: `ServerLoginStubDigestMixin`'s unconditional
+stub-digest behavior is itself the actual bug (or at minimum, its documented
+design rationale — "Mojang session verification is meant to be irrelevant
+for Steam peers" — is now known to be wrong and is explicitly reversed by
+this correction, Networking's "Handshake/auth bypass" section and Resolved
+Open Questions item 6). Real (non-debug) Steam-hosted connections must go
+through genuine Mojang session-hash verification exactly like a normal server
+would. Only the debug/dev-launch case (FR5.1) bypasses it, and only because
+dev accounts have no session to check in the first place — never because
+"Steam already checked who's allowed."
+
+### Requirement scope (corrected; restated as requirements FR1.6/FR1.7/FR5.1
+above)
+1. **Real (non-debug) Steam World Hosting sessions get zero handshake/
+   crypto-bypass special-casing (FR1.6/FR1.7).** `ServerLoginStubDigestMixin`
+   (and its client/`ConnectionMixin` counterparts, to the extent they share
+   the same condition) must not fire for these sessions. They behave exactly
+   like a normal online-mode server login for handshake/session-verification
+   purposes: real RSA key exchange, real Mojang session-hash check, real
+   double-encryption (no `killDoubleEncryption`). FR1.3's Steam-friend gate
+   still applies, unconditionally, as an *additional* layer at the P2P
+   transport level, alongside — never instead of — this real verification.
+2. **Only Loom dev/debug launches bypass the handshake at all (FR5.1),
+   independent of Steam World Hosting's own state.** Gated strictly on
+   `FabricLoader.getInstance().isDevelopmentEnvironment()`. This condition is
+   OR'd with nothing else — it does not matter whether Steam World Hosting is
+   active or inactive for a dev/debug launch; the bypass fires purely because
+   the dev/offline account has no real session to check.
+3. **No global online-mode/`usesAuthentication` forcing anywhere.** The
+   originally-drafted fix's mechanism (a boolean setter call inside
+   `IntegratedServerWorldHostingMixin`, gated on
+   `WorldHostingHookHolder.isEnabled() || isDevelopmentEnvironment()`) is
+   withdrawn in its entirety. Real Steam World Hosting sessions need the
+   online-mode flag left at whatever value it already has (normally `true`
+   for a logged-in Microsoft-account host) — that is precisely what makes
+   real session verification actually run. Dev/debug launches likely do not
+   need the online-mode flag touched either (see Mechanism below) — the
+   simpler, narrower fix is to gate the existing stub-digest mixin itself,
+   not to toggle a separate flag that the mixin's own logic never actually
+   depended on.
+4. **Explicit non-goal/scoping boundary, restated and corrected:** a normal
+   (non-debug, non-Steam-hosting) vanilla session run by this mod continues
+   to see zero behavior change (unchanged from the original scope). A real,
+   non-debug Steam World Hosting session now also sees zero handshake-level
+   special-casing — it is treated exactly like a normal server login for
+   crypto/session-verification purposes, with FR1.3's friend-check applied at
+   the P2P-transport layer as an additional, independent gate. The **only**
+   session type that still gets any handshake bypass at all is a Loom
+   dev/debug launch, entirely regardless of whether Steam World Hosting
+   happens to be active for it.
+
+### Mechanism (corrected)
+- **The fix is very likely simpler than originally scoped.** Rather than
+  adding new logic to `IntegratedServerWorldHostingMixin` (online-mode
+  forcing) as the earlier draft proposed, the corrected fix is expected to
+  reduce to a single guard added to the existing
+  `ServerLoginStubDigestMixin` (and its counterparts) itself:
+  ```
+  if (!FabricLoader.getInstance().isDevelopmentEnvironment()) {
+      return; // real, non-debug session: let the real handshake/digest run untouched
+  }
+  // existing stub-digest substitution, now reachable only in a Loom dev/debug launch
+  ```
+  This directly replaces the mixin's previous unconditional-for-all-
+  `SteamAddress`-connections behavior with a condition scoped purely to
+  "is this a Loom dev environment," independent of `SteamAddress`/Steam World
+  Hosting state entirely. No new field, no new class, no online-mode
+  getter/setter call anywhere in this mechanism.
+- **`IntegratedServerWorldHostingMixin` needs no change for this fix.** The
+  original amendment's plan to add a `setUsesAuthentication`/`setOnlineMode`
+  call at this mixin's existing `initServer`/`setupServer` inject point is
+  withdrawn — that inject point's existing behavior (bootstrapping the
+  ephemeral Netty pipeline, FR1.1) is unaffected by this correction.
+- **Why not touch online-mode at all, even for the debug-launch case:** a
+  Loom dev/debug launch's `IntegratedServer` genuinely has no real Mojang
+  session backing its (often offline/dev) account, regardless of whatever
+  `isOnlineMode()`/`usesAuthentication()` happens to report. The actual
+  behavior that needs to change for a dev launch is "don't require a real
+  digest during the handshake" — which is exactly what
+  `ServerLoginStubDigestMixin` already does, it just needs to stop doing it
+  unconditionally. There is no known reason FR5.1 additionally needs the
+  online-mode flag itself flipped; if planning's own deeper investigation
+  during implementation finds a genuine residual need (e.g. some other code
+  path independently branches on `isOnlineMode()`/`usesAuthentication()` for
+  a dev-launch integrated server in a way that breaks without also flipping
+  it), Compatibility's retained per-mapping method-name research
+  (`usesAuthentication()`/`setUsesAuthentication(boolean)` on 26.1/26.2,
+  `isOnlineMode()`/`setOnlineMode(boolean)` on 1.21.11) remains available and
+  the same `javap -p` verification step still applies before using it — but
+  this is a contingency, not the expected primary mechanism (Open Question
+  8, narrowed).
+- **Scope of the reversal relative to `ClientHandshakePacketListenerImplMixin`/
+  `ConnectionMixin.killDoubleEncryption`:** to the extent these mirror
+  `ServerLoginStubDigestMixin`'s same unconditional-bypass condition (client
+  side of the same handshake), they need the identical
+  `isDevelopmentEnvironment()` guard applied for the same reason — planning
+  should confirm during implementation exactly which of the mixin set shares
+  this condition versus which pieces (e.g. the Steam-P2P-transport-specific
+  parts, unrelated to the crypto bypass itself) are unaffected by this
+  correction and should remain unconditional.
+
+### Compatibility / verification notes for this correction
+- No new mixin class, no new file — this correction narrows existing
+  conditions inside `ServerLoginStubDigestMixin` (and, likely, its
+  client-side counterpart), rather than adding new logic to
+  `IntegratedServerWorldHostingMixin` as the original amendment proposed.
+- **This is a real, shipped-behavior reversal, not an additive change** (Open
+  Question 11) — unlike every other piece of this feature, which added new
+  behavior, this correction removes/narrows behavior that was already
+  implemented and (per the verification report referenced in the original
+  FR1.6 text) already passed this feature's own prior verification pass under
+  its original, now-reversed premise. Re-verification of
+  `ServerLoginStubDigestMixin`'s corrected condition, and of the previously
+  untested "real handshake over `SteamNettyChannel`" code path it now
+  exposes for the first time, is required in the next implementation/
+  verification pass.
+- The per-mapping `usesAuthentication`/`isOnlineMode` research in
+  Compatibility above is retained for traceability and as a contingency
+  only — it is not expected to be needed by the corrected mechanism, and
+  Open Question 8 is narrowed accordingly, not deleted.
+- No change to Resolved Open Questions items 1-5, 7 — this correction only
+  reverses/narrows items 6 and 9, and adds new item 11, per the annotations
+  in place at each location above.

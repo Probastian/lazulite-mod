@@ -74,6 +74,13 @@ public final class FriendSidebarWidget extends AbstractWidget {
     private static final int SIDEBAR_OUTER_BORDER = 0xFF808080;
     private static final int OWN_PROFILE_SEPARATOR = 0xFF808080;
 
+    // v1.2 status state (Steam unavailable, FR6.2 outcome 2) -- fixed
+    // friend-count-independent height (Decision 17), reusing Decision 14's
+    // "Busy" red for the collapsed indicator since no PersonaState-specific
+    // color applies to this feature-level warning.
+    private static final int STATUS_HEIGHT = ROW_HEIGHT * 2;
+    private static final int STATUS_INDICATOR_COLOR = 0xFFD54141;
+
     private final FriendsSidebarFacade facade;
     private final AvatarTextureCache avatarTextureCache;
     private final RowClickListener rowClickListener;
@@ -186,10 +193,11 @@ public final class FriendSidebarWidget extends AbstractWidget {
         }
         refreshScreenSize();
 
-        List<FriendSummary> friends = sortedFriends();
-        Optional<FriendSummary> own = facade.localProfile();
-        int height = totalHeight(friends.size());
-        if (friends.size() >= maxRows) {
+        boolean steamAvailable = facade.isSteamAvailable();
+        List<FriendSummary> friends = steamAvailable ? sortedFriends() : List.of();
+        Optional<FriendSummary> own = steamAvailable ? facade.localProfile() : Optional.empty();
+        int height = steamAvailable ? totalHeight(friends.size()) : STATUS_HEIGHT;
+        if (steamAvailable && friends.size() >= maxRows) {
             // The list fills (or overflows) the available height -- extend
             // exactly to the window edge rather than leaving a rounding
             // remainder below the last row.
@@ -268,6 +276,11 @@ public final class FriendSidebarWidget extends AbstractWidget {
         guiGraphics.fill(getX(), getY(), getX() + width, getY() + height, 0x99000000);
         guiGraphics.fill(getX(), getY(), getX() + BORDER_WIDTH, getY() + height, SIDEBAR_OUTER_BORDER);
 
+        if (!steamAvailable) {
+            drawStatus(guiGraphics, getX(), getY(), width, showText);
+            return;
+        }
+
         own.ifPresent(profile -> drawRow(guiGraphics, profile, getX(), getY(), width, showText));
 
         int separatorY = getY() + ROW_HEIGHT + SEPARATOR_GAP;
@@ -287,6 +300,53 @@ public final class FriendSidebarWidget extends AbstractWidget {
             rowY += ROW_HEIGHT;
         }
         guiGraphics.disableScissor();
+    }
+
+    /**
+     * Renders the v1.2 Steam-unavailable status state (FR6.2 outcome 2, FR6.4-FR6.7)
+     * in place of the pinned own-profile row and scrollable friends list --
+     * a collapsed warning-colored indicator square, or (once hover-expanded,
+     * Decision 17) {@code facade.steamUnavailableMessage()}. Never reads
+     * {@code facade.friends()}/{@code facade.localProfile()} (FR6.3(a)).
+     */
+    private void drawStatus(GuiGraphicsExtractor guiGraphics, int x, int y, int width, boolean showText) {
+        if (!showText) {
+            guiGraphics.fill(x + ROW_PADDING, y + ROW_PADDING, x + ROW_PADDING + DISPLAY_SIZE,
+                    y + ROW_PADDING + DISPLAY_SIZE, STATUS_INDICATOR_COLOR);
+            return;
+        }
+        var font = Minecraft.getInstance().font;
+        int textX = x + ROW_PADDING;
+        int textY = y + ROW_PADDING;
+        int maxTextWidth = width - ROW_PADDING * 2;
+        for (String line : wrapMessage(font::width, facade.steamUnavailableMessage(), maxTextWidth)) {
+            guiGraphics.text(font, line, textX, textY, 0xFFFFFFFF);
+            textY += 10;
+        }
+    }
+
+    /**
+     * Plain greedy word-wrap (FR6.5's "single-line or short, wrapped 2-3
+     * lines" allowance) -- avoids depending on any un-`javap`-confirmed
+     * {@code Font}-side multi-line layout helper (Risk 16's own tuning-only
+     * framing).
+     */
+    private static List<String> wrapMessage(java.util.function.ToIntFunction<String> widthOf, String message, int maxWidth) {
+        java.util.List<String> lines = new java.util.ArrayList<>();
+        StringBuilder current = new StringBuilder();
+        for (String word : message.split(" ")) {
+            String candidate = current.isEmpty() ? word : current + " " + word;
+            if (!current.isEmpty() && widthOf.applyAsInt(candidate) > maxWidth) {
+                lines.add(current.toString());
+                current = new StringBuilder(word);
+            } else {
+                current = new StringBuilder(candidate);
+            }
+        }
+        if (!current.isEmpty()) {
+            lines.add(current.toString());
+        }
+        return lines;
     }
 
     private void drawRow(GuiGraphicsExtractor guiGraphics, FriendSummary friend, int x, int y, int width, boolean showText) {
@@ -326,7 +386,7 @@ public final class FriendSidebarWidget extends AbstractWidget {
 
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
-        if (!facade.isEnabled()) {
+        if (!facade.isEnabled() || !facade.isSteamAvailable()) {
             return false;
         }
         if (handleOnly && !panelOpen) {
@@ -360,7 +420,7 @@ public final class FriendSidebarWidget extends AbstractWidget {
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
-        if (!facade.isEnabled() || (handleOnly && !panelOpen)) {
+        if (!facade.isEnabled() || !facade.isSteamAvailable() || (handleOnly && !panelOpen)) {
             return false;
         }
         List<FriendSummary> friends = sortedFriends();
@@ -385,7 +445,7 @@ public final class FriendSidebarWidget extends AbstractWidget {
         if (handleOnly && !panelOpen) {
             return isOverHandle(mouseX, mouseY);
         }
-        int height = totalHeight(facade.friends().size());
+        int height = facade.isSteamAvailable() ? totalHeight(facade.friends().size()) : STATUS_HEIGHT;
         int width = expanded ? EXPANDED_WIDTH : COLLAPSED_WIDTH;
         return mouseX >= getX() && mouseX < getX() + width && mouseY >= getY() && mouseY < getY() + height;
     }

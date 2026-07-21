@@ -23,6 +23,8 @@ import java.util.Optional;
  * <p>Usage example (from a platform composition root):
  * <pre>{@code
  * FriendsSidebarFacade facade = new FriendsSidebarFacade(dataSource, new FriendSidebarStateMachine());
+ * facade.setEnabled(config.enabled());
+ * facade.setSteamAvailable(steamworksService.isSteamAvailable());
  * ClientTickEvents.END_CLIENT_TICK.register(client -> {
  *     dataSource.tick();
  *     facade.refresh();
@@ -32,12 +34,24 @@ import java.util.Optional;
  */
 public final class FriendsSidebarFacade implements FriendSidebarHook {
 
+    /**
+     * The single, generic status message shown by the sidebar's status
+     * state (FR6.1/FR6.5) whenever the feature is enabled but Steam itself
+     * is unavailable -- deliberately not sourced from any per-cause
+     * {@code SteamworksService} failure detail (FR6.1's collapse-to-one-
+     * message justification).
+     */
+    public static final String STEAM_UNAVAILABLE_MESSAGE =
+            "Steam not available - make sure Steam is running and this game was "
+            + "either launched through Steam or has a valid steam_appid.txt";
+
     private final FriendsDataSource dataSource;
     private final FriendSidebarStateMachine stateMachine;
 
     private volatile List<FriendSummary> friends = List.of();
     private volatile Optional<FriendSummary> localProfile = Optional.empty();
     private volatile boolean enabled = true;
+    private volatile boolean steamAvailable = true;
 
     public FriendsSidebarFacade(FriendsDataSource dataSource, FriendSidebarStateMachine stateMachine) {
         this.dataSource = dataSource;
@@ -69,6 +83,39 @@ public final class FriendsSidebarFacade implements FriendSidebarHook {
      */
     public boolean isEnabled() {
         return enabled;
+    }
+
+    /**
+     * Independent of {@link #setEnabled(boolean)}/{@link #isEnabled()}
+     * (Decision 16) -- reflects {@code SteamworksService.isSteamAvailable()}
+     * as of the last time the composition root called this setter, defaults
+     * to {@code true} so a caller that never invokes this (e.g. a future
+     * test harness) degrades to today's content-rendering behavior rather
+     * than silently entering the status state.
+     *
+     * @param available whether Steam itself is currently available
+     */
+    public void setSteamAvailable(boolean available) {
+        this.steamAvailable = available;
+    }
+
+    /**
+     * @return {@code true} unless the composition root has told this facade
+     *         Steam is unavailable ({@link #setSteamAvailable(boolean)}) --
+     *         when {@code false} (and {@link #isEnabled()} is {@code true}),
+     *         a Version Adapter should render the status state (FR6.2-FR6.7)
+     *         instead of friend-list content
+     */
+    public boolean isSteamAvailable() {
+        return steamAvailable;
+    }
+
+    /**
+     * @return the fixed, generic "Steam unavailable" status message (FR6.1)
+     *         a Version Adapter should render in the status state
+     */
+    public String steamUnavailableMessage() {
+        return STEAM_UNAVAILABLE_MESSAGE;
     }
 
     /**

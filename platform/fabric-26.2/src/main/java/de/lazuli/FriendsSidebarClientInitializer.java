@@ -56,7 +56,8 @@ public final class FriendsSidebarClientInitializer implements ClientModInitializ
                 : new NoopFriendsService();
 
         FriendsSidebarFacade facade = new FriendsSidebarFacade(dataSource, new FriendSidebarStateMachine());
-        facade.setEnabled(steamworksService.isSteamAvailable() && config.enabled());
+        facade.setEnabled(config.enabled());
+        facade.setSteamAvailable(steamworksService.isSteamAvailable());
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             dataSource.tick();

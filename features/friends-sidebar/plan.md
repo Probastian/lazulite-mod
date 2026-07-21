@@ -1402,3 +1402,474 @@ Decision 6 vs. Risk 5).
   compile-time/`javap`-confirmation findings (Risks 10, 11, 13, 15) or the
   manual visual-tuning/re-confirmation passes the spec itself already
   calls for (Risks 12, 14), not as open design questions.
+
+# v1.2 Revision — Steam-Unavailable Status State
+
+Everything below extends the plan above with FR6.x/NFR6/NFR7 (specification
+v1.2 amendment, `features/friends-sidebar/specification.md:50-125`). The v1/
+v1.1 plan above is unchanged and remains accurate for FR0–FR5 (already
+implemented; note the real, currently-checked-out code has already diverged
+further from the v1.1-plan text above in ways not relevant to this revision
+— e.g. the sidebar now has a per-screen `handleOnly`/hover-open-handle mode
+and a `FriendActionListener`/world-hosting bridge (`WorldJoinRequester`,
+`FriendHostingStatusReader`) not described anywhere above — see this
+section's own Existing Implementation for the parts of that drift this
+revision actually touches). This section's own Decisions continue the
+existing numbering (16+); its own Risks are appended after Risk 15 above
+using the same list, not restarted.
+
+## Existing Implementation (v1.2 addendum)
+Grounded directly in the real, currently-checked-out code (all three
+platform modules read in full for this revision; only the current-behavior
+facts this revision's Decisions depend on are recorded here — see the task's
+own citations, confirmed accurate against these files):
+
+- **`FriendsSidebarFacade.java`** (`features/friends-sidebar/src/main/java/de/lazuli/features/friendssidebar/services/FriendsSidebarFacade.java`)
+  today exposes only one visibility signal: `setEnabled(boolean)`/`isEnabled()`
+  (lines 62–72), backed by a single `volatile boolean enabled = true` field
+  (line 40). It already separately exposes `friends()` (line 77, backed by a
+  `volatile List<FriendSummary> friends`, refreshed from `dataSource.currentFriends()`
+  in `refresh()`) and `localProfile()` (line 93) — both driven by whichever
+  `FriendsDataSource` was constructed (`FriendsService` or `NoopFriendsService`,
+  Existing Implementation v1 section), **not** by Steam-availability directly.
+  There is currently no way for a Version Adapter to distinguish "Steam is
+  unavailable" from "Steam is available but the local `FriendsService` simply
+  hasn't resolved any friends/local profile yet" purely by reading `friends()`/
+  `localProfile()` — exactly the ambiguity FR6.3(a) forbids relying on.
+- **`FriendSidebarWidget.renderNow(...)`** (all three platform modules,
+  identical logic; confirmed by direct read of
+  `platform/fabric-{26.2,26.1,1.21.11}/src/main/java/de/lazuli/friends/FriendSidebarWidget.java`)
+  begins:
+  ```java
+  public void renderNow(...) {
+      if (!facade.isEnabled()) {
+          return;
+      }
+      refreshScreenSize();
+      ...
+  ```
+  (26.x: lines 183–187; 1.21.11: lines 180–184) — this is the single
+  early-return this revision must change into a three-way branch (FR6.2/
+  FR6.3). `mouseClicked(...)` (26.x line 328–331, 1.21.11 line 313–316) and
+  `mouseScrolled(...)` (26.x line 362–364, 1.21.11 line 347–349) each guard
+  identically on `!facade.isEnabled()` — both already correctly return
+  `false`/no-op in the fully-hidden case; this revision must additionally
+  make both inert (return `false`) in the new status-state case (FR6.6),
+  without touching their existing `isEnabled()`-guard behavior.
+- **`FriendsSidebarClientInitializer.java`** (all three platform modules,
+  confirmed byte-for-byte identical aside from documentation-comment
+  wording — this revision's own re-read confirms the spec's FR6.9 finding
+  still holds for the current, more-evolved file, which now also wires
+  `SteamFriendsGateway`/`WorldJoinRequester`/`FriendHostingStatusReader` not
+  described in the v1/v1.1 plan text above): the two combined-boolean call
+  sites this revision must split are:
+  ```java
+  FriendsDataSource dataSource = (steamworksService.isSteamAvailable() && config.enabled())
+          ? new FriendsService(gateway, config, LazuliMod.LOGGER::warn)
+          : new NoopFriendsService();
+
+  FriendsSidebarFacade facade = new FriendsSidebarFacade(dataSource, new FriendSidebarStateMachine());
+  facade.setEnabled(steamworksService.isSteamAvailable() && config.enabled());
+  ```
+  (line 54–59 in every module). Per spec FR6.9/Public API item 6, the
+  `dataSource` selection's own two-input condition is unchanged (FR0.2 is
+  unaffected) — only the `facade.setEnabled(...)` line changes shape.
+- **`FriendsDataSource`** (`features/friends-sidebar/src/main/java/de/lazuli/features/friendssidebar/services/FriendsDataSource.java`)
+  already has the exact shape spec FR0.2/FR6.5 describes: `NoopFriendsService`
+  is the only `FriendsDataSource` constructed when Steam is unavailable, and
+  its `currentFriends()`/`localProfile()`/`richPresenceStatus(...)` already
+  return empty per FR0.2's no-op discipline (v1/v1.1 Existing
+  Implementation) — this revision reads none of these accessors in its new
+  status branch (FR6.3(a)'s "never infer from an empty friend list" guard is
+  satisfied structurally by simply never calling `facade.friends()`/
+  `facade.localProfile()` from the new status-rendering code path at all,
+  not by adding a runtime check).
+
+## Decisions on the Open Questions (v1.2, resolved during planning)
+
+### 16. Facade shape: two independent boolean signals (`isEnabled()`/`isSteamAvailable()`), the spec's own "smallest viable option" — not a tri-state enum
+`FriendsSidebarFacade` keeps `setEnabled(boolean)`/`isEnabled()` meaning
+exactly what it means today (outcome 1 of FR6.2: "should the sidebar
+attach/render at all," `true` unless `config.enabled() == false`) and gains
+a second, independent pair:
+```java
+public void setSteamAvailable(boolean available) { this.steamAvailable = available; }
+public boolean isSteamAvailable() { return steamAvailable; }
+```
+backed by a new `private volatile boolean steamAvailable = true;` field
+(defaulting to `true`, mirroring the existing `enabled = true` field default,
+line 40, so a composition root that never calls `setSteamAvailable(...)` at
+all — e.g. a future test harness — degrades to today's content-rendering
+behavior rather than silently going into the status state). This is the
+spec's own explicitly-labeled "suggested default" (Public API item 5) — this
+plan adopts it rather than the tri-state-enum alternative for one concrete
+reason specific to this codebase's current state (not merely "the spec
+suggested it"): `facade.isEnabled()` is already read directly at four
+call sites across three platform modules' `FriendSidebarWidget.java`
+(`renderNow`, `mouseClicked`, `mouseScrolled`, ×3 modules = 12 call sites
+total, Existing Implementation above) — replacing it with a `SidebarVisibility`
+enum would require rewriting every one of those 12 already-working call
+sites' conditionals (`!facade.isEnabled()` → `facade.visibility() == HIDDEN`,
+etc.), whereas the two-boolean option only *adds* one new call site per
+widget (the new `!facade.isSteamAvailable()` status-branch check) and leaves
+every existing `isEnabled()` call untouched. The tri-state option's own
+stated advantage (making "not enabled but Steam available" unconstructible)
+has no practical value here since the composition root is the only caller of
+either setter and always calls both together (Decision 18 below) — there is
+no code path that could accidentally construct that combination. Smaller
+diff, zero risk to already-working call sites, wins.
+
+The status message itself is exposed as a facade instance method backed by a
+single `public static final String` constant on `FriendsSidebarFacade`
+(rather than a `services`/`api`-module shared constant, or a
+platform-widget-local literal) so **all three** platform widgets read the
+exact same string from the exact same place, satisfying NFR7's "one place to
+get it right" framing for the message text specifically (the widget-visual
+treatment of that string is still per-platform, Decision 17, but the text
+itself is not triplicated):
+```java
+public static final String STEAM_UNAVAILABLE_MESSAGE =
+        "Steam not available - make sure Steam is running and this game was "
+        + "either launched through Steam or has a valid steam_appid.txt";
+
+public String steamUnavailableMessage() {
+    return STEAM_UNAVAILABLE_MESSAGE;
+}
+```
+(wording deliberately mirrors FR6.1's own suggested phrasing, which itself
+mirrors `SteamworksService.create`'s existing warning-log wording,
+`SteamworksService.java:95-97` per the spec's own citation — no new prose
+invented). This directly resolves spec Public API item 5's own explicitly
+open "does the message live in the facade, the widget, or a shared api
+constant" question.
+
+### 17. FR6.7 (left genuinely open by the spec): reuse the existing collapse/hover-to-expand model, not a separate always-expanded bar
+The spec explicitly leaves this as the one open FR6.x item either way is
+acceptable. This plan chooses **reuse of the existing hover/expand state
+machine** (`expanded`/`panelOpen`/`animatedWidth`/`lastHoverNanos` fields and
+the coyote-time hover logic already implemented in `FriendSidebarWidget`,
+Existing Implementation v1.1/v1.2 addenda above), for three concrete reasons
+specific to this codebase's *current* (not the spec's assumed-simpler) state:
+
+1. **The infrastructure this decision would otherwise duplicate already
+   exists and already generalizes past friend-row content.** The current
+   `renderNow(...)` already separates "compute expanded/collapsed width via
+   hover" from "what content the expanded/collapsed states draw" — the width
+   animation, hover hit-testing (`isExpanded(...)`), and coyote-time grace
+   period are computed purely from `screenWidth`/`mouseX`/`mouseY`/timers,
+   never from `friends().size()` or row content. Building "always expanded"
+   as an alternative would mean the status branch is the *only* code path in
+   this widget that doesn't use the hover-expand machinery every other state
+   already shares — more special-casing, not less.
+2. **UX consistency**: a user who has already learned "hover the right edge
+   to see detail" (the sidebar's existing interaction model, used
+   identically in both the friends-list content state and this feature's
+   existing `handleOnly` reduced-visibility mode on non-main-menu screens)
+   would otherwise encounter a *third*, inconsistent interaction rule
+   (always-visible text) specifically for the rare Steam-unavailable case —
+   the spec's own FR6.7 prose already flags this exact "mirroring the
+   existing hover-to-reveal-detail interaction users already learn" as the
+   reason to prefer reuse when practical.
+3. **Smaller diff**: reusing `expanded`/`animatedWidth` means the status
+   branch only needs to supply its own fixed (friend-count-independent)
+   *height* and its own two draw calls (collapsed indicator, expanded
+   message) — it does not need any new animation/hover-detection code at
+   all, only a new small block inside the method that already computes
+   `expanded`/`width`/`showText` every frame (Decision 18).
+
+Concretely: `renderNow(...)`'s existing hover/expand computation (the block
+computing `overPanel`/`hovering`/`expanded`/`animatedWidth`/`showText`,
+Existing Implementation) runs completely unchanged regardless of
+`facade.isSteamAvailable()`; only the *content drawn once `width`/`showText`
+are known* differs — friend rows (today) vs. one status indicator/message
+(new). The collapsed indicator itself is a small flat-colored square (reusing
+the exact `guiGraphics.fill(...)`/`context.fill(...)` primitive already used
+for `personaColor(friend)`'s avatar-placeholder square, Existing
+Implementation v1.1 addendum's confirmed-safe-alpha finding) tinted a
+warning color (e.g. `0xFFD54141`, reusing Decision 14's already-established
+"Busy" red, since no PersonaState-specific color applies here and inventing
+a fifth palette entry for one indicator is unnecessary) instead of an
+avatar; the expanded message draws `facade.steamUnavailableMessage()` via the
+same per-platform text-draw call already used for persona names/status text
+(26.x's full-ARGB `guiGraphics.text(...)`, 1.21.11's plain-RGB
+`context.drawTextWithShadow(...)`, Existing Implementation v1.1 addendum's
+already-confirmed per-platform color-parameter conventions — reused
+unchanged, no new alpha-safety research needed), wrapped across up to 2-3
+short lines per FR6.5's own "single-line (or short, wrapped 2-3 line)"
+allowance, using a fixed small height (e.g. `STATUS_HEIGHT = ROW_HEIGHT * 2`,
+enough for a two-line message) rather than the friend-count-driven
+`totalHeight(...)` calculation the content branch uses — this fixed height is
+the one piece of new layout math this decision needs, since FR6.5 already
+establishes the status branch never derives anything from friend count.
+
+### 18. Composition-root change: edit all three `FriendsSidebarClientInitializer.java` files identically, not a new shared `FriendsSidebarComposer` factory
+Per spec Architecture/NFR7, both resolutions are explicitly acceptable; this
+plan picks the "edit all three identically" path rather than extracting a
+shared composer, for a reason specific to the *size* of this particular
+change against the *current* (already-more-complex-than-v1) state of these
+files: the actual change here is exactly two lines —
+```java
+facade.setEnabled(steamworksService.isSteamAvailable() && config.enabled());
+```
+becomes
+```java
+facade.setEnabled(config.enabled());
+facade.setSteamAvailable(steamworksService.isSteamAvailable());
+```
+— the `dataSource` selection line above it is explicitly unchanged (FR6.9/
+Public API item 6: "dataSource selection... keeps its existing two-input
+condition unchanged"). Introducing a new `FriendsSidebarComposer.create(...)`
+factory (the spec's own recommended alternative) to own *just* this two-line
+change would, to stay proportionate, either (a) also have to absorb the
+surrounding `dataSource` construction, `ClientTickEvents.END_CLIENT_TICK`
+registration, and the `WorldJoinRequester`/`FriendHostingStatusReader`
+hand-off reads (Existing Implementation, v1.2 addendum) to be a meaningfully
+complete extraction rather than a factory that returns a facade but leaves
+the rest of the composition root's own already-triplicated logic
+untouched — a considerably larger refactor than this revision's own stated
+goal — or (b) be a narrow single-purpose factory that only computes the two
+booleans, which is barely smaller than just writing the two lines directly
+in each file and arguably adds an unnecessary indirection for a computation
+this simple (two already-locally-available booleans, no cross-cutting
+state). Editing all three files identically, **verified by a direct diff
+across all three showing only this same two-line change (plus each module's
+own pre-existing comment-wording differences, already noted as the sole
+divergence by FR6.9's own historical finding) — with all other lines
+byte-for-byte unchanged**, satisfies NFR7 exactly as well as the factory
+option per the spec's own explicit "either approach is acceptable" framing,
+at a cost proportionate to the change's own actual size. This is a
+deliberate choice, not a default — a future revision to this same
+composition root that grows the wiring further (e.g. a fourth boolean input)
+should re-evaluate whether the extraction threshold has now been crossed,
+but two lines is judged not to have crossed it yet.
+
+### 19. `mouseClicked(...)`/`mouseScrolled(...)` inertness in the status state (FR6.6): guard on `!facade.isSteamAvailable()` the same way `handleOnly`/`isEnabled()` are already guarded
+Both methods gain one additional early-return condition, following the exact
+existing pattern each method already uses for its `!facade.isEnabled()` /
+`handleOnly && !panelOpen` guards (Existing Implementation above):
+```java
+if (!facade.isEnabled() || !facade.isSteamAvailable()) {
+    return false; // mouseClicked
+}
+```
+and the equivalent addition to `mouseScrolled(...)`'s existing
+`if (!facade.isEnabled() || (handleOnly && !panelOpen))` guard. This
+satisfies FR6.6's "no clickable rows... mouse-scroll is likewise inert"
+requirement without introducing a new guard *shape* — it is the same
+short-circuit-boolean idiom the widget already uses twice, extended with one
+more clause. `isMouseOver(...)` is **not** changed — it continues to report
+the sidebar's own current bounds (now the status branch's fixed
+`STATUS_HEIGHT` rather than `totalHeight(friends.size())` when
+`!isSteamAvailable()`, Decision 17) purely for outside-click/non-interference
+hit-testing (FR2.1/FR6.6's "does not intercept clicks... outside its own
+bounds" guarantee) — reusing `isMouseOver` for bounds-reporting while making
+`mouseClicked` itself a no-op is exactly the same split responsibility the
+`handleOnly` mode's own `isOverHandle(...)`-vs-`mouseClicked` split already
+establishes, no new pattern introduced.
+
+## Files to Modify (v1.2)
+- `features/friends-sidebar/src/main/java/de/lazuli/features/friendssidebar/services/FriendsSidebarFacade.java`
+  — add `steamAvailable` field (default `true`) + `setSteamAvailable(boolean)`/
+  `isSteamAvailable()` pair (Decision 16); add `STEAM_UNAVAILABLE_MESSAGE`
+  constant + `steamUnavailableMessage()` accessor (Decision 16); update this
+  class's own JavaDoc usage example to show both `setEnabled(...)` and
+  `setSteamAvailable(...)` being called from the composition root.
+- `platform/fabric-{26.2,26.1,1.21.11}/src/main/java/de/lazuli/friends/FriendSidebarWidget.java`
+  (×3, identical change) — `renderNow(...)`: after the existing
+  `if (!facade.isEnabled()) return;` (unchanged), branch on
+  `!facade.isSteamAvailable()` to run a new status-rendering path (fixed
+  `STATUS_HEIGHT`, reusing the existing hover/expand computation per
+  Decision 17, drawing a status-color indicator square when collapsed and
+  `facade.steamUnavailableMessage()` when expanded) instead of the existing
+  friend-list/pinned-row content path; `mouseClicked(...)`/`mouseScrolled(...)`
+  gain the additional `!facade.isSteamAvailable()` guard clause (Decision
+  19); `isMouseOver(...)`'s height calculation branches to `STATUS_HEIGHT`
+  in the same condition. New constants: `STATUS_HEIGHT` (e.g.
+  `ROW_HEIGHT * 2`), reuse of the existing `SIDEBAR_OUTER_BORDER`/status-color
+  constants (Decision 14's already-established `0xFFD54141` "Busy" red for
+  the collapsed indicator, Decision 17) — no other constant changes.
+- `platform/fabric-{26.2,26.1,1.21.11}/src/main/java/de/lazuli/FriendsSidebarClientInitializer.java`
+  (×3, identical change, Decision 18) — replace the single combined-boolean
+  `facade.setEnabled(steamworksService.isSteamAvailable() && config.enabled());`
+  line with the two separate calls shown in Decision 18; the `dataSource`
+  selection line immediately above is unchanged.
+- `.claude/context/minecraft.md` — no new row expected (this revision
+  introduces no new steamworks4j/Minecraft API surface, FR6.8/Compatibility)
+  — not modified by this planning pass.
+
+## Files to Create (v1.2)
+- `features/friends-sidebar/src/test/java/de/lazuli/features/friendssidebar/services/FriendsSidebarFacadeTest.java`
+  — new test class (none exists today for this class, confirmed by
+  `Glob` of the test tree, Existing Implementation) covering NFR6's
+  plain-JVM-testable visibility-decision surface: `isEnabled()`/
+  `isSteamAvailable()` each independently settable/gettable and defaulting
+  to `true`; `steamUnavailableMessage()` returns the same non-null,
+  non-empty constant regardless of state (it is a fixed string, not
+  state-derived, Decision 16). This test class does **not** attempt to
+  re-implement FR6.2's three-way composition-root decision table as a
+  method on the facade itself (Decision 16 deliberately keeps the two
+  booleans independent rather than introducing a computed
+  `visibility()`/`SidebarVisibility` method) — instead, NFR6's "plain-JVM-
+  testable... three-way visibility decision" requirement is satisfied by
+  this test asserting each of the three real composition-root outcomes
+  (FR6.2) is achievable and independently observable through the two
+  boolean accessors: `(enabled=false, *)` → `isEnabled()==false`
+  regardless of `isSteamAvailable()`; `(enabled=true, available=false)` →
+  both flags independently readable as `true`/`false`; `(enabled=true,
+  available=true)` → both `true`. This is the plan's deliberate choice of
+  *where* NFR6's pure-function testability requirement is satisfied — on
+  the facade's two accessors directly, since Decision 16 chose not to
+  introduce a separate `visibilityState()`-shaped method that would need
+  its own test target.
+
+## Test Strategy (v1.2 additions)
+- `FriendsSidebarFacadeTest` (new, Decision 16/NFR6) — see Files to Create
+  above; plain-JVM, no `net.minecraft.*`/steamworks4j import, mirrors this
+  feature's existing `FriendSidebarStateMachineTest`/`FriendsSidebarConfigIOTest`
+  test shape.
+- `FriendSidebarWidget`'s new status-rendering branch, and both platform
+  composition roots' new two-call wiring, are **not** unit-testable on a
+  plain JVM (same NFR1/`ui-guidelines.md` constraint already established for
+  this class of code in the v1/v1.1 plan sections above) — verified manually
+  only, per the spec's own UI section's explicit new verification-matrix
+  entry.
+- **Manual in-game verification matrix additions** (run once per platform
+  module, alongside the existing v1/v1.1 matrix):
+  - **Steam not running, `config.enabled() == true` (default)**: on every
+    allow-listed screen the sidebar currently renders on, the sidebar is
+    **visible** (not fully hidden) in its new collapsed status-indicator
+    form; hovering expands it to show `facade.steamUnavailableMessage()`'s
+    full text, legibly, within the sidebar's own bounds; no click/scroll on
+    the sidebar produces any visible reaction (FR6.6); clicking/scrolling
+    just outside the sidebar's own (now smaller) bounds passes through to
+    the underlying screen exactly as it does today in every other state
+    (non-interference guarantee, FR2.1/FR6.6).
+  - **`config.enabled() == false`** (Steam running or not): sidebar remains
+    **fully hidden**, identical to today's pre-v1.2 behavior — this is the
+    explicit regression check confirming FR6.2 outcome 1 is unchanged.
+  - **Steam running, `config.enabled() == true`**: sidebar renders exactly
+    as it did before this revision (content state, own-profile row +
+    friends list) — explicit regression check confirming FR6.2 outcome 3 is
+    unchanged by this revision's new branch logic.
+  - Run this three-way matrix on **all three platform modules**
+    (`fabric-26.2`, `fabric-26.1`, `fabric-1.21.11`) individually — per
+    NFR7, a pass on only one or two modules is not sufficient sign-off for
+    this revision, since the whole point of FR6.9/NFR7 is that this change
+    must land identically everywhere.
+  - This is also the one case in this feature's manual matrix that requires
+    deliberately running the game **without** Steam (or without a valid
+    `steam_appid.txt`) rather than through the normal Steam-launched
+    dev/play loop (spec UI section's own explicit callout) — testers should
+    not assume this case is exercised "by accident" the way content-state
+    bugs typically are.
+
+## Dependencies (v1.2)
+- **No new external Maven/Gradle dependency, no new internal
+  (inter-module) dependency edge.** This revision adds no new import beyond
+  types already used within `features/friends-sidebar`/the platform
+  modules' existing `friends` packages (FR6.8: no new Steamworks call,
+  callback, or native surface; Non-goals: no change to `SteamworksService`'s
+  public surface). The two-boolean facade extension and the widget's new
+  status branch use only `java.lang.String`/`boolean` and each platform's
+  own already-imported `Minecraft`/`GuiGraphicsExtractor`/`DrawContext`-family
+  types (Existing Implementation, this section) — no new coordinate to
+  verify against any registry.
+
+## Risks (v1.2 additions, continuing the plan's numbering)
+16. **Decision 17's fixed `STATUS_HEIGHT` constant (e.g. `ROW_HEIGHT * 2`)
+    and the exact wrapped-line count for `steamUnavailableMessage()`'s text
+    are plan-level visual-tuning defaults, not spec-mandated values** (spec
+    FR6.5/FR6.7/UI section all explicitly defer exact sizing/wrapping to "a
+    planning/UX decision" or leave it "a planning-time decision") — flagged
+    so the verification phase treats a message that reads as clipped,
+    overlapping, or awkwardly wrapped at a given GUI Scale as an expected,
+    in-scope tuning adjustment (mirroring Risk 12's identical framing for
+    Decision 10/11's constants), not a plan-conformance defect. Concretely
+    check at least the default and the smallest supported GUI Scale during
+    manual verification, since a fixed-height/fixed-wrap message is more
+    likely to clip at extreme scales than the friend-count-driven content
+    state (which already adapts its own height to `screenHeight`).
+17. **Decision 17's chosen collapsed-indicator color (reusing Decision 14's
+    "Busy" red, `0xFFD54141`) could visually read as "a friend is busy"
+    rather than "Steam is unavailable" to a user who has learned this
+    feature's own status-color convention from the content state** — a
+    plan-level visual-consistency judgment call, not a spec requirement
+    (spec FR6.7/UI explicitly leave "exact treatment" open); flagged so
+    manual verification can confirm this reads clearly as a *feature-level*
+    warning indicator (e.g. via its distinct collapsed *shape*/position —
+    it is the only content in the sidebar when in this state — rather than
+    relying on color alone) rather than being misread as a specific
+    friend's status; if verification finds this ambiguous, a distinct
+    warning color (e.g. a color not otherwise used by Decision 14's
+    palette) is an acceptable, low-effort implementation-time substitution
+    that does not require revisiting this plan's other decisions.
+18. **Decision 18's "edit all three files identically" resolution depends on
+    a direct diff at implementation time actually showing zero unintended
+    divergence** — the plan states the intended two-line change precisely,
+    but (per FR6.9's own already-confirmed precedent of a single stray
+    comment-line divergence between modules today) verification must
+    explicitly re-diff all three `FriendsSidebarClientInitializer.java`
+    files after this change lands, not assume identical-by-construction;
+    this is the concrete acceptance step for NFR7 specifically (see
+    Acceptance Criteria below), not a new architectural risk.
+
+## Acceptance Criteria (v1.2 additions)
+- **FR6.1** — Code review: exactly one status-message string constant exists
+  (`FriendsSidebarFacade.STEAM_UNAVAILABLE_MESSAGE`), referenced identically
+  by all three platform widgets via `facade.steamUnavailableMessage()`; no
+  per-cause/`InitResult`-derived message text appears anywhere in this
+  feature's code.
+- **FR6.2/FR6.3** — `FriendsSidebarFacadeTest` (new) confirms `isEnabled()`/
+  `isSteamAvailable()` are independently settable/gettable and correctly
+  represent all three real composition-root outcomes (Files to Create,
+  above); in-game, the three-way manual matrix (Test Strategy, above)
+  confirms each of the three outcomes renders correctly on all three
+  platform modules.
+- **FR6.4** — In-game: the status state's right-edge anchor position is
+  visually identical (same `x = scaledWidth - width` reference point,
+  Decision 17 reuses the unchanged hover-expand computation) to the content
+  state's anchor, confirmed on at least one allow-listed screen per module.
+- **FR6.5/FR6.6** — Code review confirms the status branch never calls
+  `facade.friends()`/`facade.localProfile()` (Decision 17/Existing
+  Implementation's "structurally satisfied, not runtime-checked" framing);
+  in-game, `mouseClicked`/`mouseScrolled` produce no visible effect while in
+  the status state, and clicks/scroll just outside the sidebar's bounds
+  reach the underlying screen normally.
+- **FR6.7** — This plan's chosen resolution (reuse of the existing hover/
+  collapse model, Decision 17) is applied identically across all three
+  platform modules — confirmed by the same three-way diff used for NFR7
+  below extended to `FriendSidebarWidget.java`.
+- **FR6.8** — `grep`-spot-check: zero new `com.codedisaster.steamworks.*`
+  import introduced by this revision anywhere in `features/friends-sidebar`
+  or the three platform modules' `friends`/`FriendsSidebarClientInitializer`
+  files (unchanged from the v1/v1.1 plan's own identical NFR1 check, now
+  re-run specifically against this revision's diff).
+- **FR6.9/NFR7** — A direct diff of all three
+  `FriendsSidebarClientInitializer.java` files after this change shows only
+  the two-line `setEnabled`/`setSteamAvailable` split (plus each module's
+  own pre-existing comment-wording divergence, unchanged) — no module left
+  on the old combined-boolean, two-outcome behavior while the others moved
+  to three-outcome behavior (Risk 18's concrete resolution check).
+- **NFR6** — `FriendsSidebarFacadeTest` runs on a plain JVM with no
+  Minecraft/steamworks4j jar on its test classpath, directly exercising the
+  three-way visibility decision through `isEnabled()`/`isSteamAvailable()`
+  without any `net.minecraft.*`/steamworks4j type on either side of the
+  assertion.
+- **Compatibility** — `gradlew build` succeeds for all three platform
+  modules with this revision's changes in place; the full three-way manual
+  matrix (Test Strategy, above) passes on all three targets, Steam both
+  running and not running, `config.enabled()` both `true` and `false`.
+
+## Open Questions (v1.2)
+- None remaining from specification v1.2's own explicitly-flagged
+  planning-phase items — the one item the spec left genuinely open either
+  way (FR6.7, reuse-existing-hover-model vs. always-expanded-bar) is
+  resolved and justified as Decision 17; the facade signal shape (spec
+  Public API item 5's two named options) is resolved as Decision 16; the
+  NFR7/Architecture composition-root consolidation choice (shared factory
+  vs. edit-all-three) is resolved as Decision 18. Any further questions
+  should surface during implementation as concrete compile-time findings
+  (none expected — this revision introduces no new steamworks4j/Minecraft
+  API surface, Dependencies above) or the visual-tuning/re-confirmation
+  passes this section's own Risks 16/17 already anticipate, not as open
+  design questions.
