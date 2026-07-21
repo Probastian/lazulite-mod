@@ -120,8 +120,14 @@ public final class SteamServerChannel extends AbstractServerChannel {
 
         SteamNettyChannel child = new SteamNettyChannel(this, remotePeer, networking);
         session.registerChild(child);
+        // fireChannelRead(child) triggers Netty's own ServerBootstrapAcceptor
+        // (registered internally by ServerBootstrap.childHandler(...)), which
+        // asynchronously calls childGroup().register(child, ...). Netty then
+        // fires channelActive itself once that registration completes and
+        // isActive() is true (already the case here) -- firing it manually,
+        // synchronously, right here throws "channel not registered to an
+        // event loop" since the async registration hasn't run yet.
         pipeline().fireChannelRead(child);
         pipeline().fireChannelReadComplete();
-        child.pipeline().fireChannelActive();
     }
 }

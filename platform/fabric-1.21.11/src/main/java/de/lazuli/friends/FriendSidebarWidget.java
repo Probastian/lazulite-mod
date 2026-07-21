@@ -72,12 +72,13 @@ public final class FriendSidebarWidget extends ClickableWidget {
     private static final int SIDEBAR_OUTER_BORDER = 0xFF808080;
     private static final int OWN_PROFILE_SEPARATOR = 0xFF808080;
 
-    // v1.2 status state (Steam unavailable, FR6.2 outcome 2) -- fixed
-    // friend-count-independent height (Decision 17), reusing Decision 14's
-    // "Busy" red for the collapsed indicator since no PersonaState-specific
+    // v1.2 status state (Steam unavailable, FR6.2 outcome 2) -- fills the
+    // full screen height like the content state (not a fixed small box), so
+    // its footprint reads consistently with the rest of the sidebar; reuses
+    // Decision 14's "Busy" red for the indicator since no PersonaState-specific
     // color applies to this feature-level warning.
-    private static final int STATUS_HEIGHT = ROW_HEIGHT * 2;
     private static final int STATUS_INDICATOR_COLOR = 0xFFD54141;
+    private static final int STATUS_BORDER_WIDTH = 3;
 
     private final FriendsSidebarFacade facade;
     private final AvatarTextureCache avatarTextureCache;
@@ -193,7 +194,7 @@ public final class FriendSidebarWidget extends ClickableWidget {
         boolean steamAvailable = facade.isSteamAvailable();
         List<FriendSummary> friends = steamAvailable ? sortedFriends() : List.of();
         Optional<FriendSummary> own = steamAvailable ? facade.localProfile() : Optional.empty();
-        int height = steamAvailable ? totalHeight(friends.size()) : STATUS_HEIGHT;
+        int height = steamAvailable ? totalHeight(friends.size()) : screenHeight;
         if (steamAvailable && friends.size() >= maxRows) {
             height = screenHeight;
         }
@@ -264,7 +265,7 @@ public final class FriendSidebarWidget extends ClickableWidget {
         context.fill(getX(), getY(), getX() + BORDER_WIDTH, getY() + height, SIDEBAR_OUTER_BORDER);
 
         if (!steamAvailable) {
-            drawStatus(context, getX(), getY(), width, showText);
+            drawStatus(context, getX(), getY(), width, height, showText);
             return;
         }
 
@@ -291,21 +292,25 @@ public final class FriendSidebarWidget extends ClickableWidget {
 
     /**
      * Renders the v1.2 Steam-unavailable status state (FR6.2 outcome 2, FR6.4-FR6.7)
-     * in place of the pinned own-profile row and scrollable friends list --
-     * a collapsed warning-colored indicator square, or (once hover-expanded,
-     * Decision 17) {@code facade.steamUnavailableMessage()}. Never reads
+     * in place of the pinned own-profile row and scrollable friends list.
+     * Collapsed: a warning-colored indicator square, same as before. Expanded
+     * (Decision 17): a full-height warning-colored left border (mirroring a
+     * normal friend row's own status-colored border, {@link #drawRow}) plus
+     * {@code facade.steamUnavailableMessage()} -- the indicator must persist
+     * in both states, not only while collapsed. Never reads
      * {@code facade.friends()}/{@code facade.localProfile()} (FR6.3(a)).
      */
-    private void drawStatus(DrawContext context, int x, int y, int width, boolean showText) {
+    private void drawStatus(DrawContext context, int x, int y, int width, int height, boolean showText) {
         if (!showText) {
             context.fill(x + ROW_PADDING, y + ROW_PADDING, x + ROW_PADDING + DISPLAY_SIZE,
                     y + ROW_PADDING + DISPLAY_SIZE, STATUS_INDICATOR_COLOR);
             return;
         }
+        context.fill(x, y, x + STATUS_BORDER_WIDTH, y + height, STATUS_INDICATOR_COLOR);
         var textRenderer = MinecraftClient.getInstance().textRenderer;
-        int textX = x + ROW_PADDING;
+        int textX = x + STATUS_BORDER_WIDTH + ROW_PADDING;
         int textY = y + ROW_PADDING;
-        int maxTextWidth = width - ROW_PADDING * 2;
+        int maxTextWidth = width - STATUS_BORDER_WIDTH - ROW_PADDING * 2;
         for (String line : wrapMessage(textRenderer::getWidth, facade.steamUnavailableMessage(), maxTextWidth)) {
             context.drawTextWithShadow(textRenderer, line, textX, textY, 0xFFFFFFFF);
             textY += 10;
@@ -430,7 +435,7 @@ public final class FriendSidebarWidget extends ClickableWidget {
         if (handleOnly && !panelOpen) {
             return isOverHandle(mouseX, mouseY);
         }
-        int height = facade.isSteamAvailable() ? totalHeight(facade.friends().size()) : STATUS_HEIGHT;
+        int height = facade.isSteamAvailable() ? totalHeight(facade.friends().size()) : screenHeight;
         int width = expanded ? EXPANDED_WIDTH : COLLAPSED_WIDTH;
         return mouseX >= getX() && mouseX < getX() + width && mouseY >= getY() && mouseY < getY() + height;
     }
