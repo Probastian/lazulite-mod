@@ -55,6 +55,19 @@ tasks.named('runClient') {
 	dependsOn tasks.named('generateSteamAppId')
 }
 
+// VS Code's Java launch configs invoke Loom's 'configureClientLaunch' as their
+// preLaunchTask (they run the built classpath directly rather than going
+// through 'runClient'), so steam_appid.txt must be generated here too or a
+// fresh clone launched from VS Code silently skips Steam initialization.
+// Loom registers 'configureClientLaunch' inside its own afterEvaluate block,
+// so ours must run in afterEvaluate too (tasks.named(...) at config time
+// fails since the task doesn't exist yet).
+afterEvaluate {
+	tasks.named('configureClientLaunch') {
+		dependsOn tasks.named('generateSteamAppId')
+	}
+}
+
 processResources {
 	def version = project.version
 	inputs.property "version", version
