@@ -1,0 +1,14 @@
+dependencies {
+	// RichPresenceFacade (api/richpresence) appears in this feature's own
+	// public accessor signatures (RichPresenceFacadeImpl), so this leaks to
+	// consumers -- hence `api`, not `implementation` (same rationale as every
+	// other feature module's own build.gradle).
+	api project(':api')
+
+	// SteamFriendsGateway (the shared services-layer seam) is consumed by
+	// RichPresencePublisher but never re-exposed on this feature's own public
+	// surface -- so `services` stays `implementation`.
+	implementation project(':services')
+
+	// JUnit 5/AssertJ/Mockito are provided to every subproject by the root build.gradle.
+}

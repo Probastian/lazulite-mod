@@ -409,7 +409,7 @@ public final class FriendSidebarWidget extends ClickableWidget {
             return;
         }
 
-        own.ifPresent(profile -> drawRow(context, profile, getX(), getY(), width, showText));
+        own.ifPresent(profile -> drawRow(context, profile, getX(), getY(), width, showText, MinecraftClient.getInstance().world != null));
 
         // v2 ("Polish pass") reorder: the "who can join" dropdown strip
         // (FR7.3) now renders directly below the own-profile row and ABOVE
@@ -453,7 +453,7 @@ public final class FriendSidebarWidget extends ClickableWidget {
         float subPixel = scrollPixelOffset - startIndex * (float) ROW_HEIGHT;
         int rowY = rowsTop - Math.round(subPixel);
         for (int i = startIndex; i < friends.size() && rowY < rowsBottom; i++) {
-            drawRow(context, friends.get(i), getX(), rowY, width, showText);
+            drawRow(context, friends.get(i), getX(), rowY, width, showText, friends.get(i).inGame());
             rowY += ROW_HEIGHT;
         }
         context.disableScissor();
@@ -549,8 +549,8 @@ public final class FriendSidebarWidget extends ClickableWidget {
         };
     }
 
-    private void drawRow(DrawContext context, FriendSummary friend, int x, int y, int width, boolean showText) {
-        int statusColor = facade.stateMachine().statusColorArgb(friend.personaState(), friend.inGame());
+    private void drawRow(DrawContext context, FriendSummary friend, int x, int y, int width, boolean showText, boolean inGame) {
+        int statusColor = facade.stateMachine().statusColorArgb(friend.personaState(), inGame);
         context.fill(x, y, x + BORDER_WIDTH, y + ROW_HEIGHT, statusColor);
 
         Identifier avatarTexture = avatarTextureCache.getOrUpload(friend.steamId64(),
@@ -560,7 +560,7 @@ public final class FriendSidebarWidget extends ClickableWidget {
                     x + ROW_PADDING + DISPLAY_SIZE, y + ROW_PADDING + DISPLAY_SIZE, 0f, 1f, 0f, 1f);
         } else {
             context.fill(x + ROW_PADDING, y + ROW_PADDING, x + ROW_PADDING + DISPLAY_SIZE,
-                    y + ROW_PADDING + DISPLAY_SIZE, facade.stateMachine().statusColorArgb(friend.personaState(), friend.inGame()));
+                    y + ROW_PADDING + DISPLAY_SIZE, facade.stateMachine().statusColorArgb(friend.personaState(), inGame));
         }
 
         if (showText) {
@@ -572,7 +572,7 @@ public final class FriendSidebarWidget extends ClickableWidget {
             context.drawTextWithShadow(MinecraftClient.getInstance().textRenderer, friend.personaName(),
                     x + ROW_PADDING + DISPLAY_SIZE + 6, y + 2, 0xFFFFFFFF);
             String status = facade.richPresenceStatus(friend.steamId64())
-                    .orElseGet(() -> facade.stateMachine().statusLabel(friend.personaState(), friend.inGame()));
+                    .orElseGet(() -> facade.stateMachine().statusLabel(friend.personaState(), inGame));
             context.drawTextWithShadow(MinecraftClient.getInstance().textRenderer, status,
                     x + ROW_PADDING + DISPLAY_SIZE + 6, y + 11, statusColor);
         }

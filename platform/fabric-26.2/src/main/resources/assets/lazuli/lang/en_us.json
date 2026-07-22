@@ -1,5 +1,16 @@
 {
 	"lazuli.worldhosting.disconnect.host_closed": "The host closed the world.",
 	"lazuli.worldhosting.disconnect.not_friend": "You are not a Steam friend of the host.",
-	"lazuli.worldhosting.disconnect.steam_error": "Steam P2P connection failed: %s"
+	"lazuli.worldhosting.disconnect.steam_error": "Steam P2P connection failed: %s",
+	"lazuli.presence.paused": "Paused",
+	"lazuli.presence.spectating": "Spectating",
+	"lazuli.presence.exploring": "Exploring %s",
+	"lazuli.presence.staying": "Staying in %s",
+	"lazuli.presence.building": "Building in %s",
+	"lazuli.presence.digging_around": "Digging around",
+	"lazuli.presence.driving": "Driving through %s",
+	"lazuli.presence.sailing": "Sailing through %s",
+	"lazuli.presence.near_village": "Near a Village in %s",
+	"lazuli.presence.dimension_suffix.nether": "%s in the Nether",
+	"lazuli.presence.dimension_suffix.end": "%s in the End"
 }

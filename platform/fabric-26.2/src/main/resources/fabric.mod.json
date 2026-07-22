@@ -24,7 +24,8 @@
 			"de.lazuli.SteamWorldHostingClientInitializer",
 			"de.lazuli.SteamCloudSyncClientInitializer",
 			"de.lazuli.FriendsSidebarClientInitializer",
-			"de.lazuli.ServerBrowserClientInitializer"
+			"de.lazuli.ServerBrowserClientInitializer",
+			"de.lazuli.RichPresenceClientInitializer"
 		]
 	},
 	"mixins": [
