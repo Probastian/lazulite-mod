@@ -128,8 +128,8 @@ public final class FriendSidebarStateMachine {
     public int statusColorArgb(int personaState) {
         return switch (personaState) {
             case 1, 5, 6 -> 0xFF4A90D9; // Online, LookingToTrade, LookingToPlay (blue)
-            case 3, 4 -> 0xFF2D5683;    // Away, Snooze (greyed-blue)
-            case 2 -> 0xFFE3A008;       // Busy (yellow)
+            case 3, 4 -> 0XFF6184AA;    // Away, Snooze (greyed-blue)
+            case 2 -> 0XFF3F5E7E;       // Busy (yellow)
             default -> 0xFF898989;     // Offline (0) / Invisible (7) (grey)
         };
     }

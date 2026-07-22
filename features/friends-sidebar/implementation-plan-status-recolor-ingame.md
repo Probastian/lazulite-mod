@@ -8,7 +8,7 @@ This plan touches `api/friends/FriendSummary.java`, `services/steamworks/SteamFr
 ## Existing Implementation (research, this plan)
 
 **`FriendSidebarStateMachine.java`** (`features/friends-sidebar/src/main/java/de/lazuli/features/friendssidebar/services/FriendSidebarStateMachine.java`, 196 lines, zero `net.minecraft.*`/steamworks4j import, per its own class Javadoc "NFR1" constraint):
-- `statusColorArgb(int personaState)` — lines 127-134. Current mapping: `1,5,6 -> 0xFF5BA32F` (green, "Online/LookingToTrade/LookingToPlay"), `3,4 -> 0xFF4A90D9` (blue, "Away/Snooze"), `2 -> 0xFFE3A008` (yellow, "Busy"), `default -> 0xFF898989` (grey, "Offline(0)/Invisible(7)"). This is the exact 4-branch `switch` FR-R1-FR-R4 recolor two of.
+- `statusColorArgb(int personaState)` — lines 127-134. Current mapping: `1,5,6 -> 0xFF5BA32F` (green, "Online/LookingToTrade/LookingToPlay"), `3,4 -> 0xFF4A90D9` (blue, "Away/Snooze"), `2 -> 0XFF3F5E7E` (yellow, "Busy"), `default -> 0xFF898989` (grey, "Offline(0)/Invisible(7)"). This is the exact 4-branch `switch` FR-R1-FR-R4 recolor two of.
 - `statusSortRank(int personaState)` — lines 142-149. Current mapping: `1,5,6 -> 0`, `3,4 -> 1`, `2 -> 2`, `default -> 3`.
 - `sortForDisplay(List<FriendSummary>)` — lines 156-162. Comparator keys on `statusSortRank(f.personaState())` then case-insensitive `personaName`.
 - `statusLabel(int personaState)` — lines 184-195 (note: a stray/orphaned Javadoc block at lines 164-168, meant for this method, currently sits above the unrelated `nextJoinPolicy` method — pre-existing doc-comment misplacement, not part of this amendment's scope, leave as-is unless the recolor edit naturally touches that region). Current mapping: `1->"Online"`, `2->"Busy"`, `3->"Away"`, `4->"Snooze"`, `5->"Looking to Trade"`, `6->"Looking to Play"`, `7->"Invisible"`, `default->"Offline"`.
@@ -62,7 +62,7 @@ None. No new classes/packages/Gradle modules.
    - `localProfile()` (lines 135-148): update the construction at line 147 to `new FriendSummary(steamId64, personaName, personaState, avatarHandle, false, 0L, false, null)` (FR-D2 — own-profile row always passes `gameAppId = 0L`).
 
 6. **`features/friends-sidebar/src/main/java/de/lazuli/features/friendssidebar/services/FriendSidebarStateMachine.java`**
-   - Recolor `statusColorArgb(int personaState)` (lines 127-134, FR-R1-FR-R4): change `case 1, 5, 6 -> 0xFF5BA32F` to `case 1, 5, 6 -> 0xFF4A90D9` (blue) and `case 3, 4 -> 0xFF4A90D9` to `case 3, 4 -> 0xFF2D5683` (greyed-blue); `case 2 -> 0xFFE3A008` and `default -> 0xFF898989` remain unchanged (FR-R3/FR-R4). Update the method's Javadoc (currently states "Online/LookingToTrade/LookingToPlay share one green" at lines 121-122) to describe the new blue/greyed-blue/yellow/grey palette instead of green.
+   - Recolor `statusColorArgb(int personaState)` (lines 127-134, FR-R1-FR-R4): change `case 1, 5, 6 -> 0xFF5BA32F` to `case 1, 5, 6 -> 0xFF4A90D9` (blue) and `case 3, 4 -> 0xFF4A90D9` to `case 3, 4 -> 0XFF6184AA` (greyed-blue); `case 2 -> 0XFF3F5E7E` and `default -> 0xFF898989` remain unchanged (FR-R3/FR-R4). Update the method's Javadoc (currently states "Online/LookingToTrade/LookingToPlay share one green" at lines 121-122) to describe the new blue/greyed-blue/yellow/grey palette instead of green.
    - Add new overload `statusColorArgb(int personaState, boolean inGame)` (FR-I2, Public API item 1): `return inGame ? 0xFF5BA32F : statusColorArgb(personaState);` — delegates to the just-recolored bare-`int` overload, so the freed-up old-green value becomes the in-game color (FR-R5) with zero duplicated `switch` logic.
    - Add new overload `statusSortRank(int personaState, boolean inGame)` (FR-I3, Public API item 2): `if (inGame) return 0;` then `return switch (personaState) { case 1,5,6 -> 1; case 3,4 -> 2; case 2 -> 3; default -> 4; };` — i.e. do not delegate to the bare-`int` overload here (its return values are one less than what's needed once in-game occupies rank 0); implement as its own small `switch` per FR-I3's explicit concrete mapping, to avoid an off-by-one delegation bug. Leave the existing bare-`int` `statusSortRank(int personaState)` (lines 142-149) completely unchanged.
    - Update `sortForDisplay(List<FriendSummary>)` (lines 156-162, FR-I5): change the comparator key from `statusSortRank(f.personaState())` to `statusSortRank(f.personaState(), f.inGame())`. No signature change to `sortForDisplay` itself.
@@ -102,7 +102,7 @@ No new external (non-Fabric, non-steamworks4j-already-present) dependency. `Stea
 
 ## Test Strategy
 - **`FriendSidebarStateMachineTest`** (`features/friends-sidebar/src/test/java/de/lazuli/features/friendssidebar/services/FriendSidebarStateMachineTest.java`), plain-JVM, no `net.minecraft.*`/steamworks4j import needed (consistent with the class under test):
-  - Update/add color assertions for the recolor: `statusColorArgb(1) == statusColorArgb(5) == statusColorArgb(6) == 0xFF4A90D9` (blue, FR-R1); `statusColorArgb(3) == statusColorArgb(4) == 0xFF2D5683` (greyed-blue, FR-R2); `statusColorArgb(2) == 0xFFE3A008` unchanged (FR-R3); `statusColorArgb(0) == statusColorArgb(7) == 0xFF898989` unchanged (FR-R4). (The existing grouping-only assertions at lines 80-97 remain valid as-is per Risk 5; new assertions should pin the actual hex values to guard against future accidental drift, which today's tests do not do.)
+  - Update/add color assertions for the recolor: `statusColorArgb(1) == statusColorArgb(5) == statusColorArgb(6) == 0xFF4A90D9` (blue, FR-R1); `statusColorArgb(3) == statusColorArgb(4) == 0XFF6184AA` (greyed-blue, FR-R2); `statusColorArgb(2) == 0XFF3F5E7E` unchanged (FR-R3); `statusColorArgb(0) == statusColorArgb(7) == 0xFF898989` unchanged (FR-R4). (The existing grouping-only assertions at lines 80-97 remain valid as-is per Risk 5; new assertions should pin the actual hex values to guard against future accidental drift, which today's tests do not do.)
   - New: `statusColorArgb(personaState, true) == 0xFF5BA32F` for every `personaState` value 0-7 (FR-I2/FR-R5) — in-game overrides every branch.
   - New: `statusColorArgb(personaState, false) == statusColorArgb(personaState)` for every `personaState` 0-7 (delegation correctness).
   - New: `statusSortRank(anyPersonaState, true) == 0` for every `personaState` 0-7 (FR-I3).
@@ -124,8 +124,8 @@ No new external (non-Fabric, non-steamworks4j-already-present) dependency. `Stea
 ## Acceptance Criteria
 Per `features/friends-sidebar/specification-status-recolor-ingame.md`:
 - FR-R1: `statusColorArgb(1|5|6)` (bare-`int` overload) returns `0xFF4A90D9`.
-- FR-R2: `statusColorArgb(3|4)` (bare-`int` overload) returns `0xFF2D5683`.
-- FR-R3: `statusColorArgb(2)` unchanged, `0xFFE3A008`.
+- FR-R2: `statusColorArgb(3|4)` (bare-`int` overload) returns `0XFF6184AA`.
+- FR-R3: `statusColorArgb(2)` unchanged, `0XFF3F5E7E`.
 - FR-R4: `statusColorArgb(0|7)` unchanged, `0xFF898989`.
 - FR-R5: `statusColorArgb(anyPersonaState, true)` returns `0xFF5BA32F`.
 - FR-I1: in-game-ness is sourced solely from `FriendSummary.inGame()`; no new resolution logic added for the flag itself.

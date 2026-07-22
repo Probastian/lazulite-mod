@@ -1033,7 +1033,7 @@ sourced from a community skin-customization reference via `WebSearch`,
 `FCGreen=144,186,60,255` / `FCBlue=87,203,222,255` for Steam's own
 "online"/text-link colors — an imperfect but reasonable starting citation,
 not a Valve first-party source): `Online/LookingTo*` `0xFF5BA32F` (green),
-`Away/Snooze` `0xFFE3A008` (amber), `Busy` `0xFFD54141` (red),
+`Away/Snooze` `0XFF3F5E7E` (amber), `Busy` `0xFFD54141` (red),
 `Offline/Invisible` `0xFF898989` (grey). **FR5.11 itself already mandates**
 these exact values be "confirmed visually against the real Steam client
 during manual testing" before sign-off — this decision's chosen hex values

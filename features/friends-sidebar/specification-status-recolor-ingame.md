@@ -23,8 +23,8 @@ This is filed as a v1.6 amendment to `features/friends-sidebar/specification.md`
 
 **Color palette (delta over `FriendSidebarStateMachine.statusColorArgb`, current lines 127-134):**
 - FR-R1. `Online` (1) / `LookingToTrade` (5) / `LookingToPlay` (6): change from `0xFF5BA32F` (green) to `0xFF4A90D9` (blue).
-- FR-R2. `Away` (3) / `Snooze` (4): change from `0xFF4A90D9` (blue) to `0xFF2D5683` (greyed-blue).
-- FR-R3. `Busy` (2): unchanged, `0xFFE3A008` (yellow).
+- FR-R2. `Away` (3) / `Snooze` (4): change from `0xFF4A90D9` (blue) to `0XFF6184AA` (greyed-blue).
+- FR-R3. `Busy` (2): unchanged, `0XFF3F5E7E` (yellow).
 - FR-R4. `Offline` (0) / `Invisible` (7): unchanged, `0xFF898989` (grey).
 - FR-R5. New "In Game" tier color: `0xFF5BA32F` (the exact green value `Online` previously used).
 

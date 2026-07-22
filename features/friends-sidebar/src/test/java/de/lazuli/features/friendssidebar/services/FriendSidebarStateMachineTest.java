@@ -122,13 +122,13 @@ class FriendSidebarStateMachineTest {
 
     @Test
     void statusColorArgbRecolorPinsAwaySnoozeToGreyedBlue() {
-        assertThat(stateMachine.statusColorArgb(3)).isEqualTo(0xFF2D5683);
-        assertThat(stateMachine.statusColorArgb(4)).isEqualTo(0xFF2D5683);
+        assertThat(stateMachine.statusColorArgb(3)).isEqualTo(0XFF6184AA);
+        assertThat(stateMachine.statusColorArgb(4)).isEqualTo(0XFF6184AA);
     }
 
     @Test
     void statusColorArgbBusyAndOfflineUnchangedByRecolor() {
-        assertThat(stateMachine.statusColorArgb(2)).isEqualTo(0xFFE3A008);
+        assertThat(stateMachine.statusColorArgb(2)).isEqualTo(0XFF3F5E7E);
         assertThat(stateMachine.statusColorArgb(0)).isEqualTo(0xFF898989);
         assertThat(stateMachine.statusColorArgb(7)).isEqualTo(0xFF898989);
     }
