@@ -1,6 +1,8 @@
 package de.lazuli;
 
 import de.lazuli.api.worldhosting.FriendHostingStatusReader;
+import de.lazuli.api.worldhosting.HostedWorldStatus;
+import de.lazuli.api.worldhosting.WorldInviteSender;
 import de.lazuli.api.worldhosting.WorldJoinRequester;
 import de.lazuli.features.friendssidebar.api.FriendsSidebarConfig;
 import de.lazuli.features.friendssidebar.api.JoinPolicy;
@@ -13,6 +15,7 @@ import de.lazuli.features.worldhosting.services.HostingLifecycle;
 import de.lazuli.features.worldhosting.services.HostingPresenceScanner;
 import de.lazuli.features.worldhosting.services.JoinGatePolicy;
 import de.lazuli.features.worldhosting.services.NoopFriendHostingStatusReader;
+import de.lazuli.features.worldhosting.services.NoopWorldInviteSender;
 import de.lazuli.features.worldhosting.services.NoopWorldJoinRequester;
 import de.lazuli.services.steamworks.SteamFriendsGateway;
 import de.lazuli.services.steamworks.SteamworksService;
@@ -63,7 +66,8 @@ public final class SteamWorldHostingClientInitializer implements ClientModInitia
             // FR0.2/FR0.3: world hosts as vanilla, no Steam tunnel, no Rich
             // Presence; the reused Friends Sidebar "Join game" slot stays
             // disabled via the Noop bridge pair (never null on require()).
-            WorldHostingBridgeHandoff.publish(new NoopWorldJoinRequester(), new NoopFriendHostingStatusReader());
+            WorldHostingBridgeHandoff.publish(new NoopWorldJoinRequester(), new NoopFriendHostingStatusReader(),
+                    new NoopWorldInviteSender());
             return;
         }
 
@@ -94,7 +98,22 @@ public final class SteamWorldHostingClientInitializer implements ClientModInitia
 
         WorldJoinRequester joinRequester = SteamAmbientSession.INSTANCE::connectToSteamPeer;
         FriendHostingStatusReader statusReader = scanner;
-        WorldHostingBridgeHandoff.publish(joinRequester, statusReader);
+        WorldInviteSender inviteSender = new WorldInviteSender() {
+            @Override
+            public boolean isHosting() {
+                return lifecycle.currentStatus().hosting();
+            }
+
+            @Override
+            public boolean inviteFriend(long friendSteamId64) {
+                HostedWorldStatus status = lifecycle.currentStatus();
+                if (!status.hosting()) {
+                    return false; // FR-INV5: race guard, never a stale/empty connect string
+                }
+                return gateway.inviteToGame(friendSteamId64, ConnectStringCodec.encode(status.localSteamId64()));
+            }
+        };
+        WorldHostingBridgeHandoff.publish(joinRequester, statusReader, inviteSender);
 
         // FR3.1 path 1: Steam's native overlay "Join Game" callback.
         gateway.setJoinRequestedListener((friendSteamId64, connect) -> {

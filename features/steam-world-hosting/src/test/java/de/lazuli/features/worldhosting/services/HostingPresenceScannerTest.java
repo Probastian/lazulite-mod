@@ -131,6 +131,7 @@ class HostingPresenceScannerTest {
         @Override public Optional<String> friendGameConnectHint(long steamId64) { return Optional.empty(); }
         @Override public boolean setLocalRichPresence(String key, String value) { return false; }
         @Override public void clearLocalRichPresence() { }
+        @Override public boolean inviteToGame(long friendSteamId64, String connectString) { return false; }
         @Override public int avatarHandle(long steamId64) { return 0; }
         @Override public Optional<byte[]> avatarRgba(long steamId64) { return Optional.empty(); }
         @Override public boolean isOverlayEnabled() { return false; }

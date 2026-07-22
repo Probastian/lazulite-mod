@@ -139,6 +139,19 @@ public interface SteamFriendsGateway {
     void activateOverlayProfile(long steamId64);
 
     /**
+     * Sends a real Steam invite for the given connect string to the given
+     * friend ({@code SteamFriends.inviteUserToGame(SteamID, String)}).
+     * Never throws; fails closed to {@code false}.
+     *
+     * @param friendSteamId64 the friend to invite
+     * @param connectString   the Rich-Presence-style connect string to embed
+     *                        in the invite (see
+     *                        {@code ConnectStringCodec.encode(long)})
+     * @return {@code true} on success
+     */
+    boolean inviteToGame(long friendSteamId64, String connectString);
+
+    /**
      * Registers a listener for Steam's own "Join Game" overlay callback
      * ({@code onGameRichPresenceJoinRequested}, FR3.1 path 1). The listener
      * receives the inviting friend's {@code SteamID64} and the raw Rich

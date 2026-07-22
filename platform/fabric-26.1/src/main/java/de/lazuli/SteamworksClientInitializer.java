@@ -5,6 +5,7 @@ import de.lazuli.services.steamworks.SteamAppIdResolver;
 import de.lazuli.services.steamworks.SteamFriendsGateway;
 import de.lazuli.services.steamworks.SteamworksService;
 import de.lazuli.services.steamworks.SteamworksSteamFriendsGateway;
+import de.lazuli.ui.FabricToastService;
 
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
@@ -48,6 +49,10 @@ public final class SteamworksClientInitializer implements ClientModInitializer {
 
     @Override
     public void onInitializeClient() {
+        // Phase 0 (specification-invite-to-game.md D1): no Steam/config gate --
+        // publish unconditionally, before everything else in this initializer.
+        ToastServiceHandoff.publish(new FabricToastService());
+
         long appId = SteamAppIdResolver.resolve(System::getProperty);
         Path nativeLibraryDirectory = FabricLoader.getInstance()
                 .getConfigDir()

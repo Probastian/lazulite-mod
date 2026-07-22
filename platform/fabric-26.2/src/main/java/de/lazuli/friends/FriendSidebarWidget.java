@@ -105,7 +105,24 @@ public final class FriendSidebarWidget extends AbstractWidget {
     // not by DropdownWidget itself (platform/ui/specification.md UI section
     // -- layout constants are the embedder's own choice); background/text
     // colors are now owned entirely by DropdownWidget (v1.4).
-    private static final int DROPDOWN_HEIGHT = ROW_HEIGHT;
+    //
+    // v2 ("Polish pass") fix: sized for a single line of text (font height +
+    // top/bottom ROW_PADDING) rather than reusing the avatar-sized
+    // ROW_HEIGHT -- the dropdown never draws an avatar, so reusing
+    // ROW_HEIGHT left ~16px of unused vertical space at the bottom of every
+    // row. Computed lazily from the live font (rather than a hardcoded
+    // magic number) since it's only needed once Minecraft's font is
+    // actually available.
+    private static int dropdownRowHeight() {
+        return Minecraft.getInstance().font.lineHeight + ROW_PADDING * 2;
+    }
+
+    // v2 ("Polish pass") fix: horizontal margin between the sidebar's own
+    // edges and the dropdown box, so it reads as a discrete floating button
+    // rather than being pasted flush onto the sidebar -- reuses ROW_PADDING,
+    // the same inset value the rest of this widget's own content (e.g.
+    // avatar rows) already uses.
+    private static final int DROPDOWN_MARGIN = ROW_PADDING;
 
     private final FriendsSidebarFacade facade;
     private final AvatarTextureCache avatarTextureCache;
@@ -137,7 +154,7 @@ public final class FriendSidebarWidget extends AbstractWidget {
     // defaults to the closed-row height before the first render / while not
     // visible, so listTopOffset() never reads an uninitialized 0.
     private final DropdownWidget joinPolicyDropdown;
-    private int lastDropdownHeight = DROPDOWN_HEIGHT;
+    private int lastDropdownHeight = dropdownRowHeight();
 
     public interface RowClickListener {
         void onRowClicked(FriendSummary friend, int mouseX, int mouseY, int button, boolean isOwnProfile);
@@ -151,7 +168,7 @@ public final class FriendSidebarWidget extends AbstractWidget {
      */
     public FriendSidebarWidget(FriendsSidebarFacade facade, AvatarTextureCache avatarTextureCache,
             RowClickListener rowClickListener, boolean handleOnly) {
-        super(0, 0, EXPANDED_WIDTH, listTopOffset(true, DROPDOWN_HEIGHT) + ROW_HEIGHT * DEFAULT_MAX_ROWS, Component.literal("Friends"));
+        super(0, 0, EXPANDED_WIDTH, listTopOffset(true, dropdownRowHeight()) + ROW_HEIGHT * DEFAULT_MAX_ROWS, Component.literal("Friends"));
         this.facade = facade;
         this.avatarTextureCache = avatarTextureCache;
         this.rowClickListener = rowClickListener;
@@ -173,7 +190,7 @@ public final class FriendSidebarWidget extends AbstractWidget {
                 initialSelectedIndex = i;
             }
         }
-        this.joinPolicyDropdown = new DropdownWidget(options, initialSelectedIndex,
+        this.joinPolicyDropdown = new DropdownWidget("Who can join:", options, initialSelectedIndex,
                 index -> facade.selectJoinPolicy(displayOrder[index]));
     }
 
@@ -206,8 +223,14 @@ public final class FriendSidebarWidget extends AbstractWidget {
     }
 
     private static int listTopOffset(boolean expanded, int dropdownHeight) {
+        // v2 ("Polish pass") reorder: [profile row, gap, (dropdown, gap)
+        // while expanded, separator, gap] -- the dropdown now sits ABOVE the
+        // separator (between the own-profile row and the separator) instead
+        // of below it, so its height/gap are added BEFORE the separator/gap
+        // terms rather than after. Must stay in lockstep with renderNow()'s
+        // own dropdownY/separatorY arithmetic below.
         int base = ROW_HEIGHT + SEPARATOR_GAP + SEPARATOR_HEIGHT + SEPARATOR_GAP;
-        return expanded ? base + dropdownHeight : base;
+        return expanded ? base + dropdownHeight + SEPARATOR_GAP : base;
     }
 
     /** @see #TOP_INSET */
@@ -374,26 +397,37 @@ public final class FriendSidebarWidget extends AbstractWidget {
 
         own.ifPresent(profile -> drawRow(guiGraphics, profile, getX(), getY(), width, showText));
 
-        int separatorY = getY() + ROW_HEIGHT + SEPARATOR_GAP;
-        guiGraphics.fill(getX(), separatorY, getX() + width, separatorY + SEPARATOR_HEIGHT, OWN_PROFILE_SEPARATOR);
-
-        // v1.3 amendment: "who can join" dropdown strip (FR7.3) -- only
-        // rendered/hit-testable once expanded, reusing the exact same
-        // showText condition the avatar-name text already uses (Risk 2), so
-        // the render call and the stored click-hit bounds never drift apart
-        // across an animation frame.
+        // v2 ("Polish pass") reorder: the "who can join" dropdown strip
+        // (FR7.3) now renders directly below the own-profile row and ABOVE
+        // the separator, instead of below the separator -- only rendered/
+        // hit-testable once expanded, reusing the exact same showText
+        // condition the avatar-name text already uses (Risk 2), so the
+        // render call and the stored click-hit bounds never drift apart
+        // across an animation frame. The separator's Y is therefore now
+        // conditional on the dropdown's own height, rather than the other
+        // way around (must stay in lockstep with listTopOffset() above).
         dropdownVisible = expanded && showText;
         if (dropdownVisible) {
-            dropdownX = getX();
-            dropdownY = separatorY + SEPARATOR_HEIGHT + SEPARATOR_GAP;
-            dropdownWidth = width;
+            // v2 ("Polish pass") fix: inset horizontally from the sidebar's
+            // own left/right edges so the dropdown reads as a discrete
+            // floating button rather than being pasted flush onto the
+            // sidebar (consistent with this widget's own ROW_PADDING inset
+            // elsewhere).
+            dropdownX = getX() + DROPDOWN_MARGIN;
+            dropdownY = getY() + ROW_HEIGHT + SEPARATOR_GAP;
+            dropdownWidth = width - DROPDOWN_MARGIN * 2;
             lastDropdownHeight = joinPolicyDropdown.render(guiGraphics, dropdownX, dropdownY, dropdownWidth,
-                    DROPDOWN_HEIGHT, mouseX, mouseY);
+                    dropdownRowHeight(), mouseX, mouseY);
         } else {
             dropdownX = 0;
             dropdownY = 0;
             dropdownWidth = 0;
         }
+
+        int separatorY = dropdownVisible
+                ? dropdownY + lastDropdownHeight + SEPARATOR_GAP
+                : getY() + ROW_HEIGHT + SEPARATOR_GAP;
+        guiGraphics.fill(getX(), separatorY, getX() + width, separatorY + SEPARATOR_HEIGHT, OWN_PROFILE_SEPARATOR);
 
         float maxOffsetPx = Math.max(0, friends.size() - maxRows) * (float) ROW_HEIGHT;
         scrollPixelOffset = Math.max(0, Math.min(scrollPixelOffset, maxOffsetPx));
@@ -409,6 +443,22 @@ public final class FriendSidebarWidget extends AbstractWidget {
             rowY += ROW_HEIGHT;
         }
         guiGraphics.disableScissor();
+    }
+
+    /**
+     * v1.5 amendment: forwards to {@link DropdownWidget#renderOpenOverlay}
+     * when the join-policy dropdown is open, no-op otherwise -- invoked by
+     * {@code FabricFriendsSidebarInjector} at the
+     * {@link de.lazuli.api.friends.FriendsSidebarZOrder#DROPDOWN_OVERLAY}
+     * pass, separately from (and after) this widget's own
+     * {@link #renderNow} pass, so the open option list draws on top of the
+     * friend-row list rather than being clipped/covered by it (v1.5-FR7.19).
+     */
+    public void renderDropdownOverlay(GuiGraphicsExtractor guiGraphics, int mouseX, int mouseY, float delta) {
+        if (!joinPolicyDropdown.isOpen()) {
+            return;
+        }
+        joinPolicyDropdown.renderOpenOverlay(guiGraphics, mouseX, mouseY, delta);
     }
 
     /**
@@ -537,7 +587,7 @@ public final class FriendSidebarWidget extends AbstractWidget {
             return false;
         }
         if (dropdownVisible && joinPolicyDropdown.mouseClicked(event.x(), event.y(),
-                dropdownX, dropdownY, dropdownWidth, DROPDOWN_HEIGHT)) {
+                dropdownX, dropdownY, dropdownWidth, dropdownRowHeight())) {
             return true;
         }
         int relativeY = (int) event.y() - getY();

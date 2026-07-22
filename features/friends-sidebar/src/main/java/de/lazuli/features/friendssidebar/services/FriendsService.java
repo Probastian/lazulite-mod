@@ -1,6 +1,7 @@
 package de.lazuli.features.friendssidebar.services;
 
 import de.lazuli.api.friends.FriendSummary;
+import de.lazuli.api.worldhosting.WorldInviteSender;
 import de.lazuli.features.friendssidebar.api.FriendsSidebarConfig;
 import de.lazuli.services.steamworks.SteamFriendsGateway;
 
@@ -43,6 +44,7 @@ public final class FriendsService implements FriendsDataSource {
     private final SteamFriendsGateway gateway;
     private final FriendsSidebarConfig config;
     private final Consumer<String> warnLogger;
+    private final WorldInviteSender worldInviteSender;
 
     private final Map<Long, FriendSummary> friendsByIdSnapshot = new HashMap<>();
     private final Map<Long, String> richPresenceById = new HashMap<>();
@@ -56,12 +58,19 @@ public final class FriendsService implements FriendsDataSource {
      * @param gateway    the shared Steam-friends seam (Decision 1)
      * @param config     this feature's own config (used for
      *                   {@link FriendsSidebarConfig#refreshIntervalSeconds()})
-     * @param warnLogger sink for non-fatal warnings -- never throws (NFR2)
+     * @param warnLogger        sink for non-fatal warnings -- never throws (NFR2)
+     * @param worldInviteSender Steam World Hosting's invite operation for the
+     *                          reused "Invite to game" context-menu slot
+     *                          (specification-invite-to-game.md D5); nullable,
+     *                          mirroring the existing nullable bridge
+     *                          convention -- unused when {@code null}
      */
-    public FriendsService(SteamFriendsGateway gateway, FriendsSidebarConfig config, Consumer<String> warnLogger) {
+    public FriendsService(SteamFriendsGateway gateway, FriendsSidebarConfig config, Consumer<String> warnLogger,
+            WorldInviteSender worldInviteSender) {
         this.gateway = gateway;
         this.config = config;
         this.warnLogger = warnLogger;
+        this.worldInviteSender = worldInviteSender;
     }
 
     @Override
@@ -165,7 +174,14 @@ public final class FriendsService implements FriendsDataSource {
 
     @Override
     public void onInvite(long steamId64) {
-        // FR3.3: v1 disabled placeholder -- unreachable from the UI (Decision 6).
+        // FR-INV4/FR-INV5: kept for FriendActionListener completeness and any
+        // future non-context-menu caller; the context-menu click path itself
+        // bypasses this and calls WorldInviteSender directly (Decision 2 /
+        // mirrors "Join game"'s existing onJoin bypass).
+        if (worldInviteSender == null || !worldInviteSender.isHosting()) {
+            return;
+        }
+        worldInviteSender.inviteFriend(steamId64);
     }
 
     @Override

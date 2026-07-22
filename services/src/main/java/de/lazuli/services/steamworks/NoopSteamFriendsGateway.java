@@ -109,6 +109,11 @@ public final class NoopSteamFriendsGateway implements SteamFriendsGateway {
     }
 
     @Override
+    public boolean inviteToGame(long friendSteamId64, String connectString) {
+        return false;
+    }
+
+    @Override
     public void setJoinRequestedListener(BiConsumer<Long, String> listener) {
         // Intentionally empty -- Steam unavailable, no overlay callbacks fire.
     }

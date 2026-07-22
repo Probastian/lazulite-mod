@@ -3,8 +3,10 @@ package de.lazuli.friends;
 import de.lazuli.LazuliMod;
 import de.lazuli.api.friends.FriendSummary;
 import de.lazuli.api.worldhosting.FriendHostingStatusReader;
+import de.lazuli.api.worldhosting.WorldInviteSender;
 import de.lazuli.api.worldhosting.WorldJoinRequester;
 import de.lazuli.features.friendssidebar.services.FriendsSidebarFacade;
+import de.lazuli.services.ui.ToastService;
 
 import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenKeyboardEvents;
@@ -49,6 +51,8 @@ public final class FabricFriendsSidebarInjector {
     private final AvatarTextureCache avatarTextureCache;
     private final WorldJoinRequester worldJoinRequester;
     private final FriendHostingStatusReader hostingStatusReader;
+    private final WorldInviteSender worldInviteSender;
+    private final ToastService toastService;
 
     private FriendContextMenuWidget openMenu;
     private Screen openMenuScreen;
@@ -61,12 +65,22 @@ public final class FabricFriendsSidebarInjector {
      *                            (Decision 4), threaded into every
      *                            {@link FriendContextMenuWidget}
      * @param hostingStatusReader gate for that slot's enablement (Decision 4)
+     * @param worldInviteSender   Steam World Hosting's invite operation for the
+     *                            reused "Invite to game" context-menu slot
+     *                            (specification-invite-to-game.md D6), threaded
+     *                            into every {@link FriendContextMenuWidget}; may
+     *                            be a Noop when that feature is disabled
+     * @param toastService        failure-feedback sink for a failed invite send
+     *                            (specification-invite-to-game.md D6)
      */
     public FabricFriendsSidebarInjector(FriendsSidebarFacade facade, WorldJoinRequester worldJoinRequester,
-            FriendHostingStatusReader hostingStatusReader) {
+            FriendHostingStatusReader hostingStatusReader, WorldInviteSender worldInviteSender,
+            ToastService toastService) {
         this.facade = facade;
         this.worldJoinRequester = worldJoinRequester;
         this.hostingStatusReader = hostingStatusReader;
+        this.worldInviteSender = worldInviteSender;
+        this.toastService = toastService;
         this.avatarTextureCache = new AvatarTextureCache(LazuliMod.LOGGER::warn);
         ScreenEvents.AFTER_INIT.register(this::onScreenInit);
     }
@@ -116,15 +130,40 @@ public final class FabricFriendsSidebarInjector {
      * screen's own render pass (including e.g. TitleScreen's logo), menu on
      * top of the sidebar, so neither ever renders behind other screen
      * content or each other, regardless of widget-list order.
+     *
+     * <p>Root cause of "native tooltip never appears" (Polish pass bug
+     * fix): {@code Screen.renderWithTooltipAndSubtitles(...)} -- the method
+     * {@code fabric-screen-api-v1}'s {@code GameRendererMixin} wraps to fire
+     * {@code ScreenEvents.afterRender} -- itself calls, as its very last
+     * step, {@code context.drawDeferredElements()}, which is what actually
+     * converts any {@code drawTooltip}/{@code setTooltipForNextFrame} call
+     * made so far this frame into a rendered tooltip (Yarn 1.21.11's
+     * {@code DrawContext} uses the same extract-then-flush
+     * {@code GuiRenderState} architecture as the Mojang-mapped 26.x
+     * platforms' {@code GuiGraphicsExtractor}, despite the different method
+     * names -- {@code drawTooltip} queues, it does not draw immediately).
+     * Because {@code afterRender} fires only after that whole wrapped call
+     * (including that last step) returns, any tooltip call made from within
+     * this hook (e.g. by
+     * {@link FriendSidebarWidget#renderNow}/{@code renderDropdownOverlay}
+     * below) sets state that this frame's {@code drawDeferredElements}
+     * already consumed -- it is never flushed, so the tooltip silently never
+     * renders, every frame. Re-invoking {@code drawDeferredElements}
+     * ourselves, once, after every draw call in this method that might have
+     * queued a tooltip, flushes it for this same frame instead.
      */
     private void onAfterRender(Screen screen, net.minecraft.client.gui.DrawContext context, int mouseX, int mouseY,
             float delta) {
         if (screen == activeSidebarScreen && activeSidebar != null) {
             activeSidebar.renderNow(context, mouseX, mouseY, delta);
         }
+        if (screen == activeSidebarScreen && activeSidebar != null) {
+            activeSidebar.renderDropdownOverlay(context, mouseX, mouseY, delta);
+        }
         if (openMenu != null && screen == openMenuScreen) {
             openMenu.renderNow(context, mouseX, mouseY, delta);
         }
+        context.drawDeferredElements();
     }
 
     /**
@@ -164,7 +203,7 @@ public final class FabricFriendsSidebarInjector {
         int menuX = Math.max(0, Math.min(mouseX - FriendContextMenuWidget.WIDTH, screen.width - FriendContextMenuWidget.WIDTH));
         int menuY = Math.min(mouseY, screen.height - FriendContextMenuWidget.HEIGHT);
         FriendContextMenuWidget menu = new FriendContextMenuWidget(menuX, menuY, friend, facade, this::closeMenu,
-                isOwnProfile, worldJoinRequester, hostingStatusReader);
+                isOwnProfile, worldJoinRequester, hostingStatusReader, worldInviteSender, toastService);
         List<ClickableWidget> widgets = Screens.getButtons(screen);
         widgets.add(menu);
         openMenu = menu;

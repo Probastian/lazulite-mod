@@ -2,8 +2,10 @@ package de.lazuli.friends;
 
 import de.lazuli.api.friends.FriendSummary;
 import de.lazuli.api.worldhosting.FriendHostingStatusReader;
+import de.lazuli.api.worldhosting.WorldInviteSender;
 import de.lazuli.api.worldhosting.WorldJoinRequester;
 import de.lazuli.features.friendssidebar.services.FriendsSidebarFacade;
+import de.lazuli.services.ui.ToastService;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -40,9 +42,11 @@ public final class FriendContextMenuWidget extends AbstractWidget {
     private final boolean isOwnProfile;
     private final WorldJoinRequester worldJoinRequester;
     private final FriendHostingStatusReader hostingStatusReader;
+    private final WorldInviteSender worldInviteSender;
+    private final ToastService toastService;
 
     public FriendContextMenuWidget(int x, int y, FriendSummary friend, FriendsSidebarFacade facade, Runnable onClosed) {
-        this(x, y, friend, facade, onClosed, false, null, null);
+        this(x, y, friend, facade, onClosed, false, null, null, null, null);
     }
 
     /**
@@ -57,9 +61,18 @@ public final class FriendContextMenuWidget extends AbstractWidget {
      *                            disabled placeholder
      * @param hostingStatusReader gate for the "Join game" slot's enablement
      *                            (Steam World Hosting FR4.2), or {@code null}
+     * @param worldInviteSender   Steam World Hosting's invite operation for the
+     *                            reused "Invite to game" slot
+     *                            (specification-invite-to-game.md FR-INV1/
+     *                            FR-INV4), or {@code null} if that feature is
+     *                            absent/disabled -- then "Invite to game" stays
+     *                            a disabled placeholder
+     * @param toastService        failure-feedback sink for a failed invite send
+     *                            (FR-INV8), or {@code null}
      */
     public FriendContextMenuWidget(int x, int y, FriendSummary friend, FriendsSidebarFacade facade, Runnable onClosed,
-            boolean isOwnProfile, WorldJoinRequester worldJoinRequester, FriendHostingStatusReader hostingStatusReader) {
+            boolean isOwnProfile, WorldJoinRequester worldJoinRequester, FriendHostingStatusReader hostingStatusReader,
+            WorldInviteSender worldInviteSender, ToastService toastService) {
         super(x, y, WIDTH, OPTION_HEIGHT * LABELS.length, Component.literal("Friend menu"));
         this.friend = friend;
         this.facade = facade;
@@ -67,6 +80,8 @@ public final class FriendContextMenuWidget extends AbstractWidget {
         this.isOwnProfile = isOwnProfile;
         this.worldJoinRequester = worldJoinRequester;
         this.hostingStatusReader = hostingStatusReader;
+        this.worldInviteSender = worldInviteSender;
+        this.toastService = toastService;
     }
 
     private boolean isEnabled(int index) {
@@ -77,7 +92,12 @@ public final class FriendContextMenuWidget extends AbstractWidget {
         return switch (index) {
             case 0 -> facade.stateMachine().isOpenChatEnabled(friend);
             case 1 -> facade.stateMachine().isShowProfileEnabled(friend);
-            case 2 -> facade.stateMachine().isInviteEnabled(friend);
+            // FR-INV1: the reused "Invite to game" slot is enabled only when
+            // the local player currently has an active hosted session. Reads
+            // the bridge directly (bypasses the always-false, dead-code
+            // FriendSidebarStateMachine.isInviteEnabled), mirroring "Join
+            // game"'s own case 3 precedent below.
+            case 2 -> worldInviteSender != null && worldInviteSender.isHosting();
             // FR4.1/FR4.2: the reused "Join game" slot is enabled only when
             // Steam World Hosting reports this friend as currently hosting.
             case 3 -> hostingStatusReader != null && hostingStatusReader.isFriendHosting(friend.steamId64());
@@ -125,7 +145,18 @@ public final class FriendContextMenuWidget extends AbstractWidget {
             switch (index) {
                 case 0 -> facade.actions().onOpenChat(friend.steamId64());
                 case 1 -> facade.actions().onShowProfile(friend.steamId64());
-                case 2 -> facade.actions().onInvite(friend.steamId64());
+                // FR-INV4/FR-INV8: route the reused "Invite to game" slot to
+                // Steam World Hosting's invite operation directly (bypasses
+                // the friends-sidebar action listener, mirroring case 3's own
+                // bypass of onJoin), surfacing a toast on a failed send.
+                case 2 -> {
+                    if (worldInviteSender != null && !worldInviteSender.inviteFriend(friend.steamId64())) {
+                        if (toastService != null) {
+                            toastService.post("Invite failed",
+                                    "Could not send the Steam invite. Check that the Steam overlay is enabled.");
+                        }
+                    }
+                }
                 // FR4.3: route the reused "Join game" slot to Steam World
                 // Hosting's join operation instead of the friends-sidebar no-op.
                 case 3 -> {

@@ -288,6 +288,16 @@ public final class SteamworksSteamFriendsGateway implements SteamFriendsGateway 
     }
 
     @Override
+    public boolean inviteToGame(long friendSteamId64, String connectString) {
+        try {
+            return steamFriends.inviteUserToGame(SteamID.createFromNativeHandle(friendSteamId64), connectString);
+        } catch (RuntimeException e) {
+            warn("Failed to invite " + friendSteamId64 + " to game: " + e.getMessage());
+            return false;
+        }
+    }
+
+    @Override
     public void setJoinRequestedListener(BiConsumer<Long, String> listener) {
         this.joinRequestedListener = listener;
     }
