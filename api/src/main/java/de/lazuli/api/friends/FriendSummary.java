@@ -12,7 +12,7 @@ package de.lazuli.api.friends;
  * sweep, consumed by a platform Version Adapter's rendering code):
  * <pre>{@code
  * FriendSummary friend = new FriendSummary(
- *         76561198000000000L, "Steve", 1, 0, false, false, null);
+ *         76561198000000000L, "Steve", 1, 0, false, 0L, false, null);
  * }</pre>
  *
  * @param steamId64    the friend's raw 64-bit Steam ID
@@ -26,6 +26,11 @@ package de.lazuli.api.friends;
  *                      {@code getSmallFriendAvatar}, {@code 0} if none yet
  * @param inGame       whether {@code getFriendGamePlayed} currently reports
  *                      this friend as in a game
+ * @param gameAppId    the numeric Steam App ID the friend is currently
+ *                     playing, or {@code 0} if not in a game/unresolved; not
+ *                     consulted by any label/color/sort logic as of v1.6,
+ *                     kept for forward-compatibility (real game-name
+ *                     resolution is a documented Future Extension)
  * @param joinable     whether this friend's current game session is
  *                      considered joinable (v1: always disabled in the UI
  *                      regardless of this value, FR2.6/FR3.4)
@@ -40,6 +45,7 @@ public record FriendSummary(
         int personaState,
         int avatarHandle,
         boolean inGame,
+        long gameAppId,
         boolean joinable,
         String connectHint) {
 }

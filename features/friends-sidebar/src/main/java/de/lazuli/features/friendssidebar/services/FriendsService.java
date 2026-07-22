@@ -108,6 +108,7 @@ public final class FriendsService implements FriendsDataSource {
         int personaState = gateway.friendPersonaStateOrdinal(steamId64);
 
         boolean inGame = gateway.friendInGame(steamId64);
+        long gameAppId = gateway.friendGameAppId(steamId64);
         String connectHint = gateway.friendGameConnectHint(steamId64).orElse(null);
         // v1 never treats a friend as actionably "joinable" via this feature --
         // Invite/Join stay disabled placeholders (FR2.6, FR3.3, FR3.4); the
@@ -117,7 +118,7 @@ public final class FriendsService implements FriendsDataSource {
         int avatarHandle = gateway.avatarHandle(steamId64);
 
         friendsByIdSnapshot.put(steamId64,
-                new FriendSummary(steamId64, personaName, personaState, avatarHandle, inGame, joinable, connectHint));
+                new FriendSummary(steamId64, personaName, personaState, avatarHandle, inGame, gameAppId, joinable, connectHint));
 
         // FR1.7: Rich Presence values are cached locally by Steam and only
         // refresh when explicitly requested -- request every sweep, then read
@@ -144,7 +145,7 @@ public final class FriendsService implements FriendsDataSource {
         // The own-profile row never uses inGame/joinable/connectHint (FR2.8
         // disables Invite/Join for this row unconditionally) and never
         // resolves Rich Presence (FR1.6 -- friend-relative only).
-        return Optional.of(new FriendSummary(steamId64, personaName, personaState, avatarHandle, false, false, null));
+        return Optional.of(new FriendSummary(steamId64, personaName, personaState, avatarHandle, false, 0L, false, null));
     }
 
     @Override

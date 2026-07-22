@@ -129,6 +129,7 @@ class HostingPresenceScannerTest {
         @Override public boolean isDirectFriend(long steamId64) { return false; }
         @Override public boolean friendInGame(long steamId64) { return false; }
         @Override public Optional<String> friendGameConnectHint(long steamId64) { return Optional.empty(); }
+        @Override public long friendGameAppId(long steamId64) { return 0L; }
         @Override public boolean setLocalRichPresence(String key, String value) { return false; }
         @Override public void clearLocalRichPresence() { }
         @Override public boolean inviteToGame(long friendSteamId64, String connectString) { return false; }

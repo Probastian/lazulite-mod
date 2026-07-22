@@ -111,9 +111,15 @@ public final class FabricFriendsSidebarInjector {
         // strip by default; every other allow-listed screen starts as a
         // small click-to-open handle instead (FR4.11).
         boolean handleOnly = !(screen instanceof TitleScreen || screen instanceof GameMenuScreen);
+        // Only MultiplayerScreen has its own top-right corner button (the
+        // server-browser entry point) the sidebar/handle must avoid covering
+        // -- every other handle-only screen (e.g. SelectWorldScreen) has no
+        // such button and should sit flush to the top instead of reserving
+        // an unused gap there.
+        boolean reserveTopInset = screen instanceof MultiplayerScreen;
         FriendSidebarWidget sidebar = new FriendSidebarWidget(facade, avatarTextureCache,
                 (friend, mouseX, mouseY, button, isOwnProfile) -> openContextMenu(screen, friend, mouseX, mouseY, isOwnProfile),
-                handleOnly);
+                handleOnly, reserveTopInset);
         Screens.getButtons(screen).add(sidebar);
         activeSidebar = sidebar;
         activeSidebarScreen = screen;
@@ -208,6 +214,9 @@ public final class FabricFriendsSidebarInjector {
         widgets.add(menu);
         openMenu = menu;
         openMenuScreen = screen;
+        if (activeSidebar != null) {
+            activeSidebar.notifyContextMenuOpenChanged(true);
+        }
     }
 
     private void closeMenu() {
@@ -216,6 +225,9 @@ public final class FabricFriendsSidebarInjector {
         }
         openMenu = null;
         openMenuScreen = null;
+        if (activeSidebar != null) {
+            activeSidebar.notifyContextMenuOpenChanged(false);
+        }
     }
 
     private void onBeforeMouseClick(Screen screen, Click click) {

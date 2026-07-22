@@ -52,7 +52,11 @@ class FriendSidebarStateMachineTest {
     }
 
     private static FriendSummary friend(boolean inGame, boolean joinable) {
-        return new FriendSummary(1L, "Friend", 0, 0, inGame, joinable, joinable ? "127.0.0.1:25565" : null);
+        return new FriendSummary(1L, "Friend", 0, 0, inGame, 0L, joinable, joinable ? "127.0.0.1:25565" : null);
+    }
+
+    private static FriendSummary friend(String personaName, int personaState, boolean inGame) {
+        return new FriendSummary(1L, personaName, personaState, 0, inGame, 0L, false, null);
     }
 
     @Test
@@ -107,6 +111,87 @@ class FriendSidebarStateMachineTest {
         for (int personaState = 0; personaState <= 7; personaState++) {
             assertThat(stateMachine.statusLabel(personaState)).isNotNull().isNotBlank();
         }
+    }
+
+    @Test
+    void statusColorArgbRecolorPinsOnlineLookingToTradeLookingToPlayToBlue() {
+        assertThat(stateMachine.statusColorArgb(1)).isEqualTo(0xFF4A90D9);
+        assertThat(stateMachine.statusColorArgb(5)).isEqualTo(0xFF4A90D9);
+        assertThat(stateMachine.statusColorArgb(6)).isEqualTo(0xFF4A90D9);
+    }
+
+    @Test
+    void statusColorArgbRecolorPinsAwaySnoozeToGreyedBlue() {
+        assertThat(stateMachine.statusColorArgb(3)).isEqualTo(0xFF2D5683);
+        assertThat(stateMachine.statusColorArgb(4)).isEqualTo(0xFF2D5683);
+    }
+
+    @Test
+    void statusColorArgbBusyAndOfflineUnchangedByRecolor() {
+        assertThat(stateMachine.statusColorArgb(2)).isEqualTo(0xFFE3A008);
+        assertThat(stateMachine.statusColorArgb(0)).isEqualTo(0xFF898989);
+        assertThat(stateMachine.statusColorArgb(7)).isEqualTo(0xFF898989);
+    }
+
+    @Test
+    void statusColorArgbInGameOverloadReturnsGreenRegardlessOfPersonaState() {
+        for (int personaState = 0; personaState <= 7; personaState++) {
+            assertThat(stateMachine.statusColorArgb(personaState, true)).isEqualTo(0xFF5BA32F);
+        }
+    }
+
+    @Test
+    void statusColorArgbInGameOverloadDelegatesToBareOverloadWhenNotInGame() {
+        for (int personaState = 0; personaState <= 7; personaState++) {
+            assertThat(stateMachine.statusColorArgb(personaState, false))
+                    .isEqualTo(stateMachine.statusColorArgb(personaState));
+        }
+    }
+
+    @Test
+    void statusSortRankInGameOverloadReturnsZeroRegardlessOfPersonaState() {
+        for (int personaState = 0; personaState <= 7; personaState++) {
+            assertThat(stateMachine.statusSortRank(personaState, true)).isZero();
+        }
+    }
+
+    @Test
+    void statusSortRankInGameOverloadMatchesExplicitMappingWhenNotInGame() {
+        assertThat(stateMachine.statusSortRank(1, false)).isEqualTo(1);
+        assertThat(stateMachine.statusSortRank(5, false)).isEqualTo(1);
+        assertThat(stateMachine.statusSortRank(6, false)).isEqualTo(1);
+        assertThat(stateMachine.statusSortRank(3, false)).isEqualTo(2);
+        assertThat(stateMachine.statusSortRank(4, false)).isEqualTo(2);
+        assertThat(stateMachine.statusSortRank(2, false)).isEqualTo(3);
+        assertThat(stateMachine.statusSortRank(0, false)).isEqualTo(4);
+        assertThat(stateMachine.statusSortRank(7, false)).isEqualTo(4);
+    }
+
+    @Test
+    void statusLabelInGameOverloadReturnsInGameRegardlessOfPersonaState() {
+        for (int personaState = 0; personaState <= 7; personaState++) {
+            assertThat(stateMachine.statusLabel(personaState, true)).isEqualTo("In Game");
+        }
+    }
+
+    @Test
+    void statusLabelInGameOverloadDelegatesToBareOverloadWhenNotInGame() {
+        for (int personaState = 0; personaState <= 7; personaState++) {
+            assertThat(stateMachine.statusLabel(personaState, false))
+                    .isEqualTo(stateMachine.statusLabel(personaState));
+        }
+    }
+
+    @Test
+    void sortForDisplaySortsInGameFriendAheadOfNonInGameOnlineFriend() {
+        FriendSummary inGameButBusy = friend("Zed", 2, true);
+        FriendSummary onlineNotInGame = friend("Alice", 1, false);
+        FriendSummary offlineNotInGame = friend("Bob", 0, false);
+
+        java.util.List<FriendSummary> sorted = stateMachine.sortForDisplay(
+                java.util.List.of(offlineNotInGame, onlineNotInGame, inGameButBusy));
+
+        assertThat(sorted).containsExactly(inGameButBusy, onlineNotInGame, offlineNotInGame);
     }
 
     @Test

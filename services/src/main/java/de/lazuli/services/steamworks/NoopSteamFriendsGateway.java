@@ -64,6 +64,11 @@ public final class NoopSteamFriendsGateway implements SteamFriendsGateway {
     }
 
     @Override
+    public long friendGameAppId(long steamId64) {
+        return 0L;
+    }
+
+    @Override
     public void requestFriendRichPresence(long steamId64) {
         // Intentionally empty -- Steam unavailable.
     }

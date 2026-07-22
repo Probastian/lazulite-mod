@@ -81,6 +81,14 @@ public interface SteamFriendsGateway {
     Optional<String> friendGameConnectHint(long steamId64);
 
     /**
+     * @param steamId64 the friend to look up
+     * @return the friend's current {@code FriendGameInfo.getGameID()} value
+     *         if {@code getFriendGamePlayed} reports them as in a game, else
+     *         {@code 0L}; never throws
+     */
+    long friendGameAppId(long steamId64);
+
+    /**
      * Asks Steam to refresh its locally-cached Rich Presence for the given
      * friend (Rich Presence only refreshes on explicit request).
      *

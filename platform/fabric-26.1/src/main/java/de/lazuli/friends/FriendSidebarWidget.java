@@ -128,6 +128,7 @@ public final class FriendSidebarWidget extends AbstractWidget {
     private final AvatarTextureCache avatarTextureCache;
     private final RowClickListener rowClickListener;
     private final boolean handleOnly;
+    private final boolean reserveTopInset;
 
     private boolean expanded;
     private boolean panelOpen;
@@ -138,6 +139,12 @@ public final class FriendSidebarWidget extends AbstractWidget {
     private float scrollPixelOffset;
     private long lastAnimNanos;
     private long lastHoverNanos;
+
+    // Keep-expanded-on-open-menu amendment: tracks whether a friend context
+    // menu is currently open for this sidebar's screen, so renderNow()'s
+    // coyote-time collapse never fires while the menu is open (even though
+    // the mouse itself is off the sidebar's own hover bounds).
+    private boolean contextMenuOpen;
 
     // v1.3 amendment: the dropdown strip's own screen-space bounds for this
     // frame (Risk 2) -- null when not rendered (collapsed state), so
@@ -165,14 +172,21 @@ public final class FriendSidebarWidget extends AbstractWidget {
      *                   default to a small click-to-open handle instead of
      *                   the always-visible avatar strip (every allow-listed
      *                   screen except the main menu/pause menu) -- FR4.11.
+     * @param reserveTopInset {@code true} only on screens that have their own
+     *                   top-right corner button the sidebar/handle must not
+     *                   cover (JoinMultiplayerScreen today, per server-
+     *                   browser's spec) -- every other handle-only screen
+     *                   (e.g. SelectWorldScreen) has no such button and
+     *                   should sit flush to the top like the main menu does.
      */
     public FriendSidebarWidget(FriendsSidebarFacade facade, AvatarTextureCache avatarTextureCache,
-            RowClickListener rowClickListener, boolean handleOnly) {
+            RowClickListener rowClickListener, boolean handleOnly, boolean reserveTopInset) {
         super(0, 0, EXPANDED_WIDTH, listTopOffset(true, dropdownRowHeight()) + ROW_HEIGHT * DEFAULT_MAX_ROWS, Component.literal("Friends"));
         this.facade = facade;
         this.avatarTextureCache = avatarTextureCache;
         this.rowClickListener = rowClickListener;
         this.handleOnly = handleOnly;
+        this.reserveTopInset = reserveTopInset;
         this.panelOpen = !handleOnly;
         this.animatedWidth = handleOnly ? HANDLE_WIDTH : COLLAPSED_WIDTH;
         // v1.4 amendment: fixed Nobody/Friends/Everyone display order
@@ -235,7 +249,7 @@ public final class FriendSidebarWidget extends AbstractWidget {
 
     /** @see #TOP_INSET */
     private int topInset() {
-        return handleOnly ? TOP_INSET : 0;
+        return reserveTopInset ? TOP_INSET : 0;
     }
 
     private void refreshScreenSize() {
@@ -290,6 +304,10 @@ public final class FriendSidebarWidget extends AbstractWidget {
      * top (FR2.1-adjacent: the sidebar must never render behind other
      * screen content).
      */
+    public void notifyContextMenuOpenChanged(boolean open) {
+        this.contextMenuOpen = open;
+    }
+
     public void renderNow(GuiGraphicsExtractor guiGraphics, int mouseX, int mouseY, float delta) {
         if (!facade.isEnabled()) {
             dropdownVisible = false;
@@ -332,7 +350,7 @@ public final class FriendSidebarWidget extends AbstractWidget {
         // hover at all, so a brief mouse blip off the edge doesn't instantly
         // close it.
         long now = System.nanoTime();
-        boolean hovering = overPanel || overHandle;
+        boolean hovering = overPanel || overHandle || contextMenuOpen || joinPolicyDropdown.isOpen();
         if (hovering) {
             lastHoverNanos = now;
         }
@@ -536,7 +554,7 @@ public final class FriendSidebarWidget extends AbstractWidget {
     }
 
     private void drawRow(GuiGraphicsExtractor guiGraphics, FriendSummary friend, int x, int y, int width, boolean showText) {
-        int statusColor = facade.stateMachine().statusColorArgb(friend.personaState());
+        int statusColor = facade.stateMachine().statusColorArgb(friend.personaState(), friend.inGame());
         guiGraphics.fill(x, y, x + BORDER_WIDTH, y + ROW_HEIGHT, statusColor);
 
         Identifier avatarTexture = avatarTextureCache.getOrUpload(friend.steamId64(),
@@ -551,23 +569,17 @@ public final class FriendSidebarWidget extends AbstractWidget {
                     x + ROW_PADDING, y + ROW_PADDING, 0f, 0f, DISPLAY_SIZE, DISPLAY_SIZE, size, size, size, size);
         } else {
             guiGraphics.fill(x + ROW_PADDING, y + ROW_PADDING, x + ROW_PADDING + DISPLAY_SIZE,
-                    y + ROW_PADDING + DISPLAY_SIZE, personaColor(friend));
+                    y + ROW_PADDING + DISPLAY_SIZE, facade.stateMachine().statusColorArgb(friend.personaState(), friend.inGame()));
         }
 
         if (showText) {
             guiGraphics.text(Minecraft.getInstance().font, friend.personaName(),
                     x + ROW_PADDING + DISPLAY_SIZE + 6, y + 2, 0xFFFFFFFF);
             String status = facade.richPresenceStatus(friend.steamId64())
-                    .orElseGet(() -> friend.inGame() ? "In Game" : facade.stateMachine().statusLabel(friend.personaState()));
+                    .orElseGet(() -> facade.stateMachine().statusLabel(friend.personaState(), friend.inGame()));
             guiGraphics.text(Minecraft.getInstance().font, status,
                     x + ROW_PADDING + DISPLAY_SIZE + 6, y + 11, statusColor);
         }
-    }
-
-    private static int personaColor(FriendSummary friend) {
-        // Online-ish states render brighter than offline/away -- a plain
-        // flat-color placeholder until/unless a real avatar uploads (Decision 5).
-        return friend.personaState() == 0 ? 0xFF808080 : 0xFF33AA33;
     }
 
     @Override

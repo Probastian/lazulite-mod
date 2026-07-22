@@ -119,18 +119,34 @@ public final class FriendSidebarStateMachine {
      * {@code FriendSummary#personaState()}) to Steam's own status-color
      * convention (FR4.9/FR4.10) -- full-alpha ARGB, {@code 0xFF} alpha byte
      * always set. {@code Online}/{@code LookingToTrade}/{@code LookingToPlay}
-     * share one green; {@code Offline}/{@code Invisible} share one grey.
+     * share one blue; {@code Away}/{@code Snooze} share one greyed-blue;
+     * {@code Busy} is yellow; {@code Offline}/{@code Invisible} share one grey.
      *
      * @param personaState the friend's/own profile's persona-state ordinal
      * @return a full-alpha {@code 0xFFxxxxxx} ARGB color
      */
     public int statusColorArgb(int personaState) {
         return switch (personaState) {
-            case 1, 5, 6 -> 0xFF5BA32F; // Online, LookingToTrade, LookingToPlay (green)
-            case 3, 4 -> 0xFF4A90D9;    // Away, Snooze (blue)
+            case 1, 5, 6 -> 0xFF4A90D9; // Online, LookingToTrade, LookingToPlay (blue)
+            case 3, 4 -> 0xFF2D5683;    // Away, Snooze (greyed-blue)
             case 2 -> 0xFFE3A008;       // Busy (yellow)
             default -> 0xFF898989;     // Offline (0) / Invisible (7) (grey)
         };
+    }
+
+    /**
+     * In-game-aware overload (v1.6, FR-I2): a friend currently in a game
+     * always renders the "In Game" tier color, regardless of
+     * {@code personaState} -- otherwise delegates to
+     * {@link #statusColorArgb(int)}.
+     *
+     * @param personaState the friend's persona-state ordinal
+     * @param inGame       {@link FriendSummary#inGame()}
+     * @return {@code 0xFF5BA32F} (green) if {@code inGame}, else the
+     *         {@link #statusColorArgb(int)} result
+     */
+    public int statusColorArgb(int personaState, boolean inGame) {
+        return inGame ? 0xFF5BA32F : statusColorArgb(personaState);
     }
 
     /**
@@ -149,14 +165,39 @@ public final class FriendSidebarStateMachine {
     }
 
     /**
+     * In-game-aware overload (v1.6, FR-I3): an in-game friend always sorts
+     * into the new top rank {@code 0}, ahead of every persona-state tier.
+     * Implemented as its own explicit mapping (not a delegating {@code + 1}
+     * off {@link #statusSortRank(int)}) since the two overloads' rank spaces
+     * are intentionally decoupled.
+     *
+     * @param personaState the friend's persona-state ordinal
+     * @param inGame       {@link FriendSummary#inGame()}
+     * @return {@code 0} if {@code inGame}, else {@code 1} (online-ish),
+     *         {@code 2} (away/snooze), {@code 3} (busy), or {@code 4} (offline/invisible)
+     */
+    public int statusSortRank(int personaState, boolean inGame) {
+        if (inGame) {
+            return 0;
+        }
+        return switch (personaState) {
+            case 1, 5, 6 -> 1;
+            case 3, 4 -> 2;
+            case 2 -> 3;
+            default -> 4;
+        };
+    }
+
+    /**
      * Sorts friends the way Steam's own friends list does: by
-     * {@link #statusSortRank(int)}, then alphabetically (case-insensitive)
-     * by persona name. Pure/stateless; does not mutate the input list.
+     * {@link #statusSortRank(int, boolean)}, then alphabetically
+     * (case-insensitive) by persona name. Pure/stateless; does not mutate
+     * the input list.
      */
     public java.util.List<FriendSummary> sortForDisplay(java.util.List<FriendSummary> friends) {
         return friends.stream()
                 .sorted(java.util.Comparator
-                        .comparingInt((FriendSummary f) -> statusSortRank(f.personaState()))
+                        .comparingInt((FriendSummary f) -> statusSortRank(f.personaState(), f.inGame()))
                         .thenComparing(f -> f.personaName() == null ? "" : f.personaName(), String.CASE_INSENSITIVE_ORDER))
                 .toList();
     }
@@ -192,5 +233,21 @@ public final class FriendSidebarStateMachine {
             case 7 -> "Invisible";
             default -> "Offline";
         };
+    }
+
+    /**
+     * In-game-aware overload (v1.6, FR-I4/FR-L2/FR-L3): returns the generic
+     * "In Game" label whenever {@code inGame} is {@code true}, regardless of
+     * {@code personaState}, else delegates to {@link #statusLabel(int)}.
+     * Does not itself consult Rich Presence -- that remains the caller's own
+     * first-tier check (FR-L1), unchanged.
+     *
+     * @param personaState the friend's persona-state ordinal
+     * @param inGame       {@link FriendSummary#inGame()}
+     * @return {@code "In Game"} if {@code inGame}, else the
+     *         {@link #statusLabel(int)} result
+     */
+    public String statusLabel(int personaState, boolean inGame) {
+        return inGame ? "In Game" : statusLabel(personaState);
     }
 }

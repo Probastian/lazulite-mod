@@ -173,6 +173,18 @@ public final class SteamworksSteamFriendsGateway implements SteamFriendsGateway 
     }
 
     @Override
+    public long friendGameAppId(long steamId64) {
+        try {
+            SteamFriends.FriendGameInfo info = new SteamFriends.FriendGameInfo();
+            boolean inGame = steamFriends.getFriendGamePlayed(SteamID.createFromNativeHandle(steamId64), info);
+            return inGame ? info.getGameID() : 0L;
+        } catch (RuntimeException e) {
+            warn("Failed to resolve game app ID for " + steamId64 + ": " + e.getMessage());
+            return 0L;
+        }
+    }
+
+    @Override
     public void requestFriendRichPresence(long steamId64) {
         try {
             steamFriends.requestFriendRichPresence(SteamID.createFromNativeHandle(steamId64));
