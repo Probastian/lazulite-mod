@@ -34,5 +34,9 @@ public final class ServerBrowserClientInitializer implements ClientModInitialize
                 LazuliMod.LOGGER::warn);
 
         new FabricServerBrowserButtonInjector(sessionFactory, steamworksService);
+
+        // Published for MainMenuClientInitializer (added after this entrypoint in fabric.mod.json's
+        // "client" array) to reuse the same session factory for the Servers panel (spec Architecture).
+        ServerBrowserSessionFactoryHandoff.publish(sessionFactory);
     }
 }

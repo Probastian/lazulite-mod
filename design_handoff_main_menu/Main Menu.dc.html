@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  body{margin:0;background:oklch(19% 0.014 95);}
+  @keyframes idleBob{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
+  @keyframes armSwingL{0%,100%{transform:rotate(-6deg)}50%{transform:rotate(4deg)}}
+  @keyframes armSwingR{0%,100%{transform:rotate(6deg)}50%{transform:rotate(-4deg)}}
+  @keyframes legSwayL{0%,100%{transform:rotate(3deg)}50%{transform:rotate(-3deg)}}
+  @keyframes legSwayR{0%,100%{transform:rotate(-3deg)}50%{transform:rotate(3deg)}}
+  @keyframes driftCloud{0%{transform:translateX(0)}100%{transform:translateX(-60px)}}
+  ::-webkit-scrollbar{width:8px}
+  ::-webkit-scrollbar-thumb{background:oklch(38% 0.02 95);border-radius:4px}
+  ::-webkit-scrollbar-track{background:transparent}
+  a{color:oklch(70% 0.09 145)}
+  a:hover{color:oklch(80% 0.09 145)}
+</style>
+</helmet>
+<div data-screen-label="Main Menu" style="width:1920px;height:1080px;position:relative;overflow:hidden;background:oklch(19% 0.014 95);font-family:'Oswald',sans-serif;color:oklch(93% 0.01 95);">
+
+  <!-- LEFT: 3D scene (full-bleed background) -->
+  <div style="position:absolute;inset:0;overflow:hidden;background:linear-gradient(180deg, oklch(28% 0.06 300) 0%, oklch(52% 0.13 45) 45%, oklch(74% 0.13 68) 68%, oklch(80% 0.1 75) 100%);">
+    <div style="position:absolute;top:120px;right:90px;width:150px;height:150px;border-radius:50%;background:radial-gradient(circle, oklch(90% 0.1 80) 0%, oklch(85% 0.13 65) 55%, transparent 75%);box-shadow:0 0 90px 30px oklch(75% 0.13 65 / 0.5);"></div>
+    <div style="position:absolute;bottom:270px;left:0;right:0;height:120px;background:oklch(38% 0.05 60 / 0.55);clip-path:polygon(0 100%,0 45%,12% 60%,24% 35%,38% 55%,52% 30%,66% 58%,80% 40%,100% 60%,100% 100%);"></div>
+    <div style="position:absolute;bottom:230px;left:0;right:0;height:100px;background:oklch(30% 0.04 55 / 0.7);clip-path:polygon(0 100%,0 60%,15% 40%,30% 65%,45% 38%,60% 62%,75% 42%,90% 68%,100% 50%,100% 100%);"></div>
+    <div style="position:absolute;bottom:0;left:0;right:0;height:240px;background:linear-gradient(180deg, oklch(38% 0.08 140) 0%, oklch(30% 0.06 140) 100%);border-top:4px solid oklch(44% 0.09 140);"></div>
+
+    <div style="position:absolute;top:44px;left:48px;">
+      <div style="font-size:34px;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:oklch(97% 0.01 95);text-shadow:0 2px 10px oklch(15% 0.02 95 / 0.6);">Stonebound</div>
+      <div style="font-size:13px;font-weight:500;letter-spacing:4px;text-transform:uppercase;color:oklch(90% 0.03 80 / 0.85);margin-top:2px;">Overhaul Mod &nbsp;·&nbsp; v2.1</div>
+    </div>
+
+    <!-- blocky idle character -->
+    <div style="position:absolute;bottom:150px;left:230px;width:180px;height:340px;animation:idleBob 2.6s ease-in-out infinite;transform-origin:bottom center;">
+      <div style="position:absolute;top:0;left:60px;width:60px;height:56px;background:oklch(72% 0.05 70);border:3px solid oklch(28% 0.02 90);"></div>
+      <div style="position:absolute;top:0;left:60px;width:60px;height:16px;background:oklch(30% 0.03 50);border:3px solid oklch(20% 0.02 90);"></div>
+      <div style="position:absolute;top:20px;left:70px;width:9px;height:9px;background:oklch(22% 0.02 90);"></div>
+      <div style="position:absolute;top:20px;left:100px;width:9px;height:9px;background:oklch(22% 0.02 90);"></div>
+      <div style="position:absolute;top:56px;left:54px;width:72px;height:96px;background:oklch(52% 0.1 145);border:3px solid oklch(24% 0.02 90);"></div>
+      <div style="position:absolute;top:56px;left:54px;width:72px;height:14px;background:oklch(38% 0.07 60);border:3px solid oklch(24% 0.02 90);"></div>
+      <div style="position:absolute;top:60px;left:26px;width:28px;height:88px;background:oklch(72% 0.05 70);border:3px solid oklch(28% 0.02 90);animation:armSwingL 2.6s ease-in-out infinite;transform-origin:top center;"></div>
+      <div style="position:absolute;top:60px;left:126px;width:28px;height:88px;background:oklch(72% 0.05 70);border:3px solid oklch(28% 0.02 90);animation:armSwingR 2.6s ease-in-out infinite;transform-origin:top center;"></div>
+      <div style="position:absolute;top:152px;left:58px;width:30px;height:100px;background:oklch(35% 0.05 55);border:3px solid oklch(20% 0.02 90);animation:legSwayL 2.6s ease-in-out infinite;transform-origin:top center;"></div>
+      <div style="position:absolute;top:152px;left:92px;width:30px;height:100px;background:oklch(35% 0.05 55);border:3px solid oklch(20% 0.02 90);animation:legSwayR 2.6s ease-in-out infinite;transform-origin:top center;"></div>
+    </div>
+  </div>
+
+  <!-- Foreground UI, overlaid on the full-bleed scene -->
+  <div style="position:relative;z-index:1;display:flex;width:100%;height:100%;">
+  <div style="flex:0 0 620px;"></div>
+
+  <!-- CENTER: active tab panel (empty/transparent when no tab selected) -->
+  <div style="flex:1 1 auto;position:relative;display:flex;flex-direction:column;padding:{{ centerPadding }};gap:20px;background:{{ centerBg }};backdrop-filter:{{ centerBlur }};min-width:0;transition:background 0.2s ease;">
+
+    <sc-if value="{{ isWorlds }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+        <div style="font-size:15px;font-weight:600;letter-spacing:3px;text-transform:uppercase;color:oklch(70% 0.03 95);">Singleplayer Worlds</div>
+        <div onClick="{{ createWorld }}" style="display:flex;align-items:center;gap:8px;background:oklch(58% 0.1 145);color:oklch(15% 0.02 95);font-size:13.5px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;padding:10px 18px;border-radius:5px;cursor:pointer;" style-hover="background:oklch(66% 0.11 145);">
+          <div style="width:14px;height:14px;position:relative;">
+            <div style="position:absolute;top:6px;left:0;width:14px;height:2.5px;background:oklch(15% 0.02 95);"></div>
+            <div style="position:absolute;left:6px;top:0;width:2.5px;height:14px;background:oklch(15% 0.02 95);"></div>
+          </div>
+          Create New World
+        </div>
+      </div>
+      <div style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:10px;padding-right:4px;">
+        <sc-for list="{{ spWorlds }}" as="w" hint-placeholder-count="4">
+          <sc-if value="{{ w.selected }}" hint-placeholder-val="{{ false }}">
+            <div onClick="{{ w.toggle }}" style="cursor:pointer;background:oklch(27% 0.02 95 / 0.65);border:2px solid oklch(58% 0.1 145);border-radius:6px;padding:18px;display:flex;gap:18px;backdrop-filter:blur(3px);">
+              <div style="flex:0 0 96px;height:96px;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;border:2px solid oklch(15% 0.02 90);border-radius:4px;overflow:hidden;">
+                <div style="background:{{ w.tile1 }};"></div><div style="background:{{ w.tile2 }};"></div>
+                <div style="background:{{ w.tile3 }};"></div><div style="background:{{ w.tile4 }};"></div>
+              </div>
+              <div style="flex:1;display:flex;flex-direction:column;justify-content:center;gap:6px;min-width:0;">
+                <div style="font-size:22px;font-weight:600;">{{ w.name }}</div>
+                <div style="font-size:14px;color:oklch(70% 0.02 95);">{{ w.mode }} · {{ w.difficulty }}</div>
+                <div style="font-size:13px;color:oklch(60% 0.02 95);">Last played {{ w.lastPlayed }}</div>
+                <div style="display:flex;gap:10px;margin-top:8px;">
+                  <div style="background:oklch(58% 0.1 145);color:oklch(15% 0.02 95);font-size:14px;font-weight:600;letter-spacing:1px;text-transform:uppercase;padding:9px 22px;border-radius:4px;" style-hover="background:oklch(64% 0.1 145);">Play</div>
+                  <div style="background:oklch(32% 0.02 95);color:oklch(90% 0.01 95);font-size:14px;font-weight:500;letter-spacing:1px;text-transform:uppercase;padding:9px 18px;border-radius:4px;" style-hover="background:oklch(38% 0.02 95);">Edit</div>
+                </div>
+              </div>
+            </div>
+          </sc-if>
+          <sc-if value="{{ w.notSelected }}" hint-placeholder-val="{{ true }}">
+            <div onClick="{{ w.toggle }}" style="cursor:pointer;background:oklch(24% 0.015 95 / 0.55);border:1px solid oklch(30% 0.015 95);border-radius:6px;padding:10px 14px;display:flex;align-items:center;gap:14px;backdrop-filter:blur(3px);" style-hover="background:oklch(27% 0.017 95 / 0.7);">
+              <div style="flex:0 0 48px;height:48px;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;border:2px solid oklch(15% 0.02 90);border-radius:3px;overflow:hidden;">
+                <div style="background:{{ w.tile1 }};"></div><div style="background:{{ w.tile2 }};"></div>
+                <div style="background:{{ w.tile3 }};"></div><div style="background:{{ w.tile4 }};"></div>
+              </div>
+              <div style="flex:1;min-width:0;">
+                <div style="font-size:17px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ w.name }}</div>
+                <div style="font-size:12.5px;color:oklch(62% 0.02 95);">{{ w.mode }} · {{ w.lastPlayed }}</div>
+              </div>
+            </div>
+          </sc-if>
+        </sc-for>
+      </div>
+      <div style="font-size:12.5px;color:oklch(58% 0.02 95);margin-top:4px;">Create New World opens the vanilla world-creation menu.</div>
+      <sc-if value="{{ worldCreateToast }}" hint-placeholder-val="{{ false }}">
+        <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:oklch(15% 0.01 90 / 0.55);backdrop-filter:blur(2px);z-index:5;">
+          <div style="background:oklch(24% 0.015 95);border:1px solid oklch(58% 0.1 145 / 0.5);border-radius:8px;padding:24px 32px;font-size:16px;font-weight:500;">Launching vanilla world creation…</div>
+        </div>
+      </sc-if>
+    </sc-if>
+
+    <sc-if value="{{ isServers }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:10px;">
+        <div style="font-size:15px;font-weight:600;letter-spacing:3px;text-transform:uppercase;color:oklch(70% 0.03 95);">{{ serverPanelTitle }}</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <div onClick="{{ toggleServerView }}" style="background:oklch(30% 0.018 95);color:oklch(90% 0.01 95);font-size:13px;font-weight:500;letter-spacing:0.5px;text-transform:uppercase;padding:9px 16px;border-radius:5px;cursor:pointer;" style-hover="background:oklch(35% 0.02 95);">{{ serverToggleLabel }}</div>
+          <div onClick="{{ openDirectConnect }}" style="background:oklch(30% 0.018 95);color:oklch(90% 0.01 95);font-size:13px;font-weight:500;letter-spacing:0.5px;text-transform:uppercase;padding:9px 16px;border-radius:5px;cursor:pointer;" style-hover="background:oklch(35% 0.02 95);">Direct Connect</div>
+          <div onClick="{{ openAddServer }}" style="background:oklch(58% 0.1 145);color:oklch(15% 0.02 95);font-size:13px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;padding:9px 16px;border-radius:5px;cursor:pointer;" style-hover="background:oklch(66% 0.11 145);">+ Add Server</div>
+          <div onClick="{{ doRefresh }}" style="width:38px;height:38px;display:flex;align-items:center;justify-content:center;background:oklch(30% 0.018 95);border-radius:5px;cursor:pointer;" style-hover="background:oklch(35% 0.02 95);">
+            <div style="width:16px;height:16px;border-radius:50%;border:2.5px solid oklch(90% 0.01 95);border-top-color:transparent;transition:transform 0.6s ease;transform:rotate({{ refreshRotation }});"></div>
+          </div>
+        </div>
+      </div>
+
+      <sc-if value="{{ isSavedView }}" hint-placeholder-val="{{ true }}">
+      <div style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:10px;padding-right:4px;">
+        <sc-for list="{{ mpWorlds }}" as="s" hint-placeholder-count="4">
+          <sc-if value="{{ s.selected }}" hint-placeholder-val="{{ false }}">
+            <div onClick="{{ s.toggle }}" style="cursor:pointer;background:oklch(27% 0.02 95 / 0.65);border:2px solid oklch(58% 0.1 145);border-radius:6px;padding:18px;display:flex;gap:18px;backdrop-filter:blur(3px);">
+              <div style="flex:0 0 96px;height:96px;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;border:2px solid oklch(15% 0.02 90);border-radius:4px;overflow:hidden;">
+                <div style="background:{{ s.tile1 }};"></div><div style="background:{{ s.tile2 }};"></div>
+                <div style="background:{{ s.tile3 }};"></div><div style="background:{{ s.tile4 }};"></div>
+              </div>
+              <div style="flex:1;display:flex;flex-direction:column;justify-content:center;gap:6px;min-width:0;">
+                <div style="font-size:22px;font-weight:600;">{{ s.name }}</div>
+                <div style="font-size:14px;color:oklch(70% 0.02 95);">{{ s.address }}</div>
+                <div style="display:flex;align-items:center;gap:8px;font-size:13px;color:oklch(60% 0.02 95);">
+                  <div style="width:9px;height:9px;border-radius:50%;background:{{ s.pingColor }};"></div>
+                  {{ s.players }} players online
+                </div>
+                <div style="margin-top:8px;">
+                  <div style="display:inline-block;background:oklch(58% 0.1 145);color:oklch(15% 0.02 95);font-size:14px;font-weight:600;letter-spacing:1px;text-transform:uppercase;padding:9px 22px;border-radius:4px;" style-hover="background:oklch(64% 0.1 145);">Connect</div>
+                </div>
+              </div>
+            </div>
+          </sc-if>
+          <sc-if value="{{ s.notSelected }}" hint-placeholder-val="{{ true }}">
+            <div onClick="{{ s.toggle }}" style="cursor:pointer;background:oklch(24% 0.015 95 / 0.55);border:1px solid oklch(30% 0.015 95);border-radius:6px;padding:10px 14px;display:flex;align-items:center;gap:14px;backdrop-filter:blur(3px);" style-hover="background:oklch(27% 0.017 95 / 0.7);">
+              <div style="flex:0 0 48px;height:48px;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;border:2px solid oklch(15% 0.02 90);border-radius:3px;overflow:hidden;">
+                <div style="background:{{ s.tile1 }};"></div><div style="background:{{ s.tile2 }};"></div>
+                <div style="background:{{ s.tile3 }};"></div><div style="background:{{ s.tile4 }};"></div>
+              </div>
+              <div style="flex:1;min-width:0;">
+                <div style="font-size:17px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ s.name }}</div>
+                <div style="font-size:12.5px;color:oklch(62% 0.02 95);display:flex;align-items:center;gap:6px;">
+                  <span style="width:7px;height:7px;border-radius:50%;background:{{ s.pingColor }};display:inline-block;"></span>{{ s.players }} online
+                </div>
+              </div>
+            </div>
+          </sc-if>
+        </sc-for>
+      </div>
+      </sc-if>
+
+      <sc-if value="{{ isBrowserView }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;background:oklch(24% 0.015 95 / 0.55);border:1px solid oklch(30% 0.015 95);border-radius:6px;padding:12px 16px;margin-bottom:12px;backdrop-filter:blur(3px);">
+        <input value="{{ filterName }}" onInput="{{ onFilterNameInput }}" placeholder="Search server name…" style="flex:1 1 180px;min-width:150px;background:oklch(19% 0.014 95);border:1px solid oklch(34% 0.02 95);border-radius:5px;padding:9px 12px;font-size:13.5px;color:oklch(93% 0.01 95);font-family:'Oswald',sans-serif;"></input>
+
+        <select value="{{ latencyFilter }}" onChange="{{ onLatencyFilterChange }}" style="background:oklch(19% 0.014 95);border:1px solid oklch(34% 0.02 95);border-radius:5px;padding:9px 10px;font-size:13.5px;color:oklch(93% 0.01 95);font-family:'Oswald',sans-serif;">
+          <option value="any">Any latency</option>
+          <option value="50">Under 50 ms</option>
+          <option value="100">Under 100 ms</option>
+          <option value="200">Under 200 ms</option>
+        </select>
+
+        <div onClick="{{ toggleHideFull }}" style="display:flex;align-items:center;gap:9px;cursor:pointer;">
+          <div style="width:34px;height:18px;border-radius:9px;background:{{ hideFullBg }};position:relative;transition:background 0.15s ease;">
+            <div style="position:absolute;top:1px;left:{{ hideFullKnob }};width:16px;height:16px;border-radius:50%;background:oklch(96% 0.005 90);transition:left 0.15s ease;"></div>
+          </div>
+          <div style="font-size:13px;color:oklch(85% 0.01 95);white-space:nowrap;">Hide Full</div>
+        </div>
+
+        <div onClick="{{ toggleHidePassword }}" style="display:flex;align-items:center;gap:9px;cursor:pointer;">
+          <div style="width:34px;height:18px;border-radius:9px;background:{{ hidePasswordBg }};position:relative;transition:background 0.15s ease;">
+            <div style="position:absolute;top:1px;left:{{ hidePasswordKnob }};width:16px;height:16px;border-radius:50%;background:oklch(96% 0.005 90);transition:left 0.15s ease;"></div>
+          </div>
+          <div style="font-size:13px;color:oklch(85% 0.01 95);white-space:nowrap;">Hide Password Protected</div>
+        </div>
+      </div>
+
+      <div style="flex:1;overflow-y:auto;display:flex;flex-direction:column;">
+        <div style="display:grid;grid-template-columns:64px 1fr 130px 120px 110px;gap:0;position:sticky;top:0;background:oklch(21% 0.015 95);z-index:1;">
+          <sc-for list="{{ columns }}" as="col" hint-placeholder-count="4">
+            <div onClick="{{ col.select }}" style="padding:10px 12px;font-size:12px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:oklch(70% 0.02 95);cursor:pointer;display:flex;align-items:center;gap:6px;border-bottom:2px solid oklch(32% 0.015 95);" style-hover="color:oklch(90% 0.01 95);">{{ col.label }}<span style="font-size:10px;color:oklch(70% 0.13 145);">{{ col.arrow }}</span></div>
+          </sc-for>
+          <div style="padding:10px 12px;border-bottom:2px solid oklch(32% 0.015 95);"></div>
+        </div>
+        <sc-for list="{{ publicServers }}" as="p" hint-placeholder-count="5">
+          <div style="display:grid;grid-template-columns:64px 1fr 130px 120px 110px;align-items:center;border-bottom:1px solid oklch(28% 0.012 95);" style-hover="background:oklch(25% 0.015 95 / 0.6);">
+            <div style="padding:12px;display:flex;justify-content:center;">
+              <sc-if value="{{ p.locked }}" hint-placeholder-val="{{ false }}">
+                <div style="width:18px;height:20px;position:relative;">
+                  <div style="position:absolute;top:0;left:2px;width:14px;height:12px;border:2.5px solid oklch(70% 0.1 60);border-bottom:none;border-radius:8px 8px 0 0;"></div>
+                  <div style="position:absolute;bottom:0;left:0;width:18px;height:11px;background:oklch(70% 0.1 60);border-radius:2px;"></div>
+                </div>
+              </sc-if>
+            </div>
+            <div style="padding:12px;min-width:0;">
+              <div style="font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ p.name }}</div>
+              <div style="font-size:12px;color:oklch(60% 0.02 95);">{{ p.address }} · {{ p.tag }}</div>
+            </div>
+            <div style="padding:12px;font-size:14px;color:oklch(80% 0.01 95);">{{ p.playersLabel }}</div>
+            <div style="padding:12px;font-size:14px;color:oklch(80% 0.01 95);">{{ p.latencyLabel }}</div>
+            <div style="padding:12px;">
+              <div style="display:inline-block;background:oklch(58% 0.1 145);color:oklch(15% 0.02 95);font-size:12.5px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;padding:8px 16px;border-radius:4px;cursor:pointer;" style-hover="background:oklch(66% 0.11 145);">Connect</div>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+      </sc-if>
+
+      <sc-if value="{{ directConnectOpen }}" hint-placeholder-val="{{ false }}">
+        <div onClick="{{ closeDirectConnect }}" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:oklch(15% 0.01 90 / 0.55);backdrop-filter:blur(2px);z-index:5;">
+          <div onClick="{{ stopClick }}" style="background:oklch(24% 0.015 95);border:1px solid oklch(58% 0.1 145 / 0.5);border-radius:8px;padding:26px;width:360px;display:flex;flex-direction:column;gap:14px;">
+            <div style="font-size:17px;font-weight:600;">Direct Connect</div>
+            <input placeholder="Server address (e.g. play.example.net)" style="background:oklch(19% 0.014 95);border:1px solid oklch(34% 0.02 95);border-radius:5px;padding:11px 12px;font-size:14px;color:oklch(93% 0.01 95);font-family:'Oswald',sans-serif;"></input>
+            <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:4px;">
+              <div onClick="{{ closeDirectConnect }}" style="padding:9px 18px;border-radius:5px;background:oklch(30% 0.018 95);cursor:pointer;font-size:13px;font-weight:500;text-transform:uppercase;" style-hover="background:oklch(35% 0.02 95);">Cancel</div>
+              <div onClick="{{ closeDirectConnect }}" style="padding:9px 18px;border-radius:5px;background:oklch(58% 0.1 145);color:oklch(15% 0.02 95);cursor:pointer;font-size:13px;font-weight:600;text-transform:uppercase;" style-hover="background:oklch(66% 0.11 145);">Connect</div>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ addServerOpen }}" hint-placeholder-val="{{ false }}">
+        <div onClick="{{ closeAddServer }}" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:oklch(15% 0.01 90 / 0.55);backdrop-filter:blur(2px);z-index:5;">
+          <div onClick="{{ stopClick }}" style="background:oklch(24% 0.015 95);border:1px solid oklch(58% 0.1 145 / 0.5);border-radius:8px;padding:26px;width:360px;display:flex;flex-direction:column;gap:14px;">
+            <div style="font-size:17px;font-weight:600;">Add Server</div>
+            <input placeholder="Server name" style="background:oklch(19% 0.014 95);border:1px solid oklch(34% 0.02 95);border-radius:5px;padding:11px 12px;font-size:14px;color:oklch(93% 0.01 95);font-family:'Oswald',sans-serif;"></input>
+            <input placeholder="Server address" style="background:oklch(19% 0.014 95);border:1px solid oklch(34% 0.02 95);border-radius:5px;padding:11px 12px;font-size:14px;color:oklch(93% 0.01 95);font-family:'Oswald',sans-serif;"></input>
+            <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:4px;">
+              <div onClick="{{ closeAddServer }}" style="padding:9px 18px;border-radius:5px;background:oklch(30% 0.018 95);cursor:pointer;font-size:13px;font-weight:500;text-transform:uppercase;" style-hover="background:oklch(35% 0.02 95);">Cancel</div>
+              <div onClick="{{ closeAddServer }}" style="padding:9px 18px;border-radius:5px;background:oklch(58% 0.1 145);color:oklch(15% 0.02 95);cursor:pointer;font-size:13px;font-weight:600;text-transform:uppercase;" style-hover="background:oklch(66% 0.11 145);">Add</div>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+    </sc-if>
+
+    <sc-if value="{{ isStore }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+        <div style="font-size:15px;font-weight:600;letter-spacing:3px;text-transform:uppercase;color:oklch(70% 0.03 95);">Store</div>
+      </div>
+
+      <div style="flex:1;overflow-y:auto;padding-right:4px;display:flex;flex-direction:column;gap:20px;">
+        <!-- Featured banner -->
+        <div style="display:flex;gap:22px;align-items:center;background:linear-gradient(120deg, oklch(34% 0.06 60 / 0.65), oklch(30% 0.08 145 / 0.55));border:1px solid oklch(58% 0.1 145 / 0.5);border-radius:8px;padding:22px;backdrop-filter:blur(3px);">
+          <div style="flex:0 0 130px;height:130px;border-radius:6px;background:repeating-linear-gradient(45deg, oklch(45% 0.1 35) 0 10px, oklch(38% 0.08 30) 10px 20px);border:2px solid oklch(15% 0.02 90);position:relative;">
+            <div style="position:absolute;top:-8px;left:-8px;background:oklch(70% 0.15 40);color:oklch(15% 0.02 95);font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;padding:4px 9px;border-radius:4px;">Featured</div>
+          </div>
+          <div style="flex:1;display:flex;flex-direction:column;gap:8px;">
+            <div style="font-size:22px;font-weight:700;">Emberwake Cloak Bundle</div>
+            <div style="font-size:14px;color:oklch(78% 0.05 90);">Full outfit set · limited-time offer</div>
+            <div style="display:flex;align-items:center;gap:14px;margin-top:6px;">
+              <div style="font-size:20px;font-weight:700;color:oklch(85% 0.13 85);">€7.20</div>
+              <div style="font-size:15px;font-weight:500;color:oklch(60% 0.02 95);text-decoration:line-through;">€9.60</div>
+              <div style="background:oklch(58% 0.1 145);color:oklch(15% 0.02 95);font-size:14px;font-weight:700;letter-spacing:1px;text-transform:uppercase;padding:10px 26px;border-radius:5px;cursor:pointer;margin-left:auto;" style-hover="background:oklch(66% 0.11 145);transform:scale(1.03);">Buy Now</div>
+            </div>
+          </div>
+        </div>
+
+        <div style="font-size:12.5px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:oklch(62% 0.02 95);">All Cosmetics</div>
+        <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:16px;">
+          <sc-for list="{{ storeItems }}" as="it" hint-placeholder-count="6">
+            <div style="background:oklch(24% 0.015 95 / 0.55);border:1px solid oklch(30% 0.015 95);border-radius:6px;padding:14px;display:flex;flex-direction:column;gap:10px;backdrop-filter:blur(3px);transition:transform 0.15s ease, border-color 0.15s ease;" style-hover="border-color:oklch(58% 0.1 145 / 0.7);transform:translateY(-3px);">
+              <div style="width:100%;aspect-ratio:1;border-radius:4px;background:repeating-linear-gradient(45deg, {{ it.tile1 }} 0 10px, {{ it.tile2 }} 10px 20px);border:2px solid oklch(15% 0.02 90);"></div>
+              <div style="font-size:15px;font-weight:600;">{{ it.name }}</div>
+              <div style="font-size:12.5px;color:oklch(62% 0.02 95);">{{ it.category }}</div>
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-top:2px;">
+                <div style="font-size:14px;font-weight:600;color:oklch(78% 0.11 85);">€{{ it.priceEur }}</div>
+                <div style="background:oklch(58% 0.1 145);color:oklch(15% 0.02 95);font-size:12.5px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;padding:7px 14px;border-radius:4px;cursor:pointer;" style-hover="background:oklch(66% 0.11 145);">Buy</div>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isWardrobe }}" hint-placeholder-val="{{ false }}">
+      <div style="font-size:15px;font-weight:600;letter-spacing:3px;text-transform:uppercase;color:oklch(70% 0.03 95);margin-bottom:16px;">Wardrobe</div>
+
+      <div style="display:flex;gap:10px;margin-bottom:18px;">
+        <sc-for list="{{ slots }}" as="sl" hint-placeholder-count="4">
+          <div onClick="{{ sl.select }}" style="flex:1;cursor:pointer;background:{{ sl.bg }};border:1px solid {{ sl.border }};border-radius:6px;padding:12px;display:flex;flex-direction:column;align-items:center;gap:8px;" style-hover="border-color:oklch(58% 0.1 145 / 0.7);">
+            <div style="width:44px;height:44px;border-radius:4px;background:repeating-linear-gradient(45deg, {{ sl.tile1 }} 0 8px, {{ sl.tile2 }} 8px 16px);border:2px solid oklch(15% 0.02 90);"></div>
+            <div style="font-size:12.5px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;color:{{ sl.textColor }};">{{ sl.label }}</div>
+            <div style="font-size:11.5px;color:oklch(60% 0.02 95);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;">{{ sl.equippedName }}</div>
+          </div>
+        </sc-for>
+      </div>
+
+      <div style="font-size:12.5px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:oklch(62% 0.02 95);margin-bottom:12px;">{{ selectedSlotLabel }} Options</div>
+      <div style="flex:1;overflow-y:auto;display:grid;grid-template-columns:repeat(3, 1fr);gap:16px;align-content:start;">
+        <sc-for list="{{ wardrobeItems }}" as="it" hint-placeholder-count="3">
+          <div onClick="{{ it.equip }}" style="cursor:pointer;background:oklch(24% 0.015 95 / 0.55);border:2px solid {{ it.borderColor }};border-radius:6px;padding:14px;display:flex;flex-direction:column;gap:10px;backdrop-filter:blur(3px);">
+            <div style="width:100%;aspect-ratio:1;border-radius:4px;background:repeating-linear-gradient(45deg, {{ it.tile1 }} 0 10px, {{ it.tile2 }} 10px 20px);border:2px solid oklch(15% 0.02 90);"></div>
+            <div style="font-size:15px;font-weight:600;">{{ it.name }}</div>
+            <div style="font-size:12.5px;color:{{ it.statusColor }};font-weight:500;">{{ it.statusLabel }}</div>
+          </div>
+        </sc-for>
+      </div>
+    </sc-if>
+  </div>
+
+  <!-- TAB BAR: select which panel is open to the left -->
+  <div style="flex:0 0 108px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:10px;gap:10px;background:oklch(22% 0.016 95 / 0.7);backdrop-filter:blur(4px);border-left:1px solid oklch(30% 0.015 95);border-right:1px solid oklch(30% 0.015 95);">
+    <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="4">
+      <div onClick="{{ t.select }}" style="width:100%;display:flex;flex-direction:column;align-items:center;gap:8px;padding:14px 6px;border-radius:6px;cursor:pointer;background:{{ t.bg }};border-left:3px solid {{ t.accent }};" style-hover="background:oklch(30% 0.02 95 / 0.6);">
+        <div style="width:26px;height:26px;{{ t.iconRadius }}background:{{ t.iconBg }};border:2px solid {{ t.accent }};"></div>
+        <div style="font-size:11.5px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:{{ t.textColor }};text-align:center;">{{ t.label }}</div>
+      </div>
+    </sc-for>
+  </div>
+
+  <!-- RIGHT: sidebar spacer (reserves collapsed width in flow; the real panel overlays absolutely so expansion doesn't reflow siblings) -->
+  <div style="flex:0 0 84px;position:relative;">
+  <div onMouseEnter="{{ onSidebarEnter }}" onMouseLeave="{{ onSidebarLeave }}" style="position:absolute;top:0;right:0;bottom:0;z-index:10;width:{{ expanded }};box-sizing:border-box;display:flex;flex-direction:column;padding:32px 14px;background:oklch(27% 0.006 240);border-left:1px solid oklch(20% 0.005 240);box-shadow:-8px 0 24px oklch(10% 0.01 240 / 0.35);transition:width 0.22s ease;overflow:hidden;">
+    <div style="display:flex;align-items:center;gap:14px;cursor:pointer;padding:0 8px;" style-hover="opacity:0.85;">
+      <div style="flex:0 0 auto;width:56px;height:56px;border-radius:8px;background:oklch(52% 0.1 145);display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;color:oklch(15% 0.02 95);border:2px solid oklch(65% 0.13 145);">P</div>
+      <sc-if value="{{ expandedFlag }}" hint-placeholder-val="{{ false }}">
+        <div style="flex:1;min-width:0;white-space:nowrap;">
+          <div style="font-size:19px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Playername</div>
+          <div style="font-size:13px;color:oklch(65% 0.02 95);">View profile</div>
+        </div>
+      </sc-if>
+    </div>
+
+    <sc-if value="{{ expandedFlag }}" hint-placeholder-val="{{ false }}">
+      <div style="margin-top:14px;padding:0 8px;">
+        <div style="font-size:11.5px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:oklch(60% 0.02 95);margin-bottom:6px;white-space:nowrap;">Who can join?</div>
+        <select value="{{ joinPolicy }}" onChange="{{ onJoinPolicyChange }}" style="width:100%;background:oklch(22% 0.014 95);border:1px solid oklch(38% 0.02 95);border-radius:5px;padding:8px 10px;font-size:13.5px;color:oklch(90% 0.01 95);cursor:pointer;">
+          <option value="nobody">Nobody</option>
+          <option value="friends">Friends</option>
+          <option value="everyone">Everyone</option>
+        </select>
+      </div>
+    </sc-if>
+
+    <div style="height:1px;background:oklch(32% 0.015 95);margin:24px 8px 18px;"></div>
+    <sc-if value="{{ expandedFlag }}" hint-placeholder-val="{{ false }}">
+      <div style="font-size:13px;font-weight:600;letter-spacing:3px;text-transform:uppercase;color:oklch(65% 0.02 95);margin-bottom:12px;padding:0 8px;white-space:nowrap;">Friends</div>
+    </sc-if>
+
+    <div style="flex:1;overflow-y:auto;overflow-x:hidden;display:flex;flex-direction:column;gap:4px;min-height:0;">
+      <sc-for list="{{ friends }}" as="f" hint-placeholder-count="5">
+        <div style="display:flex;align-items:center;gap:12px;padding:8px;border-radius:6px;cursor:pointer;" style-hover="background:oklch(27% 0.018 95);">
+          <div style="flex:0 0 auto;width:36px;height:36px;border-radius:6px;background:{{ f.color }};display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;color:oklch(15% 0.02 95);border:2.5px solid {{ f.borderColor }};">{{ f.initial }}</div>
+          <sc-if value="{{ expandedFlag }}" hint-placeholder-val="{{ false }}">
+            <div style="flex:1;min-width:0;white-space:nowrap;">
+              <div style="font-size:15px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ f.name }}</div>
+              <div style="font-size:12px;color:oklch(60% 0.02 95);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ f.status }}</div>
+            </div>
+          </sc-if>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:10px;margin-top:18px;">
+      <div style="display:flex;align-items:center;justify-content:center;gap:10px;background:oklch(30% 0.018 95);border-radius:6px;padding:13px;font-size:14px;font-weight:500;letter-spacing:1.5px;text-transform:uppercase;cursor:pointer;white-space:nowrap;overflow:hidden;" style-hover="background:oklch(34% 0.02 95);">
+        <div style="flex:0 0 auto;width:16px;height:16px;border-radius:50%;border:2.5px solid oklch(85% 0.01 95);"></div>
+        <sc-if value="{{ expandedFlag }}" hint-placeholder-val="{{ false }}">Settings</sc-if>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:center;gap:10px;background:oklch(30% 0.06 35);border-radius:6px;padding:13px;font-size:14px;font-weight:500;letter-spacing:1.5px;text-transform:uppercase;color:oklch(92% 0.02 40);cursor:pointer;white-space:nowrap;overflow:hidden;" style-hover="background:oklch(34% 0.07 35);">
+        <div style="flex:0 0 auto;width:14px;height:14px;background:oklch(92% 0.02 40);"></div>
+        <sc-if value="{{ expandedFlag }}" hint-placeholder-val="{{ false }}">Quit Game</sc-if>
+      </div>
+    </div>
+  </div>
+  </div>
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = {
+    selectedSP: 'sp1', selectedMP: null, sidebarExpanded: false, selectedTab: 'worlds',
+    selectedSlot: 'Torso',
+    equippedBySlot: { Head: 'h1', Torso: 't1', Legs: 'l2', Feet: 'f1' },
+    serverView: 'saved', directConnectOpen: false, addServerOpen: false,
+    refreshSpin: false, worldCreateToast: false,
+    sortKey: 'name', sortDir: 'asc',
+    filterName: '', hideFull: false, hidePassword: false, latencyFilter: 'any',
+    joinPolicy: 'friends'
+  };
+
+  publicServersData = [
+    { id:'p1', name:'Wayfarer Public', address:'wayfarer.mc.gg', playersCurrent:340, playersMax:500, latency:42, locked:false, tag:'Survival' },
+    { id:'p2', name:'Greatwood Vanilla', address:'greatwood.net', playersCurrent:88, playersMax:200, latency:71, locked:false, tag:'Vanilla' },
+    { id:'p3', name:'Ironclad Factions', address:'ironclad.pw', playersCurrent:1000, playersMax:1000, latency:158, locked:true, tag:'Factions' },
+    { id:'p4', name:'Quiet Hollow', address:'quiethollow.io', playersCurrent:12, playersMax:50, latency:29, locked:true, tag:'Creative' },
+    { id:'p5', name:'Redstone Union', address:'redunion.gg', playersCurrent:201, playersMax:300, latency:245, locked:false, tag:'Technical' },
+    { id:'p6', name:'Amberfield Roleplay', address:'amberfield.rp', playersCurrent:64, playersMax:150, latency:96, locked:true, tag:'Roleplay' },
+    { id:'p7', name:'Old Growth Anarchy', address:'oldgrowth.mc', playersCurrent:20, playersMax:20, latency:187, locked:false, tag:'Anarchy' }
+  ];
+
+  spData = [
+    { id:'sp1', name:'Hollowbrook Vale', mode:'Survival', difficulty:'Normal', lastPlayed:'Today', tile1:'oklch(52% 0.1 145)', tile2:'oklch(45% 0.08 140)', tile3:'oklch(40% 0.05 90)', tile4:'oklch(48% 0.06 95)' },
+    { id:'sp2', name:'Ashen Peaks', mode:'Survival', difficulty:'Hard', lastPlayed:'2 days ago', tile1:'oklch(60% 0.02 90)', tile2:'oklch(50% 0.02 90)', tile3:'oklch(70% 0.05 80)', tile4:'oklch(55% 0.03 90)' },
+    { id:'sp3', name:'Sunfield Homestead', mode:'Creative', difficulty:'Peaceful', lastPlayed:'1 week ago', tile1:'oklch(70% 0.09 90)', tile2:'oklch(62% 0.08 85)', tile3:'oklch(52% 0.1 145)', tile4:'oklch(46% 0.08 140)' },
+    { id:'sp4', name:'The Deep Cistern', mode:'Hardcore', difficulty:'Hard', lastPlayed:'3 weeks ago', tile1:'oklch(35% 0.03 250)', tile2:'oklch(30% 0.02 250)', tile3:'oklch(40% 0.02 90)', tile4:'oklch(33% 0.02 90)' }
+  ];
+  mpData = [
+    { id:'mp1', name:'Ridgeline SMP', address:'play.ridgeline.net', players:'24/60', pingColor:'oklch(65% 0.13 145)', tile1:'oklch(48% 0.07 60)', tile2:'oklch(42% 0.06 55)', tile3:'oklch(52% 0.1 145)', tile4:'oklch(45% 0.08 140)' },
+    { id:'mp2', name:'Copperhall Realms', address:'copperhall.gg', players:'8/40', pingColor:'oklch(70% 0.15 85)', tile1:'oklch(55% 0.08 60)', tile2:'oklch(48% 0.06 55)', tile3:'oklch(60% 0.02 90)', tile4:'oklch(52% 0.02 90)' },
+    { id:'mp3', name:'Emberfall Kingdoms', address:'ember.fallnet.io', players:'112/200', pingColor:'oklch(65% 0.13 145)', tile1:'oklch(45% 0.1 35)', tile2:'oklch(38% 0.08 30)', tile3:'oklch(50% 0.09 60)', tile4:'oklch(42% 0.07 55)' },
+    { id:'mp4', name:'Old Growth Anarchy', address:'oldgrowth.mc', players:'3/20', pingColor:'oklch(60% 0.14 30)', tile1:'oklch(38% 0.05 140)', tile2:'oklch(32% 0.04 140)', tile3:'oklch(35% 0.02 90)', tile4:'oklch(30% 0.02 90)' }
+  ];
+  friendsData = [
+    { id:'f1', name:'BirchAndVine', initial:'B', color:'oklch(58% 0.1 145)', status:'Online — Hollowbrook Vale', online:true },
+    { id:'f2', name:'Quarrywolf', initial:'Q', color:'oklch(50% 0.08 55)', status:'Online — Ridgeline SMP', online:true },
+    { id:'f3', name:'MossJara', initial:'M', color:'oklch(55% 0.09 90)', status:'Offline — 4h ago', online:false },
+    { id:'f4', name:'Kettlebrook', initial:'K', color:'oklch(48% 0.06 250)', status:'Offline — 1d ago', online:false },
+    { id:'f5', name:'Thistledown', initial:'T', color:'oklch(52% 0.1 30)', status:'Online — Copperhall Realms', online:true }
+  ];
+
+  storeData = [
+    { id:'st1', name:'Emberwake Cloak', category:'Cloak', priceEur:'4.80', tile1:'oklch(45% 0.1 35)', tile2:'oklch(38% 0.08 30)' },
+    { id:'st2', name:'Mossback Helm', category:'Headwear', priceEur:'3.20', tile1:'oklch(52% 0.1 145)', tile2:'oklch(44% 0.08 140)' },
+    { id:'st3', name:'Quarry Pickaxe Skin', category:'Tool Skin', priceEur:'2.60', tile1:'oklch(60% 0.02 90)', tile2:'oklch(50% 0.02 90)' },
+    { id:'st4', name:'Dusk Wing Glider', category:'Emote', priceEur:'6.40', tile1:'oklch(35% 0.06 300)', tile2:'oklch(28% 0.05 300)' },
+    { id:'st5', name:'Golden Lantern', category:'Accessory', priceEur:'1.80', tile1:'oklch(78% 0.13 85)', tile2:'oklch(65% 0.11 80)' },
+    { id:'st6', name:'Riverstone Cape', category:'Cloak', priceEur:'4.00', tile1:'oklch(55% 0.03 220)', tile2:'oklch(46% 0.02 220)' }
+  ];
+  wardrobeData = [
+    { id:'h1', slot:'Head', name:'Ranger Hood', tile1:'oklch(48% 0.07 60)', tile2:'oklch(40% 0.06 55)' },
+    { id:'h2', slot:'Head', name:'Stonecut Helm', tile1:'oklch(55% 0.02 90)', tile2:'oklch(46% 0.02 90)' },
+    { id:'t1', slot:'Torso', name:'Traveler Tunic', tile1:'oklch(52% 0.1 145)', tile2:'oklch(44% 0.08 140)' },
+    { id:'t2', slot:'Torso', name:'Woodland Vest', tile1:'oklch(45% 0.08 140)', tile2:'oklch(38% 0.06 135)' },
+    { id:'l1', slot:'Legs', name:'Duskwalker Trousers', tile1:'oklch(38% 0.06 300)', tile2:'oklch(30% 0.05 300)' },
+    { id:'l2', slot:'Legs', name:'Sunfield Overalls', tile1:'oklch(70% 0.09 90)', tile2:'oklch(60% 0.08 85)' },
+    { id:'f1', slot:'Feet', name:'Deepwater Boots', tile1:'oklch(45% 0.05 230)', tile2:'oklch(38% 0.04 230)' },
+    { id:'f2', slot:'Feet', name:'Quarry Treads', tile1:'oklch(60% 0.02 90)', tile2:'oklch(50% 0.02 90)' }
+  ];
+  slotDefs = ['Head', 'Torso', 'Legs', 'Feet'];
+  tabDefs = [
+    { id:'worlds', label:'Worlds' },
+    { id:'servers', label:'Servers' },
+    { id:'store', label:'Store' },
+    { id:'wardrobe', label:'Wardrobe' }
+  ];
+
+  toggleSP(id) { this.setState(s => ({ selectedSP: s.selectedSP === id ? null : id })); }
+  toggleMP(id) { this.setState(s => ({ selectedMP: s.selectedMP === id ? null : id })); }
+  selectTab(id) { this.setState(s => ({ selectedTab: s.selectedTab === id ? null : id })); }
+  equipWardrobe(id, slot) { this.setState(s => ({ equippedBySlot: { ...s.equippedBySlot, [slot]: id } })); }
+  selectSlot(slot) { this.setState({ selectedSlot: slot }); }
+
+  createWorld() {
+    this.setState({ worldCreateToast: true });
+    setTimeout(() => this.setState({ worldCreateToast: false }), 1600);
+  }
+  toggleServerView() { this.setState(s => ({ serverView: s.serverView === 'saved' ? 'browser' : 'saved' })); }
+  openDirectConnect() { this.setState({ directConnectOpen: true }); }
+  closeDirectConnect() { this.setState({ directConnectOpen: false }); }
+  openAddServer() { this.setState({ addServerOpen: true }); }
+  closeAddServer() { this.setState({ addServerOpen: false }); }
+  doRefresh() {
+    this.setState(s => ({ refreshSpin: !s.refreshSpin }));
+  }
+  stopClick(e) { e.stopPropagation(); }
+  sortBy(key) {
+    this.setState(s => ({
+      sortKey: key,
+      sortDir: s.sortKey === key ? (s.sortDir === 'asc' ? 'desc' : 'asc') : 'asc'
+    }));
+  }
+  setFilterName(v) { this.setState({ filterName: v }); }
+  setLatencyFilter(v) { this.setState({ latencyFilter: v }); }
+  setJoinPolicy(v) { this.setState({ joinPolicy: v }); }
+  toggleHideFull() { this.setState(s => ({ hideFull: !s.hideFull })); }
+  toggleHidePassword() { this.setState(s => ({ hidePassword: !s.hidePassword })); }
+
+  renderVals() {
+    const spWorlds = this.spData.map(w => ({
+      ...w, selected: w.id === this.state.selectedSP, notSelected: w.id !== this.state.selectedSP,
+      toggle: () => this.toggleSP(w.id)
+    }));
+    const mpWorlds = this.mpData.map(s => ({
+      ...s, selected: s.id === this.state.selectedMP, notSelected: s.id !== this.state.selectedMP,
+      toggle: () => this.toggleMP(s.id)
+    }));
+    const friends = this.friendsData.map(f => ({
+      ...f, borderColor: f.online ? 'oklch(65% 0.13 145)' : 'oklch(48% 0.01 95)'
+    }));
+    const expandedFlag = this.state.sidebarExpanded;
+    const active = this.state.selectedTab;
+
+    const storeItems = this.storeData;
+    const equippedBySlot = this.state.equippedBySlot;
+    const selectedSlot = this.state.selectedSlot;
+    const wardrobeItems = this.wardrobeData.filter(w => w.slot === selectedSlot).map(w => {
+      const equipped = w.id === equippedBySlot[w.slot];
+      return {
+        ...w, equip: () => this.equipWardrobe(w.id, w.slot),
+        borderColor: equipped ? 'oklch(65% 0.13 145)' : 'oklch(30% 0.015 95)',
+        statusColor: equipped ? 'oklch(70% 0.13 145)' : 'oklch(62% 0.02 95)',
+        statusLabel: equipped ? 'Equipped' : 'Owned'
+      };
+    });
+    const slots = this.slotDefs.map(s => {
+      const equippedItem = this.wardrobeData.find(w => w.id === equippedBySlot[s]);
+      const isActive = s === selectedSlot;
+      return {
+        label: s, select: () => this.selectSlot(s),
+        equippedName: equippedItem ? equippedItem.name : '—',
+        tile1: equippedItem ? equippedItem.tile1 : 'oklch(30% 0.01 95)',
+        tile2: equippedItem ? equippedItem.tile2 : 'oklch(25% 0.01 95)',
+        bg: isActive ? 'oklch(30% 0.02 95 / 0.55)' : 'oklch(24% 0.015 95 / 0.4)',
+        border: isActive ? 'oklch(58% 0.1 145 / 0.7)' : 'oklch(30% 0.015 95)',
+        textColor: isActive ? 'oklch(95% 0.01 95)' : 'oklch(70% 0.02 95)'
+      };
+    });
+
+    const moss = 'oklch(65% 0.13 145)';
+    const tabs = this.tabDefs.map(t => {
+      const isActive = active === t.id;
+      return {
+        ...t,
+        select: () => this.selectTab(t.id),
+        accent: isActive ? moss : 'transparent',
+        bg: isActive ? 'oklch(30% 0.02 95 / 0.55)' : 'transparent',
+        textColor: isActive ? 'oklch(95% 0.01 95)' : 'oklch(65% 0.02 95)',
+        iconBg: isActive ? moss : 'oklch(32% 0.015 95)',
+        iconRadius: t.id === 'store' || t.id === 'wardrobe' ? 'border-radius:4px;' : 'border-radius:50%;'
+      };
+    });
+
+    const isSavedView = this.state.serverView === 'saved';
+
+    const latencyMax = { any: Infinity, '50': 50, '100': 100, '200': 200 }[this.state.latencyFilter];
+    let publicServers = this.publicServersData.filter(p =>
+      p.name.toLowerCase().includes(this.state.filterName.toLowerCase()) &&
+      (!this.state.hideFull || p.playersCurrent < p.playersMax) &&
+      (!this.state.hidePassword || !p.locked) &&
+      p.latency <= latencyMax
+    );
+    const sk = this.state.sortKey, sd = this.state.sortDir === 'asc' ? 1 : -1;
+    publicServers = [...publicServers].sort((a, b) => {
+      let av = a[sk], bv = b[sk];
+      if (sk === 'players') { av = a.playersCurrent; bv = b.playersCurrent; }
+      if (sk === 'locked') { av = a.locked ? 1 : 0; bv = b.locked ? 1 : 0; }
+      if (typeof av === 'string') return av.localeCompare(bv) * sd;
+      return (av - bv) * sd;
+    }).map(p => ({ ...p, playersLabel: `${p.playersCurrent}/${p.playersMax}`, latencyLabel: `${p.latency} ms` }));
+
+    const arrow = (key) => this.state.sortKey === key ? (this.state.sortDir === 'asc' ? '▲' : '▼') : '';
+    const columns = [
+      { key: 'locked', label: 'Lock' }, { key: 'name', label: 'Name' },
+      { key: 'players', label: 'Players' }, { key: 'latency', label: 'Latency' }
+    ].map(c => ({ ...c, arrow: arrow(c.key), select: () => this.sortBy(c.key) }));
+
+    return {
+      columns,
+      filterName: this.state.filterName,
+      onFilterNameInput: (e) => this.setFilterName(e.target.value),
+      latencyFilter: this.state.latencyFilter,
+      onLatencyFilterChange: (e) => this.setLatencyFilter(e.target.value),
+      hideFull: this.state.hideFull, toggleHideFull: () => this.toggleHideFull(),
+      hideFullBg: this.state.hideFull ? 'oklch(58% 0.1 145)' : 'oklch(34% 0.015 95)',
+      hideFullKnob: this.state.hideFull ? '17px' : '1px',
+      hidePassword: this.state.hidePassword, toggleHidePassword: () => this.toggleHidePassword(),
+      hidePasswordBg: this.state.hidePassword ? 'oklch(58% 0.1 145)' : 'oklch(34% 0.015 95)',
+      hidePasswordKnob: this.state.hidePassword ? '17px' : '1px',
+      joinPolicy: this.state.joinPolicy, onJoinPolicyChange: (e) => this.setJoinPolicy(e.target.value),
+      spWorlds, mpWorlds, friends, storeItems, wardrobeItems, slots, selectedSlotLabel: selectedSlot, tabs,
+      isWorlds: active === 'worlds', isServers: active === 'servers',
+      isStore: active === 'store', isWardrobe: active === 'wardrobe',
+      isSavedView, isBrowserView: !isSavedView,
+      serverPanelTitle: isSavedView ? 'Multiplayer Servers' : 'Server Browser',
+      serverToggleLabel: isSavedView ? 'Browse Servers' : 'My Servers',
+      publicServers,
+      directConnectOpen: this.state.directConnectOpen,
+      addServerOpen: this.state.addServerOpen,
+      worldCreateToast: this.state.worldCreateToast,
+      refreshRotation: this.state.refreshSpin ? '360deg' : '0deg',
+      createWorld: () => this.createWorld(),
+      toggleServerView: () => this.toggleServerView(),
+      openDirectConnect: () => this.openDirectConnect(),
+      closeDirectConnect: () => this.closeDirectConnect(),
+      openAddServer: () => this.openAddServer(),
+      closeAddServer: () => this.closeAddServer(),
+      doRefresh: () => this.doRefresh(),
+      stopClick: (e) => this.stopClick(e),
+      centerBg: active ? 'oklch(21% 0.015 95 / 0.55)' : 'transparent',
+      centerBlur: active ? 'blur(6px)' : 'none',
+      centerPadding: active ? '36px 32px' : '0px',
+      expandedFlag,
+      expanded: expandedFlag ? '320px' : '84px',
+      onSidebarEnter: () => this.setState({ sidebarExpanded: true }),
+      onSidebarLeave: () => this.setState({ sidebarExpanded: false })
+    };
+  }
+}
+
+</script>
+</body>
+</html>

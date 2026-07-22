@@ -10,7 +10,8 @@
 		"ConnectionSteamChannelMixin",
 		"ClientHandshakeStubDigestMixin",
 		"ServerLoginStubDigestMixin",
-		"ServerKeyPacketMixin"
+		"ServerKeyPacketMixin",
+		"ClientTitleScreenRedirectMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1

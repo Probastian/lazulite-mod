@@ -104,5 +104,9 @@ public final class FriendsSidebarClientInitializer implements ClientModInitializ
 
         new FabricFriendsSidebarInjector(facade, worldJoinRequester, hostingStatusReader, worldInviteSender,
                 toastService, richPresenceFacade);
+
+        // Published for MainMenuClientInitializer (added after this entrypoint in fabric.mod.json's
+        // "client" array) to reuse the same facade for MainMenuScreen's own sidebar (spec FR7.6).
+        FriendsSidebarFacadeHandoff.publish(facade);
     }
 }

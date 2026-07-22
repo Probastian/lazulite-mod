@@ -104,5 +104,7 @@ public final class FriendsSidebarClientInitializer implements ClientModInitializ
 
         new FabricFriendsSidebarInjector(facade, worldJoinRequester, hostingStatusReader, worldInviteSender,
                 toastService, richPresenceFacade);
+
+        FriendsSidebarFacadeHandoff.publish(facade);
     }
 }

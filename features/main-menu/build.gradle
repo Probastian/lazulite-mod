@@ -1,0 +1,17 @@
+dependencies {
+	// MainMenuTab/StoreItem/WardrobeSlot/CharacterPose (api-module types)
+	// appear in this feature's own public service signatures
+	// (MainMenuStateMachine/StoreCatalog/IdleCharacterAnimator), so it must
+	// leak to consumers -- hence `api`, not `implementation` (same rationale
+	// already used in features/friends-sidebar/build.gradle and
+	// features/server-browser/build.gradle).
+	api project(':api')
+
+	// SteamAvailability plus any steamworks4j surface used by this feature's
+	// platform-side OwnershipChecker implementation is only ever consulted
+	// internally -- this feature never re-exposes a steamworks4j type in its
+	// own public surface, so `services` stays `implementation`, not `api`.
+	implementation project(':services')
+
+	// JUnit 5/AssertJ/Mockito are provided to every subproject by the root build.gradle.
+}

@@ -8,6 +8,10 @@ subprojects {
 
 	repositories {
 		mavenCentral()
+		// Probastian/steamworks4j fork (adds SteamInventory bindings not present upstream;
+		// see services/steamworks-inventory-bindings/specification.md and plan.md). JitPack
+		// builds directly from the fork's tagged commit — see steamworks4j_version below.
+		maven { url 'https://jitpack.io' }
 	}
 
 	// Shared modules (api/common/services/libraries) target the lowest Java version

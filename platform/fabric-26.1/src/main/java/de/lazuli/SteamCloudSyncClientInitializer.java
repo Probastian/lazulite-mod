@@ -3,7 +3,6 @@ package de.lazuli;
 import de.lazuli.api.cloudsync.CloudSyncable;
 import de.lazuli.cloudsync.FabricBookmarkToggleInjector;
 import de.lazuli.cloudsync.FabricCloudOnlyWorldListInjector;
-import de.lazuli.features.helloworldmainmenu.config.HelloWorldMainMenuConfigIO;
 import de.lazuli.features.steamcloudsync.api.SteamCloudSyncConfig;
 import de.lazuli.features.steamcloudsync.config.SteamCloudSyncConfigIO;
 import de.lazuli.features.steamcloudsync.services.CloudSyncCoordinator;
@@ -19,9 +18,6 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.level.storage.LevelResource;
 
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 
@@ -31,15 +27,12 @@ import java.util.List;
  *
  * <p>Obtains the already-constructed {@link SteamworksService} via
  * {@link SteamworksServiceHandoff#require()} (resolved during this feature's
- * own planning, Decision 1), loads this feature's own config, constructs the
- * {@link HelloWorldMainMenuCloudSyncAdapter} (Decision 2 -- an inline nested
- * class per ADR-0001's literal scope, rather than a separate Version Adapter
- * file), builds {@link CloudSyncCoordinator}, reconciles at startup, and
- * registers every FR0.3 checkpoint plus the four Group 3/6 Version Adapters.
+ * own planning, Decision 1), loads this feature's own config, builds
+ * {@link CloudSyncCoordinator}, reconciles at startup, and registers every
+ * FR0.3 checkpoint plus the four Group 3/6 Version Adapters.
  *
  * <p>Registered as the <strong>third</strong> {@code "client"} entrypoint in
  * this module's {@code fabric.mod.json}, after
- * {@code HelloWorldMainMenuClientInitializer} and
  * {@code SteamworksClientInitializer} (order is load-bearing -- see
  * {@link SteamworksServiceHandoff}).
  */
@@ -60,8 +53,7 @@ public final class SteamCloudSyncClientInitializer implements ClientModInitializ
         }
         SteamCloudSyncConfig config = configResult.config();
 
-        Path helloWorldConfigPath = configDir.resolve("hello-world-main-menu.json");
-        List<CloudSyncable> cloudSyncables = List.of(new HelloWorldMainMenuCloudSyncAdapter(helloWorldConfigPath));
+        List<CloudSyncable> cloudSyncables = List.of();
 
         CloudSyncCoordinator coordinator = new CloudSyncCoordinator(
                 steamworksService,
@@ -131,61 +123,5 @@ public final class SteamCloudSyncClientInitializer implements ClientModInitializ
     }
 
     private record SingleplayerWorldInfo(String worldSlug, String displayName, Path worldFolder) {
-    }
-
-    /**
-     * Bridges {@code features/hello-world-main-menu}'s own config file into
-     * this feature's {@link CloudSyncable} contract (Group 1, FR1.1/FR1.2),
-     * per Decision 2: a private nested class inside this entrypoint itself,
-     * not a separate Version Adapter file, keeping every Feature-class-crossing
-     * reference confined to this already-licensed composition-root scope
-     * (ADR-0001; generalized by ADR-0003 for this cross-Feature-bridging shape).
-     */
-    private static final class HelloWorldMainMenuCloudSyncAdapter implements CloudSyncable {
-
-        private final Path configPath;
-        private final HelloWorldMainMenuConfigIO configIO = new HelloWorldMainMenuConfigIO();
-
-        private HelloWorldMainMenuCloudSyncAdapter(Path configPath) {
-            this.configPath = configPath;
-        }
-
-        @Override
-        public String cloudSyncId() {
-            return "hello-world-main-menu";
-        }
-
-        @Override
-        public byte[] exportState() {
-            HelloWorldMainMenuConfigIO.ParseResult result = configIO.load(configPath);
-            return configIO.serialize(result.config()).getBytes(StandardCharsets.UTF_8);
-        }
-
-        @Override
-        public void importState(byte[] data) {
-            HelloWorldMainMenuConfigIO.ParseResult result = configIO.parse(new String(data, StandardCharsets.UTF_8));
-            if (result.warning() != null) {
-                LazuliMod.LOGGER.warn(result.warning());
-                return;
-            }
-            try {
-                Path parent = configPath.toAbsolutePath().normalize().getParent();
-                if (parent != null) {
-                    Files.createDirectories(parent);
-                }
-                Files.writeString(configPath, configIO.serialize(result.config()), StandardCharsets.UTF_8);
-            } catch (IOException e) {
-                LazuliMod.LOGGER.warn("Failed to import Steam Cloud state for hello-world-main-menu: {}", e.toString());
-            }
-        }
-
-        @Override
-        public long localLastModifiedMillis() {
-            try {
-                return Files.exists(configPath) ? Files.getLastModifiedTime(configPath).toMillis() : -1L;
-            } catch (IOException e) {
-                return -1L;
-            }
-        }
     }
 }

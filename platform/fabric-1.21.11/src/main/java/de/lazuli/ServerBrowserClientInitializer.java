@@ -34,5 +34,7 @@ public final class ServerBrowserClientInitializer implements ClientModInitialize
                 LazuliMod.LOGGER::warn);
 
         new FabricServerBrowserButtonInjector(sessionFactory, steamworksService);
+
+        ServerBrowserSessionFactoryHandoff.publish(sessionFactory);
     }
 }
