@@ -101,7 +101,7 @@ public final class SteamWorldHostingClientInitializer implements ClientModInitia
         WorldInviteSender inviteSender = new WorldInviteSender() {
             @Override
             public boolean isHosting() {
-                return lifecycle.currentStatus().hosting();
+                return lifecycle.currentStatus().hosting() && WorldHostingHookHolder.isAdvertising();
             }
 
             @Override

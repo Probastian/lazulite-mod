@@ -12,6 +12,7 @@ import io.netty.channel.DefaultChannelConfig;
 import io.netty.channel.EventLoop;
 
 import java.net.SocketAddress;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.LongPredicate;
 
 /**
@@ -33,11 +34,11 @@ public final class SteamServerChannel extends AbstractServerChannel {
     final SteamSession session;
 
     /** FR1.3 gate: {@code true} iff the given {@code SteamID64} may join. */
-    private final LongPredicate canJoin;
+    private final AtomicReference<LongPredicate> canJoin;
 
     private volatile boolean closed = false;
 
-    public SteamServerChannel(SteamSession session, SteamNetworking networking, LongPredicate canJoin) {
+    public SteamServerChannel(SteamSession session, SteamNetworking networking, AtomicReference<LongPredicate> canJoin) {
         this.session = session;
         this.networking = networking;
         this.canJoin = canJoin;
@@ -94,7 +95,7 @@ public final class SteamServerChannel extends AbstractServerChannel {
     public void acceptPeer(SteamID remotePeer) {
         long peerId = SteamNativeHandle.getNativeHandle(remotePeer);
 
-        if (!canJoin.test(peerId)) {
+        if (!canJoin.get().test(peerId)) {
             LazuliMod.LOGGER.info("[WorldHosting] Rejecting peer {} -- not a direct Steam friend", peerId);
             SteamDisconnectProtocol.sendFin(networking, remotePeer, "lazuli.worldhosting.disconnect.not_friend");
             Thread closer = new Thread(() -> {

@@ -24,7 +24,10 @@ package de.lazuli.api.worldhosting;
  */
 public interface WorldInviteSender {
 
-    /** @return true if the local player currently has an active hosted session. */
+    /**
+     * @return true if the local player currently has an active hosted session
+     *         AND the current join policy is not NOBODY.
+     */
     boolean isHosting();
 
     /**

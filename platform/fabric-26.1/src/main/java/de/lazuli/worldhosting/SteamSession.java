@@ -15,6 +15,7 @@ import io.netty.channel.EventLoopGroup;
 
 import java.nio.ByteBuffer;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.LongPredicate;
 
 /**
@@ -34,7 +35,7 @@ public final class SteamSession {
 
     private final ChannelHandler childHandler;
     private final EventLoopGroup group;
-    private final LongPredicate canJoin;
+    private final AtomicReference<LongPredicate> canJoin;
 
     private SteamNetworking networking;
     private SteamServerChannel serverChannel;
@@ -49,7 +50,7 @@ public final class SteamSession {
 
     private Thread pollerThread;
 
-    public SteamSession(ChannelHandler childHandler, EventLoopGroup group, LongPredicate canJoin) {
+    public SteamSession(ChannelHandler childHandler, EventLoopGroup group, AtomicReference<LongPredicate> canJoin) {
         this.childHandler = childHandler;
         this.group = group;
         this.canJoin = canJoin;

@@ -6,6 +6,7 @@ import de.lazuli.features.worldhosting.services.HostingLifecycle;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.EventLoopGroup;
 
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.LongPredicate;
 
 /**
@@ -24,7 +25,7 @@ import java.util.function.LongPredicate;
 public final class WorldHostingHookHolder {
 
     private static volatile HostingLifecycle lifecycle;
-    private static volatile LongPredicate canJoin;
+    private static final AtomicReference<LongPredicate> canJoin = new AtomicReference<>();
     private static volatile boolean advertise = true;
 
     private static volatile ChannelHandler capturedChildHandler;
@@ -49,7 +50,7 @@ public final class WorldHostingHookHolder {
      */
     public static void publish(HostingLifecycle hostingLifecycle, LongPredicate joinGate, boolean advertiseEnabled) {
         lifecycle = hostingLifecycle;
-        canJoin = joinGate;
+        canJoin.set(joinGate);
         advertise = advertiseEnabled;
     }
 
@@ -63,7 +64,7 @@ public final class WorldHostingHookHolder {
      * @param advertiseEnabled the newly-resolved advertising flag
      */
     public static synchronized void updateJoinPolicy(LongPredicate joinGate, boolean advertiseEnabled) {
-        canJoin = joinGate;
+        canJoin.set(joinGate);
         boolean changed = advertise != advertiseEnabled;
         advertise = advertiseEnabled;
         if (changed && lifecycle != null) {
@@ -73,7 +74,7 @@ public final class WorldHostingHookHolder {
 
     /** @return {@code true} once {@link #publish} has run (feature enabled). */
     public static boolean isEnabled() {
-        return lifecycle != null && canJoin != null;
+        return lifecycle != null && canJoin.get() != null;
     }
 
     /**
@@ -134,5 +135,10 @@ public final class WorldHostingHookHolder {
         return current != null
                 && current.state == SteamSession.State.STARTED
                 && current.hasConnectedPeers();
+    }
+
+    /** @return {@code true} if Rich Presence advertising is currently enabled. */
+    public static boolean isAdvertising() {
+        return advertise;
     }
 }
