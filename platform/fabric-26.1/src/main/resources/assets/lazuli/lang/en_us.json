@@ -7,10 +7,10 @@
 	"lazuli.presence.exploring": "Exploring %s",
 	"lazuli.presence.staying": "Staying in %s",
 	"lazuli.presence.building": "Building in %s",
-	"lazuli.presence.digging_around": "Digging around",
+	"lazuli.presence.digging_around": "Digging for glory in %s",
 	"lazuli.presence.driving": "Driving through %s",
 	"lazuli.presence.sailing": "Sailing through %s",
-	"lazuli.presence.near_village": "Near a Village in %s",
+	"lazuli.presence.near_village": "Bothering villagers in %s",
 	"lazuli.presence.dimension_suffix.nether": "%s in the Nether",
 	"lazuli.presence.dimension_suffix.end": "%s in the End"
 }

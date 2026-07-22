@@ -25,7 +25,7 @@ public final class MinecraftTierTextFormatter implements TierTextFormatter {
             case EXPLORING -> Text.translatable("lazuli.presence.exploring", biomeArg(tier)).getString();
             case STAYING -> Text.translatable("lazuli.presence.staying", biomeArg(tier)).getString();
             case BUILDING -> Text.translatable("lazuli.presence.building", biomeArg(tier)).getString();
-            case DIGGING_AROUND -> Text.translatable("lazuli.presence.digging_around").getString();
+            case DIGGING_AROUND -> Text.translatable("lazuli.presence.digging_around", biomeArg(tier)).getString();
             case MAIN_MENU -> ""; // Never reached -- LocalPresenceTrackerImpl short-circuits this case.
         };
 

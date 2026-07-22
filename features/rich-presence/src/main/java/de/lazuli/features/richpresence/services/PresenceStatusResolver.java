@@ -66,7 +66,7 @@ public final class PresenceStatusResolver {
             // otherwise an underground player who isn't covering great
             // distance gets the playful mining label instead of the plain
             // Staying/Building wording.
-            return PresenceTier.of(TierKind.DIGGING_AROUND);
+            return PresenceTier.biomeBearing(TierKind.DIGGING_AROUND, signals);
         }
 
         TierKind movementKind;
