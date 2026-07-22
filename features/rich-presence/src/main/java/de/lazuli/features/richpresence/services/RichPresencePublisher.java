@@ -3,6 +3,7 @@ package de.lazuli.features.richpresence.services;
 import de.lazuli.services.steamworks.SteamFriendsGateway;
 
 import java.util.Optional;
+import java.util.function.Consumer;
 
 /**
  * Owns the debounced Rich Presence {@code "status"} write (FR-RP4/FR-RP5/
@@ -23,12 +24,14 @@ public final class RichPresencePublisher {
 
     private final LocalPresenceTracker tracker;
     private final SteamFriendsGateway gateway;
+    private final Consumer<String> changeLogger;
 
     private Optional<String> lastWritten = Optional.empty();
 
-    public RichPresencePublisher(LocalPresenceTracker tracker, SteamFriendsGateway gateway) {
+    public RichPresencePublisher(LocalPresenceTracker tracker, SteamFriendsGateway gateway, Consumer<String> changeLogger) {
         this.tracker = tracker;
         this.gateway = gateway;
+        this.changeLogger = changeLogger;
     }
 
     /** Called once per client tick; recomputes and writes only on change. */
@@ -37,11 +40,17 @@ public final class RichPresencePublisher {
         if (current.equals(lastWritten)) {
             return;
         }
+        Optional<String> previous = lastWritten;
         if (current.isPresent()) {
             gateway.setLocalRichPresence(STATUS_KEY, current.get());
         } else {
             gateway.clearLocalRichPresence();
         }
+        changeLogger.accept("Rich Presence changed: " + describe(previous) + " -> " + describe(current));
         lastWritten = current;
+    }
+
+    private static String describe(Optional<String> value) {
+        return value.orElse("(none)");
     }
 }

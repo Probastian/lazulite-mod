@@ -1,6 +1,7 @@
 package de.lazuli.friends;
 
 import de.lazuli.api.friends.FriendSummary;
+import de.lazuli.api.richpresence.RichPresenceFacade;
 import de.lazuli.features.friendssidebar.api.JoinPolicy;
 import de.lazuli.features.friendssidebar.services.FriendsSidebarFacade;
 import de.lazuli.ui.DropdownWidget;
@@ -127,6 +128,7 @@ public final class FriendSidebarWidget extends ClickableWidget {
     private final RowClickListener rowClickListener;
     private final boolean handleOnly;
     private final boolean reserveTopInset;
+    private final RichPresenceFacade richPresenceFacade;
 
     private boolean expanded;
     private boolean panelOpen;
@@ -177,13 +179,15 @@ public final class FriendSidebarWidget extends ClickableWidget {
      *                   should sit flush to the top like the main menu does.
      */
     public FriendSidebarWidget(FriendsSidebarFacade facade, AvatarTextureCache avatarTextureCache,
-            RowClickListener rowClickListener, boolean handleOnly, boolean reserveTopInset) {
+            RowClickListener rowClickListener, boolean handleOnly, boolean reserveTopInset,
+            RichPresenceFacade richPresenceFacade) {
         super(0, 0, EXPANDED_WIDTH, listTopOffset(true, dropdownRowHeight()) + ROW_HEIGHT * DEFAULT_MAX_ROWS, Text.literal("Friends"));
         this.facade = facade;
         this.avatarTextureCache = avatarTextureCache;
         this.rowClickListener = rowClickListener;
         this.handleOnly = handleOnly;
         this.reserveTopInset = reserveTopInset;
+        this.richPresenceFacade = richPresenceFacade;
         this.panelOpen = !handleOnly;
         this.animatedWidth = handleOnly ? HANDLE_WIDTH : COLLAPSED_WIDTH;
         // v1.4 amendment: fixed Nobody/Friends/Everyone display order
@@ -409,7 +413,7 @@ public final class FriendSidebarWidget extends ClickableWidget {
             return;
         }
 
-        own.ifPresent(profile -> drawRow(context, profile, getX(), getY(), width, showText, MinecraftClient.getInstance().world != null));
+        own.ifPresent(profile -> drawRow(context, profile, getX(), getY(), width, showText, MinecraftClient.getInstance().world != null, richPresenceFacade.localPresenceStatus()));
 
         // v2 ("Polish pass") reorder: the "who can join" dropdown strip
         // (FR7.3) now renders directly below the own-profile row and ABOVE
@@ -453,7 +457,7 @@ public final class FriendSidebarWidget extends ClickableWidget {
         float subPixel = scrollPixelOffset - startIndex * (float) ROW_HEIGHT;
         int rowY = rowsTop - Math.round(subPixel);
         for (int i = startIndex; i < friends.size() && rowY < rowsBottom; i++) {
-            drawRow(context, friends.get(i), getX(), rowY, width, showText, friends.get(i).inGame());
+            drawRow(context, friends.get(i), getX(), rowY, width, showText, friends.get(i).inGame(), Optional.empty());
             rowY += ROW_HEIGHT;
         }
         context.disableScissor();
@@ -549,7 +553,7 @@ public final class FriendSidebarWidget extends ClickableWidget {
         };
     }
 
-    private void drawRow(DrawContext context, FriendSummary friend, int x, int y, int width, boolean showText, boolean inGame) {
+    private void drawRow(DrawContext context, FriendSummary friend, int x, int y, int width, boolean showText, boolean inGame, Optional<String> ownRichPresenceOverride) {
         int statusColor = facade.stateMachine().statusColorArgb(friend.personaState(), inGame);
         context.fill(x, y, x + BORDER_WIDTH, y + ROW_HEIGHT, statusColor);
 
@@ -571,7 +575,8 @@ public final class FriendSidebarWidget extends ClickableWidget {
             // here. Colors must carry a real (0xFF) alpha byte.
             context.drawTextWithShadow(MinecraftClient.getInstance().textRenderer, friend.personaName(),
                     x + ROW_PADDING + DISPLAY_SIZE + 6, y + 2, 0xFFFFFFFF);
-            String status = facade.richPresenceStatus(friend.steamId64())
+            String status = ownRichPresenceOverride
+                    .or(() -> facade.richPresenceStatus(friend.steamId64()))
                     .orElseGet(() -> facade.stateMachine().statusLabel(friend.personaState(), inGame));
             context.drawTextWithShadow(MinecraftClient.getInstance().textRenderer, status,
                     x + ROW_PADDING + DISPLAY_SIZE + 6, y + 11, statusColor);

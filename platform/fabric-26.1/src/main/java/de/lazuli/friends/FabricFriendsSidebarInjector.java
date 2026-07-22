@@ -2,6 +2,7 @@ package de.lazuli.friends;
 
 import de.lazuli.LazuliMod;
 import de.lazuli.api.friends.FriendSummary;
+import de.lazuli.api.richpresence.RichPresenceFacade;
 import de.lazuli.api.worldhosting.FriendHostingStatusReader;
 import de.lazuli.api.worldhosting.WorldInviteSender;
 import de.lazuli.api.worldhosting.WorldJoinRequester;
@@ -52,6 +53,7 @@ public final class FabricFriendsSidebarInjector {
     private final FriendHostingStatusReader hostingStatusReader;
     private final WorldInviteSender worldInviteSender;
     private final ToastService toastService;
+    private final RichPresenceFacade richPresenceFacade;
 
     private FriendContextMenuWidget openMenu;
     private Screen openMenuScreen;
@@ -74,12 +76,13 @@ public final class FabricFriendsSidebarInjector {
      */
     public FabricFriendsSidebarInjector(FriendsSidebarFacade facade, WorldJoinRequester worldJoinRequester,
             FriendHostingStatusReader hostingStatusReader, WorldInviteSender worldInviteSender,
-            ToastService toastService) {
+            ToastService toastService, RichPresenceFacade richPresenceFacade) {
         this.facade = facade;
         this.worldJoinRequester = worldJoinRequester;
         this.hostingStatusReader = hostingStatusReader;
         this.worldInviteSender = worldInviteSender;
         this.toastService = toastService;
+        this.richPresenceFacade = richPresenceFacade;
         this.avatarTextureCache = new AvatarTextureCache(LazuliMod.LOGGER::warn);
         ScreenEvents.AFTER_INIT.register(this::onScreenInit);
     }
@@ -118,7 +121,7 @@ public final class FabricFriendsSidebarInjector {
         boolean reserveTopInset = screen instanceof JoinMultiplayerScreen;
         FriendSidebarWidget sidebar = new FriendSidebarWidget(facade, avatarTextureCache,
                 (friend, mouseX, mouseY, button, isOwnProfile) -> openContextMenu(screen, friend, mouseX, mouseY, isOwnProfile),
-                handleOnly, reserveTopInset);
+                handleOnly, reserveTopInset, richPresenceFacade);
         Screens.getWidgets(screen).add(sidebar);
         activeSidebar = sidebar;
         activeSidebarScreen = screen;

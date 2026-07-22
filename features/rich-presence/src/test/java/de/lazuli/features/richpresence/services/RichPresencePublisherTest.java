@@ -4,8 +4,12 @@ import de.lazuli.services.steamworks.SteamFriendsGateway;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
+import java.util.function.Consumer;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -43,7 +47,7 @@ class RichPresencePublisherTest {
                 Optional.of("Building in Plains"));
         SteamFriendsGateway gateway = Mockito.mock(SteamFriendsGateway.class);
         when(gateway.setLocalRichPresence(anyString(), anyString())).thenReturn(true);
-        RichPresencePublisher publisher = new RichPresencePublisher(tracker, gateway);
+        RichPresencePublisher publisher = new RichPresencePublisher(tracker, gateway, msg -> { });
 
         publisher.tick();
         publisher.tick();
@@ -56,6 +60,52 @@ class RichPresencePublisherTest {
     }
 
     @Test
+    void logsExactlyOnceOnActualChange() {
+        ScriptedTracker tracker = new ScriptedTracker(
+                Optional.of("Exploring Plains"),
+                Optional.of("Exploring Plains"),
+                Optional.of("Exploring Plains"),
+                Optional.of("Building in Plains"));
+        SteamFriendsGateway gateway = Mockito.mock(SteamFriendsGateway.class);
+        when(gateway.setLocalRichPresence(anyString(), anyString())).thenReturn(true);
+        List<String> logged = new ArrayList<>();
+        Consumer<String> changeLogger = logged::add;
+        RichPresencePublisher publisher = new RichPresencePublisher(tracker, gateway, changeLogger);
+
+        publisher.tick();
+        publisher.tick();
+        publisher.tick();
+        publisher.tick();
+
+        assertEquals(2, logged.size());
+        assertEquals("Rich Presence changed: (none) -> Exploring Plains", logged.get(0));
+        assertEquals("Rich Presence changed: Exploring Plains -> Building in Plains", logged.get(1));
+    }
+
+    @Test
+    void logsExactlyOnceOnClear() {
+        ScriptedTracker tracker = new ScriptedTracker(
+                Optional.of("Exploring Plains"),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty());
+        SteamFriendsGateway gateway = Mockito.mock(SteamFriendsGateway.class);
+        when(gateway.setLocalRichPresence(anyString(), anyString())).thenReturn(true);
+        List<String> logged = new ArrayList<>();
+        Consumer<String> changeLogger = logged::add;
+        RichPresencePublisher publisher = new RichPresencePublisher(tracker, gateway, changeLogger);
+
+        publisher.tick();
+        publisher.tick();
+        publisher.tick();
+        publisher.tick();
+
+        assertEquals(2, logged.size());
+        assertEquals("Rich Presence changed: (none) -> Exploring Plains", logged.get(0));
+        assertEquals("Rich Presence changed: Exploring Plains -> (none)", logged.get(1));
+    }
+
+    @Test
     void clearsOnlyOncePerPresentToEmptyTransition() {
         ScriptedTracker tracker = new ScriptedTracker(
                 Optional.of("Exploring Plains"),
@@ -64,7 +114,7 @@ class RichPresencePublisherTest {
                 Optional.empty());
         SteamFriendsGateway gateway = Mockito.mock(SteamFriendsGateway.class);
         when(gateway.setLocalRichPresence(anyString(), anyString())).thenReturn(true);
-        RichPresencePublisher publisher = new RichPresencePublisher(tracker, gateway);
+        RichPresencePublisher publisher = new RichPresencePublisher(tracker, gateway, msg -> { });
 
         publisher.tick();
         publisher.tick();
@@ -79,7 +129,7 @@ class RichPresencePublisherTest {
         ScriptedTracker tracker = new ScriptedTracker(Optional.of("Staying in Plains"));
         SteamFriendsGateway gateway = Mockito.mock(SteamFriendsGateway.class);
         when(gateway.setLocalRichPresence(anyString(), anyString())).thenReturn(true);
-        RichPresencePublisher publisher = new RichPresencePublisher(tracker, gateway);
+        RichPresencePublisher publisher = new RichPresencePublisher(tracker, gateway, msg -> { });
 
         publisher.tick();
 
@@ -90,7 +140,7 @@ class RichPresencePublisherTest {
     void doesNotClearOnFirstTickWhenAlreadyEmpty() {
         ScriptedTracker tracker = new ScriptedTracker(Optional.empty(), Optional.empty());
         SteamFriendsGateway gateway = Mockito.mock(SteamFriendsGateway.class);
-        RichPresencePublisher publisher = new RichPresencePublisher(tracker, gateway);
+        RichPresencePublisher publisher = new RichPresencePublisher(tracker, gateway, msg -> { });
 
         publisher.tick();
         publisher.tick();

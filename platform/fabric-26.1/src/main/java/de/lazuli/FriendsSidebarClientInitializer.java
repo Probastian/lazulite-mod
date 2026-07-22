@@ -8,6 +8,7 @@ import de.lazuli.features.friendssidebar.services.FriendsService;
 import de.lazuli.features.friendssidebar.services.FriendSidebarStateMachine;
 import de.lazuli.features.friendssidebar.services.FriendsSidebarFacade;
 import de.lazuli.features.friendssidebar.services.NoopFriendsService;
+import de.lazuli.api.richpresence.RichPresenceFacade;
 import de.lazuli.api.worldhosting.FriendHostingStatusReader;
 import de.lazuli.api.worldhosting.WorldInviteSender;
 import de.lazuli.api.worldhosting.WorldJoinRequester;
@@ -65,6 +66,7 @@ public final class FriendsSidebarClientInitializer implements ClientModInitializ
         // runs (entrypoint order load-bearing).
         WorldInviteSender worldInviteSender = WorldHostingBridgeHandoff.requireWorldInviteSender();
         ToastService toastService = ToastServiceHandoff.require();
+        RichPresenceFacade richPresenceFacade = RichPresenceFacadeHandoff.require();
 
         FriendsDataSource dataSource = (steamworksService.isSteamAvailable() && config.enabled())
                 ? new FriendsService(gateway, config, LazuliMod.LOGGER::warn, worldInviteSender)
@@ -101,6 +103,6 @@ public final class FriendsSidebarClientInitializer implements ClientModInitializ
         FriendHostingStatusReader hostingStatusReader = WorldHostingBridgeHandoff.requireHostingStatusReader();
 
         new FabricFriendsSidebarInjector(facade, worldJoinRequester, hostingStatusReader, worldInviteSender,
-                toastService);
+                toastService, richPresenceFacade);
     }
 }

@@ -61,7 +61,7 @@ public final class RichPresenceClientInitializer implements ClientModInitializer
         PresenceSignalGatherer gatherer = new PresenceSignalGatherer();
         MinecraftTierTextFormatter formatter = new MinecraftTierTextFormatter();
         LocalPresenceTracker tracker = new LocalPresenceTrackerImpl(gatherer::current, formatter);
-        RichPresencePublisher publisher = new RichPresencePublisher(tracker, gateway);
+        RichPresencePublisher publisher = new RichPresencePublisher(tracker, gateway, LazuliMod.LOGGER::info);
 
         RichPresenceFacadeHandoff.publish(new RichPresenceFacadeImpl(tracker));
 
