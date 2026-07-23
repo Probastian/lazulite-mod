@@ -26,6 +26,7 @@ Rules:
 - If implementation reveals missing scope, stop and request a planning update.
 
 Token efficiency:
+- Run every phase (specification, planning, implementation, verification) as its own background Agent call (`run_in_background: true`), not inline. Pass each phase only the condensed context it needs — relevant file paths and the specific ask — never the full prior conversation. Wait for its completion notification before reporting to the user and requesting approval for the next phase.
 - When delegating, point the subagent at the spec/plan file path(s) instead of restating their contents in the prompt.
 - Each phase's output document (spec, plan) is the handoff artifact. Trust facts it already recorded (e.g. the plan's "Existing Implementation" section) instead of asking the next phase to rediscover them from scratch.
 - Only ask a phase to re-verify something the previous phase already established if there's a specific reason to distrust it.
