@@ -9,7 +9,9 @@ import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.world.CreateWorldScreen;
 import net.minecraft.client.gui.screen.world.WorldListWidget;
 import net.minecraft.client.gui.widget.ButtonWidget;
+import net.minecraft.client.gl.RenderPipelines;
 import net.minecraft.text.Text;
+import net.minecraft.util.Identifier;
 import net.minecraft.world.level.storage.LevelSummary;
 
 import java.time.Instant;
@@ -38,16 +40,20 @@ import java.util.List;
  */
 public final class WorldsPanel {
 
-    private static final int ROW_HEIGHT_COMPACT = 24;
-    private static final int ROW_HEIGHT_EXPANDED = 64;
+    private static final int ROW_HEIGHT_COMPACT = 32;
+    private static final int ROW_HEIGHT_EXPANDED = 72;
+    private static final int ICON_TEX_SIZE = 64;
+    private static final int IMAGE_MARGIN = 2;
     private static final DateTimeFormatter LAST_PLAYED_FORMAT =
             DateTimeFormatter.ofPattern("MMM d, yyyy HH:mm").withZone(ZoneId.systemDefault());
 
     private final MainMenuStateMachine state;
     private final MainMenuScreen owner;
+    private final IconTextureCache iconCache = new IconTextureCache(LazuliMod.LOGGER::warn);
     private WorldListWidget dataWidget;
     private List<WorldListWidget.WorldEntry> entries = List.of();
     private ButtonWidget createButton;
+    private boolean tabActive;
 
     public WorldsPanel(MainMenuStateMachine state, MainMenuScreen owner) {
         this.state = state;
@@ -56,6 +62,7 @@ public final class WorldsPanel {
     }
 
     private void reload() {
+        iconCache.invalidateAll();
         try {
             dataWidget = new WorldListWidget.Builder(MinecraftClient.getInstance(), owner)
                     .width(320).height(240)
@@ -79,7 +86,16 @@ public final class WorldsPanel {
         createButton = ButtonWidget.builder(Text.literal("+ Create New World"),
                         b -> CreateWorldScreen.show(MinecraftClient.getInstance(), () -> MinecraftClient.getInstance().setScreen(owner)))
                 .dimensions(x + width - 160, y, 160, 20).build();
+        createButton.visible = tabActive;
         addWidget.accept(createButton);
+    }
+
+    /** FX3.1: "+ Create New World" is only visible while the Worlds tab is the active one. */
+    public void setTabActive(boolean active) {
+        this.tabActive = active;
+        if (createButton != null) {
+            createButton.visible = active;
+        }
     }
 
     public void render(DrawContext context, TextRenderer font, int x, int y, int width, int height, int mouseX, int mouseY) {
@@ -100,10 +116,22 @@ public final class WorldsPanel {
             }
             boolean hovered = mouseX >= x && mouseX <= x + width && mouseY >= rowY && mouseY <= rowY + rowHeight;
             context.fill(x, rowY, x + width, rowY + rowHeight, hovered ? 0xFF2A2820 : 0xFF201E17);
-            context.drawText(font, Text.literal(entry.getLevelDisplayName()), x + 8, rowY + 4, 0xFFEAE8E1, false);
+
+            // FX13.1/FX13.2: real-or-fallback world icon thumbnail, sized to
+            // 2/3 of the row height (full-height read as oversized against
+            // the text), 1:1, no border, vertically centered.
+            int iconSize = (rowHeight - IMAGE_MARGIN * 2) * 2 / 3;
+            int iconX = x + IMAGE_MARGIN;
+            int iconY = rowY + (rowHeight - iconSize) / 2;
+            Identifier iconId = iconCache.forWorld(summary.getName(), summary.getIconPath());
+            context.drawTexture(RenderPipelines.GUI_TEXTURED, iconId, iconX, iconY, 0f, 0f,
+                    iconSize, iconSize, ICON_TEX_SIZE, ICON_TEX_SIZE);
+
+            int textX = iconX + iconSize + 6;
+            context.drawText(font, Text.literal(entry.getLevelDisplayName()), textX, rowY + 4, 0xFFEAE8E1, false);
             String subtitle = summary.getGameMode().getTranslatableName().getString() + " · "
                     + LAST_PLAYED_FORMAT.format(Instant.ofEpochMilli(summary.getLastPlayed()));
-            context.drawText(font, Text.literal(subtitle), x + 8, rowY + 15, 0xFF908C7F, false);
+            context.drawText(font, Text.literal(subtitle), textX, rowY + 15, 0xFF908C7F, false);
 
             if (expanded) {
                 int buttonY = rowY + rowHeight - 22;
@@ -131,10 +159,12 @@ public final class WorldsPanel {
             if (expanded) {
                 int buttonY = rowY + rowHeight - 22;
                 if (mouseX >= x + width - 140 && mouseX <= x + width - 74 && mouseY >= buttonY && mouseY <= buttonY + 18) {
+                    MainMenuScreen.playClickSound();
                     playWorld(entry);
                     return true;
                 }
                 if (mouseX >= x + width - 70 && mouseX <= x + width - 8 && mouseY >= buttonY && mouseY <= buttonY + 18) {
+                    MainMenuScreen.playClickSound();
                     editWorld(entry);
                     return true;
                 }
@@ -156,6 +186,15 @@ public final class WorldsPanel {
         }
     }
 
+    // FX15 divergence note: unlike fabric-26.1/fabric-26.2 (which call
+    // EditWorldScreen.create(...) directly with their own no-op callback --
+    // the confirmed root cause there), this platform's dataWidget was built
+    // with `owner` (this MainMenuScreen) as its parent Screen
+    // (WorldListWidget.Builder(MinecraftClient, owner)), so WorldEntry#edit()
+    // -- vanilla's own real button-press implementation, confirmed public via
+    // javap -- already navigates back to `owner` internally on both Save and
+    // Cancel, the same way vanilla's own SelectWorldScreen does. No callback
+    // no-op exists on this platform to fix; FX15 does not apply here.
     private void editWorld(WorldListWidget.WorldEntry entry) {
         try {
             entry.edit();

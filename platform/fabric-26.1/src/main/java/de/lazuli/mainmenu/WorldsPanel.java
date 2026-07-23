@@ -8,7 +8,9 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.worldselection.CreateWorldScreen;
 import net.minecraft.client.gui.screens.worldselection.EditWorldScreen;
+import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.level.storage.LevelStorageSource;
 import net.minecraft.world.level.storage.LevelSummary;
 
@@ -28,17 +30,22 @@ import java.util.concurrent.CompletableFuture;
  */
 public final class WorldsPanel {
 
-    private static final int ROW_HEIGHT_COMPACT = 24;
-    private static final int ROW_HEIGHT_EXPANDED = 64;
+    private static final int ROW_HEIGHT_COMPACT = 32;
+    private static final int ROW_HEIGHT_EXPANDED = 72;
     private static final DateTimeFormatter LAST_PLAYED_FORMAT =
             DateTimeFormatter.ofPattern("MMM d, yyyy HH:mm").withZone(ZoneId.systemDefault());
+
+    private static final int ICON_TEX_SIZE = 64;
+    private static final int IMAGE_MARGIN = 2;
 
     private final MainMenuStateMachine state;
     private final MainMenuScreen owner;
     private final LevelStorageSource levelSource = Minecraft.getInstance().getLevelSource();
+    private final IconTextureCache iconCache = new IconTextureCache(de.lazuli.LazuliMod.LOGGER::warn);
     private volatile List<LevelSummary> summaries = List.of();
     private volatile boolean loading = true;
     private Button createButton;
+    private boolean tabActive;
 
     public WorldsPanel(MainMenuStateMachine state, MainMenuScreen owner) {
         this.state = state;
@@ -48,6 +55,7 @@ public final class WorldsPanel {
 
     private void reload() {
         loading = true;
+        iconCache.invalidateAll();
         try {
             LevelStorageSource.LevelCandidates candidates = levelSource.findLevelCandidates();
             CompletableFuture<List<LevelSummary>> future = levelSource.loadLevelSummaries(candidates);
@@ -68,7 +76,16 @@ public final class WorldsPanel {
         createButton = Button.builder(Component.literal("+ Create New World"), b -> {
             CreateWorldScreen.openFresh(Minecraft.getInstance(), () -> Minecraft.getInstance().setScreenAndShow(owner));
         }).bounds(x + width - 160, y, 160, 20).build();
+        createButton.visible = tabActive;
         addWidget.accept(createButton);
+    }
+
+    /** FX3.1: "+ Create New World" is only visible while the Worlds tab is the active one. */
+    public void setTabActive(boolean active) {
+        this.tabActive = active;
+        if (createButton != null) {
+            createButton.visible = active;
+        }
     }
 
     public void render(GuiGraphicsExtractor guiGraphics, Font font, int x, int y, int width, int height, int mouseX, int mouseY) {
@@ -92,10 +109,24 @@ public final class WorldsPanel {
             }
             boolean hovered = mouseX >= x && mouseX <= x + width && mouseY >= rowY && mouseY <= rowY + rowHeight;
             guiGraphics.fill(x, rowY, x + width, rowY + rowHeight, hovered ? 0xFF2A2820 : 0xFF201E17);
-            guiGraphics.text(font, Component.literal(summary.getLevelName()), x + 8, rowY + 4, 0xFFEAE8E1);
+
+            // FX13.1/FX13.2: real-or-fallback world icon thumbnail
+            // (FaviconTexture already resolves to a "missing" sprite until
+            // upload() succeeds). Sized to 2/3 of the row height rather than
+            // the full row (full-height read as oversized against the text),
+            // 1:1, no border, and vertically centered in the leftover space.
+            int iconSize = (rowHeight - IMAGE_MARGIN * 2) * 2 / 3;
+            int iconX = x + IMAGE_MARGIN;
+            int iconY = rowY + (rowHeight - iconSize) / 2;
+            Identifier iconId = iconCache.forWorld(summary.getLevelId(), summary.getIcon());
+            guiGraphics.blit(RenderPipelines.GUI_TEXTURED, iconId, iconX, iconY, 0f, 0f,
+                    iconSize, iconSize, ICON_TEX_SIZE, ICON_TEX_SIZE, ICON_TEX_SIZE, ICON_TEX_SIZE);
+
+            int textX = iconX + iconSize + 6;
+            guiGraphics.text(font, Component.literal(summary.getLevelName()), textX, rowY + 4, 0xFFEAE8E1);
             String subtitle = summary.getGameMode().getLongDisplayName().getString()
                     + " · " + LAST_PLAYED_FORMAT.format(Instant.ofEpochMilli(summary.getLastPlayed()));
-            guiGraphics.text(font, Component.literal(subtitle), x + 8, rowY + 15, 0xFF908C7F);
+            guiGraphics.text(font, Component.literal(subtitle), textX, rowY + 15, 0xFF908C7F);
 
             if (expanded) {
                 int buttonY = rowY + rowHeight - 22;
@@ -122,10 +153,12 @@ public final class WorldsPanel {
             if (expanded) {
                 int buttonY = rowY + rowHeight - 22;
                 if (mouseX >= x + width - 140 && mouseX <= x + width - 74 && mouseY >= buttonY && mouseY <= buttonY + 18) {
+                    MainMenuScreen.playClickSound();
                     playWorld(summary);
                     return true;
                 }
                 if (mouseX >= x + width - 70 && mouseX <= x + width - 8 && mouseY >= buttonY && mouseY <= buttonY + 18) {
+                    MainMenuScreen.playClickSound();
                     editWorld(summary);
                     return true;
                 }
@@ -146,7 +179,35 @@ public final class WorldsPanel {
     private void editWorld(LevelSummary summary) {
         try {
             LevelStorageSource.LevelStorageAccess access = levelSource.createAccess(summary.getLevelId());
-            EditWorldScreen editScreen = EditWorldScreen.create(Minecraft.getInstance(), access, backedUp -> { });
+            // FX15: EditWorldScreen.onClose() (Cancel/ESC) simply calls
+            // callback.accept(false) with no screen transition of its own --
+            // this callback is the sole place that navigates back, mirroring
+            // the "+ Create New World" reference pattern below. Unlike that
+            // reference (confirmed it does not call reload() explicitly),
+            // this callback does call reload() explicitly (FX15.3): since
+            // `owner`/this WorldsPanel instance is not reconstructed on
+            // setScreenAndShow(owner) (same MainMenuScreen), a renamed
+            // world's new name would not otherwise reflect in the list
+            // without an explicit reload -- a deliberate small deviation
+            // from mirroring the create-flow 1:1, needed to satisfy the
+            // spec's own acceptance criterion that Save's changes show up.
+            // EditWorldScreen never closes the LevelStorageAccess it's handed
+            // (confirmed via javap: neither onClose() nor the Save path calls
+            // access.close()) -- the caller owns that lifecycle. Leaving it
+            // open kept the world's directory lock held past this screen's
+            // lifetime, so the reload() below raced with the still-held lock
+            // and threw OverlappingFileLockException, dropping the world from
+            // the reloaded list. Close it here before reloading.
+            EditWorldScreen editScreen = EditWorldScreen.create(Minecraft.getInstance(), access,
+                    backedUp -> {
+                        try {
+                            access.close();
+                        } catch (Exception closeEx) {
+                            de.lazuli.LazuliMod.LOGGER.warn("Failed to close level access for " + summary.getLevelId() + ": " + closeEx);
+                        }
+                        Minecraft.getInstance().setScreenAndShow(owner);
+                        reload();
+                    });
             Minecraft.getInstance().setScreenAndShow(editScreen);
         } catch (Exception e) {
             de.lazuli.LazuliMod.LOGGER.warn("Failed to open EditWorldScreen for " + summary.getLevelId() + ": " + e);

@@ -224,22 +224,59 @@ public final class MainMenuBackgroundRenderer {
      * Renders the continuously-updating background (FR8.1/FR1.4) -- called
      * every frame from {@link MainMenuScreen#extractRenderState}, regardless
      * of tab state.
+     *
+     * @param reservedWidth the post-launch-fixes spec's reserved left-third
+     *                      background+character region's pixel width
+     *                      (FX6.1/FX7.1) -- recomputed once by
+     *                      {@code MainMenuScreen} and passed in here so both
+     *                      classes share one region definition rather than
+     *                      independently computing {@code width / 3} (plan
+     *                      Files to modify note on this class)
      */
-    public void render(GuiGraphicsExtractor guiGraphics, int screenWidth, int screenHeight) {
+    public void render(GuiGraphicsExtractor guiGraphics, int screenWidth, int screenHeight, int reservedWidth) {
         double elapsedSeconds = (System.nanoTime() - startNanos) / 1_000_000_000.0;
 
         // Scene: fixed camera, no rotation, fills the whole screen (FR8.7 -- no dynamic time-of-day/camera movement).
         // skin(model, texture, scale, rotationX, rotationY, pivotY, x0, y0, x1, y1) -- confirmed param order via
         // javap against GuiGraphicsExtractor.class (differs from GuiSkinRenderState's own record field order).
-        guiGraphics.skin(sceneModel, PALETTE, 30f, 0f, 0f, 0f, 0, 0, screenWidth, screenHeight);
+        //
+        // FX8 tuning pass: the previous scale=30f/pivotY=0f made the scene
+        // read as small and pinned to the bottom of the destination rect
+        // (the model-space geometry this class bakes spans roughly y=-40..32,
+        // i.e. its own vertical center sits a little above y=0 -- pivotY=0f
+        // aimed the camera at the very top of that range, pushing everything
+        // else below the visible horizon). Lowering scale (more of the model
+        // space fits in the rect -- confirmed empirically, "zoom" here means
+        // "model units per screen pixel," not screen coverage) and raising
+        // pivotY to aim at the model's own vertical center pulls the horizon
+        // toward the middle of the destination rect instead of its bottom
+        // edge (FX8.2), and the wider field of view reads as "fills the
+        // region" rather than "small" (FX8.1). Per FX8.3 this is a concrete
+        // tuning attempt, not a placeholder-limitation punt.
+        guiGraphics.skin(sceneModel, PALETTE, 18f, 0f, 0f, -6f, 0, 0, screenWidth, screenHeight);
 
-        // Character: posed per-frame from the pure animation math (FR8.6), framed bottom-left per design doc.
+        // Character: posed per-frame from the pure animation math (FR8.6).
+        // FX7: sized/positioned from the reserved left-third region's own
+        // actual pixel bounds (not screenWidth*0.08, which can land inside
+        // the content panel depending on resolution) -- grounded at the
+        // bottom of the region, inset from its left/right edges so it reads
+        // as "bottom-left of the region," not flush to its raw edge.
         CharacterPose pose = animator.poseAt(elapsedSeconds);
         applyPose(pose);
-        int charSize = Math.max(160, screenHeight / 2);
-        int charX0 = (int) (screenWidth * 0.08);
-        int charY0 = screenHeight - charSize;
-        guiGraphics.skin(characterModel, PALETTE, 22f, 0f, 20f, 0f, charX0, charY0, charX0 + charSize, screenHeight);
+        int region = Math.max(1, reservedWidth);
+        // Bug fix: at small logical GUI widths (high GUI scale / narrow window)
+        // reservedWidth() can clamp down to a few pixels or 0, and the old fixed
+        // inset (>= 4) made charX1 = region - inset go negative -- skin() then
+        // handed the renderer a negative-width destination rect, which the GPU
+        // rejects with GL_INVALID_VALUE and crashes the game. Cap the inset at
+        // region/2 - 1 so charX1 is always > charX0 (>= 1px wide) regardless of
+        // how small region gets.
+        int inset = Math.min(Math.max(4, region / 10), Math.max(0, region / 2 - 1));
+        int charX0 = inset;
+        int charX1 = Math.max(charX0 + 1, region - inset);
+        int charY0 = Math.max(0, (int) (screenHeight * 0.04));
+        int charY1 = Math.max(charY0 + 1, screenHeight);
+        guiGraphics.skin(characterModel, PALETTE, 22f, 0f, 20f, 0f, charX0, charY0, charX1, charY1);
     }
 
     private void applyPose(CharacterPose pose) {

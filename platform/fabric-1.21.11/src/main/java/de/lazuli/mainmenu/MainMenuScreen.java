@@ -10,9 +10,12 @@ import de.lazuli.features.mainmenu.services.StoreCatalog;
 import de.lazuli.friends.AvatarTextureCache;
 import de.lazuli.friends.FriendSidebarWidget;
 
+import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.Click;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
+import net.minecraft.sound.SoundEvents;
+import net.minecraft.client.sound.PositionedSoundInstance;
 import net.minecraft.text.Text;
 
 import java.util.function.Consumer;
@@ -87,6 +90,8 @@ public final class MainMenuScreen extends Screen {
         addDrawableChild(sidebar);
         worldsPanel.init(this::addDrawableChild, panelX(), panelY(), panelWidth());
         serversPanel.init(this::addDrawableChild, panelX(), panelY(), panelWidth());
+        worldsPanel.setTabActive(state.activeTab() == MainMenuTab.WORLDS);
+        serversPanel.setTabActive(state.activeTab() == MainMenuTab.SERVERS);
     }
 
     @Override
@@ -99,8 +104,21 @@ public final class MainMenuScreen extends Screen {
         return false;
     }
 
+    // FX6.2/R5: the reserved left-third background+character region has
+    // width-growth priority *inverted* from the panel's -- the panel is the
+    // flexible region that must never go below this floor, so the reserved
+    // region shrinks first at small window widths instead.
+    private static final int MIN_PANEL_WIDTH = 260;
+    private static final int RIGHT_MARGIN = 24;
+
+    private int reservedWidth() {
+        int naive = width / 3;
+        int maxAllowed = width - TAB_BAR_WIDTH - sidebarCollapsedWidth() - RIGHT_MARGIN - MIN_PANEL_WIDTH;
+        return Math.max(0, Math.min(naive, Math.max(0, maxAllowed)));
+    }
+
     private int panelX() {
-        return 24;
+        return reservedWidth();
     }
 
     private int panelY() {
@@ -108,11 +126,13 @@ public final class MainMenuScreen extends Screen {
     }
 
     private int panelWidth() {
-        return width - TAB_BAR_WIDTH - 48 - sidebarCollapsedWidth();
+        return Math.max(MIN_PANEL_WIDTH, width - panelX() - TAB_BAR_WIDTH - sidebarCollapsedWidth() - RIGHT_MARGIN);
     }
 
     private int sidebarCollapsedWidth() {
-        return 84;
+        // Was a guessed 84px, leaving a large gap before the tab bar since
+        // FriendSidebarWidget's real collapsed width is much smaller.
+        return FriendSidebarWidget.collapsedWidth();
     }
 
     @Override
@@ -120,9 +140,8 @@ public final class MainMenuScreen extends Screen {
         // The 3D background renders continuously regardless of tab state
         // (FR1.4/FR8.1) -- drawn first so every 2D element below layers on
         // top of it.
-        background.render(context, width, height);
+        background.render(context, width, height, reservedWidth());
 
-        renderTitle(context);
         renderTabBar(context, mouseX, mouseY);
 
         MainMenuTab active = state.activeTab();
@@ -131,7 +150,9 @@ public final class MainMenuScreen extends Screen {
             int y = panelY();
             int w = panelWidth();
             int h = (int) (height * 0.62);
-            context.fill(x - 12, y - 12, x + w + 12, y + h + 12, 0x8C312E22);
+            // FX6.5: the panel's translucent fill must not bleed left of
+            // panelX() into the reserved background+character region.
+            context.fill(x, y - 12, x + w + 12, y + h + 12, 0x8C312E22);
             switch (active) {
                 case WORLDS -> worldsPanel.render(context, textRenderer, x, y, w, h, mouseX, mouseY);
                 case SERVERS -> serversPanel.render(context, textRenderer, x, y, w, h, mouseX, mouseY);
@@ -149,12 +170,9 @@ public final class MainMenuScreen extends Screen {
         context.drawDeferredElements();
     }
 
-    private void renderTitle(DrawContext context) {
-        double scale = height / 1080.0;
-        int titleX = (int) (60 * scale);
-        int titleY = (int) (48 * scale);
-        context.drawText(textRenderer, Text.literal("STONEBOUND"), titleX, titleY, 0xFFEAE8E1, false);
-        context.drawText(textRenderer, Text.literal("OVERHAUL MOD · V2.1"), titleX, titleY + 14, 0xFF908C7F, false);
+    /** FX9: the standard vanilla UI click sound for every hand-hit-tested custom control in this class. */
+    static void playClickSound() {
+        MinecraftClient.getInstance().getSoundManager().play(PositionedSoundInstance.ui(SoundEvents.UI_BUTTON_CLICK, 1.0F));
     }
 
     private void renderTabBar(DrawContext context, int mouseX, int mouseY) {
@@ -202,7 +220,9 @@ public final class MainMenuScreen extends Screen {
         for (int i = 0; i < TABS.length; i++) {
             int y = startY + i * (buttonHeight + spacing);
             if (click.x() >= barX && click.x() <= barX + TAB_BAR_WIDTH && click.y() >= y && click.y() <= y + buttonHeight) {
+                playClickSound();
                 state.selectTab(TABS[i]);
+                worldsPanel.setTabActive(state.activeTab() == MainMenuTab.WORLDS);
                 serversPanel.setTabActive(state.activeTab() == MainMenuTab.SERVERS);
                 return true;
             }
@@ -226,6 +246,21 @@ public final class MainMenuScreen extends Screen {
             if (wardrobePanel.mouseClicked(panelX(), panelY(), panelWidth(), h, click.x(), click.y())) {
                 return true;
             }
+        }
+        return false;
+    }
+
+    @Override
+    public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
+        if (super.mouseScrolled(mouseX, mouseY, horizontalAmount, verticalAmount)) {
+            return true;
+        }
+        // FX10.2: forward scroll input to the Servers panel only -- Worlds/
+        // Store/Wardrobe don't need it in this batch (see plan's note on
+        // flagging, not silently expanding scope, if that changes).
+        int h = (int) (height * 0.62);
+        if (state.activeTab() == MainMenuTab.SERVERS) {
+            return serversPanel.mouseScrolled(panelX(), panelY(), panelWidth(), h, mouseX, mouseY, verticalAmount);
         }
         return false;
     }

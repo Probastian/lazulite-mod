@@ -18,10 +18,16 @@ import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.ConnectScreen;
 import net.minecraft.client.multiplayer.ServerData;
 import net.minecraft.client.multiplayer.ServerList;
+import net.minecraft.client.multiplayer.ServerStatusPinger;
 import net.minecraft.client.multiplayer.resolver.ServerAddress;
+import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.Identifier;
+import net.minecraft.server.network.EventLoopGroupHolder;
 
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.function.Consumer;
 
 /**
@@ -37,8 +43,12 @@ import java.util.function.Consumer;
  */
 public final class ServersPanel {
 
-    private static final int ROW_HEIGHT_COMPACT = 24;
-    private static final int ROW_HEIGHT_EXPANDED = 54;
+    private static final int ROW_HEIGHT_COMPACT = 32;
+    private static final int ROW_HEIGHT_EXPANDED = 72;
+    private static final int ICON_TEX_SIZE = 64;
+    private static final int IMAGE_MARGIN = 2;
+    private static final int BORDER_THICKNESS = 2;
+    private static final int SCROLL_STEP = 16;
 
     private final MainMenuStateMachine state;
     private final MainMenuScreen owner;
@@ -46,6 +56,10 @@ public final class ServersPanel {
     private final boolean steamAvailable;
 
     private final ServerList savedServers = new ServerList(Minecraft.getInstance());
+    private final ServerStatusPinger savedServerPinger = new ServerStatusPinger();
+    private final IconTextureCache iconCache = new IconTextureCache(de.lazuli.LazuliMod.LOGGER::warn);
+    private final Set<Integer> pingingSavedIndices = new HashSet<>();
+    private boolean savedPingedOnce;
 
     private ServerBrowserSession browserSession;
     private List<ServerBrowserRow> browserRows = List.of();
@@ -53,8 +67,13 @@ public final class ServersPanel {
     private boolean browserRefreshEverCompleted;
     private float refreshSpinDegrees;
 
+    // FX10: Browse sub-view scroll offset, in pixels, clamped in renderBrowser
+    // to [0, maxScroll] each frame once total content height is known.
+    private int browseScrollOffset;
+
     private Button subViewToggle;
     private Button refreshButton;
+    private Button savedRefreshButton;
     private Button directConnectButton;
     private Button addServerButton;
     private EditBox searchBox;
@@ -82,6 +101,14 @@ public final class ServersPanel {
         refreshButton = Button.builder(Component.literal("Refresh"), b -> onRefreshClicked())
                 .bounds(x + width - 76, y - 24, 76, 20).build();
         addWidget.accept(refreshButton);
+
+        // FX4.2: a separate, Saved-view-specific refresh control -- distinct
+        // from the Browser-only refreshButton above, since it re-pings every
+        // saved server via ServerStatusPinger rather than
+        // ServerBrowserSession.refresh() (Browser-only).
+        savedRefreshButton = Button.builder(Component.literal("Refresh"), b -> pingAllSavedServers())
+                .bounds(x + width - 76, y - 24, 76, 20).build();
+        addWidget.accept(savedRefreshButton);
 
         directConnectButton = Button.builder(Component.literal("Direct Connect"), b ->
                 Minecraft.getInstance().setScreenAndShow(new DirectConnectModalScreen(owner)))
@@ -124,6 +151,7 @@ public final class ServersPanel {
         } else {
             state.setServersSubView(MainMenuStateMachine.ServersSubView.SAVED);
             deactivateBrowser();
+            maybePingSavedOnce();
         }
         subViewToggle.setMessage(Component.literal(subViewLabel()));
         applyVisibility();
@@ -136,6 +164,8 @@ public final class ServersPanel {
         this.tabActive = active;
         if (active && state.serversSubView() == MainMenuStateMachine.ServersSubView.BROWSER) {
             activateBrowser();
+        } else if (active && state.serversSubView() == MainMenuStateMachine.ServersSubView.SAVED) {
+            maybePingSavedOnce();
         } else if (!active) {
             deactivateBrowser();
         }
@@ -144,13 +174,45 @@ public final class ServersPanel {
 
     private void applyVisibility() {
         boolean browser = tabActive && state.serversSubView() == MainMenuStateMachine.ServersSubView.BROWSER && steamAvailable;
+        boolean saved = tabActive && state.serversSubView() == MainMenuStateMachine.ServersSubView.SAVED;
         subViewToggle.visible = tabActive;
         refreshButton.visible = browser;
+        savedRefreshButton.visible = saved;
         directConnectButton.visible = browser;
         addServerButton.visible = browser;
         searchBox.visible = browser;
         hideFullToggle.visible = browser;
         hidePasswordToggle.visible = browser;
+    }
+
+    /** FX4.5: saved servers are pinged once automatically the first time the Saved sub-view becomes visible. */
+    private void maybePingSavedOnce() {
+        if (savedPingedOnce) {
+            return;
+        }
+        savedPingedOnce = true;
+        pingAllSavedServers();
+    }
+
+    /** FX4.2/FX4.5: re-pings every saved server via vanilla's own {@link ServerStatusPinger}. */
+    private void pingAllSavedServers() {
+        for (int i = 0; i < savedServers.size(); i++) {
+            pingSavedServer(i);
+        }
+    }
+
+    private void pingSavedServer(int index) {
+        if (!pingingSavedIndices.add(index)) {
+            return;
+        }
+        ServerData server = savedServers.get(index);
+        try {
+            savedServerPinger.pingServer(server, () -> pingingSavedIndices.remove(index), () -> pingingSavedIndices.remove(index),
+                    EventLoopGroupHolder.remote(Minecraft.getInstance().options.useNativeTransport()));
+        } catch (Exception e) {
+            pingingSavedIndices.remove(index);
+            server.setState(ServerData.State.UNREACHABLE);
+        }
     }
 
     /** Called when the Browser sub-view becomes active. Idempotent. */
@@ -226,11 +288,44 @@ public final class ServersPanel {
             boolean hovered = mouseX >= x && mouseX <= x + width && mouseY >= rowY && mouseY <= rowY + rowHeight;
             guiGraphics.fill(x, rowY, x + width, rowY + rowHeight, hovered ? 0xFF2A2820 : 0xFF201E17);
 
+            // FX12.1/FX12.4: 2/3-row-height 1:1 image (full-height read as
+            // oversized against the row's text) with a ping-status colored
+            // border replacing the old separate status dot, vertically
+            // centered in the leftover space.
+            int imageSize = (rowHeight - IMAGE_MARGIN * 2) * 2 / 3;
+            int imageX = x + IMAGE_MARGIN;
+            int imageY = rowY + (rowHeight - imageSize) / 2;
             int pingColor = pingStatusColor(server.ping);
-            guiGraphics.fill(x + 6, rowY + 8, x + 10, rowY + 12, pingColor);
-            guiGraphics.text(font, Component.literal(server.name), x + 16, rowY + 4, 0xFFEAE8E1);
-            String playersText = server.players != null ? server.players.online() + "/" + server.players.max() + " players" : "";
-            guiGraphics.text(font, Component.literal(playersText), x + 16, rowY + 15, 0xFF908C7F);
+            guiGraphics.fill(imageX - BORDER_THICKNESS, imageY - BORDER_THICKNESS,
+                    imageX + imageSize + BORDER_THICKNESS, imageY + imageSize + BORDER_THICKNESS, pingColor);
+            Identifier iconId = iconCache.forServer(rowId, server.getIconBytes());
+            guiGraphics.blit(RenderPipelines.GUI_TEXTURED, iconId, imageX, imageY, 0f, 0f,
+                    imageSize, imageSize, ICON_TEX_SIZE, ICON_TEX_SIZE, ICON_TEX_SIZE, ICON_TEX_SIZE);
+
+            int textX = imageX + imageSize + BORDER_THICKNESS + 6;
+            int textAvailableWidth = Math.max(20, x + width - textX - 4);
+            guiGraphics.text(font, Component.literal(server.name), textX, rowY + 4, 0xFFEAE8E1);
+
+            // FX4.3: pending-state placeholder instead of a blank string.
+            String playersText;
+            if (server.players != null) {
+                playersText = server.players.online() + "/" + server.players.max() + " players";
+            } else if (pingingSavedIndices.contains(i) || server.state() == ServerData.State.PINGING) {
+                playersText = "Pinging...";
+            } else {
+                playersText = "—";
+            }
+            guiGraphics.text(font, Component.literal(playersText), textX, rowY + 15, 0xFF908C7F);
+
+            // FX11: MOTD always shown (not gated on expanded) once available,
+            // clipped/truncated to the row's own available width so it never
+            // overflows into the tab bar (R5: reuse vanilla's own
+            // Font#plainSubstrByWidth truncation helper rather than inventing
+            // manual pixel-width math).
+            if (server.motd != null) {
+                String motdPlain = font.plainSubstrByWidth(server.motd.getString(), textAvailableWidth);
+                guiGraphics.text(font, Component.literal(motdPlain), textX, rowY + 26, 0xFF908C7F);
+            }
 
             if (expanded) {
                 int buttonY = rowY + rowHeight - 22;
@@ -267,27 +362,60 @@ public final class ServersPanel {
         drawColumnHeader(guiGraphics, font, "Players", x + width - 180, headerY, ServerBrowserColumn.PLAYERS);
         drawColumnHeader(guiGraphics, font, "Latency", x + width - 100, headerY, ServerBrowserColumn.PING);
 
-        int rowY = headerY + 16;
+        // FX10: the visible row viewport sits below the header; scroll offset
+        // is clamped here (FX10.3) once total content height is known, then
+        // clipped (FX10.4) so no partially-visible row bleeds outside it.
+        int viewportTop = headerY + 16;
+        int viewportBottom = y + height;
+        int rowStride = ROW_HEIGHT_COMPACT + 2;
+        int contentHeight = browserRows.size() * rowStride;
+        int viewportHeight = Math.max(0, viewportBottom - viewportTop);
+        int maxScroll = Math.max(0, contentHeight - viewportHeight);
+        browseScrollOffset = Math.max(0, Math.min(browseScrollOffset, maxScroll));
+
+        guiGraphics.enableScissor(x, viewportTop, x + width, viewportBottom);
+        int rowY = viewportTop - browseScrollOffset;
         for (ServerBrowserRow row : browserRows) {
-            if (rowY + ROW_HEIGHT_COMPACT > y + height) {
-                break;
+            if (rowY + ROW_HEIGHT_COMPACT > viewportTop && rowY < viewportBottom) {
+                boolean hovered = mouseX >= x && mouseX <= x + width && mouseY >= rowY && mouseY <= rowY + ROW_HEIGHT_COMPACT
+                        && mouseY >= viewportTop && mouseY <= viewportBottom;
+                guiGraphics.fill(x, rowY, x + width, rowY + ROW_HEIGHT_COMPACT, hovered ? 0xFF2A2820 : 0xFF201E17);
+                if (row.hasPassword()) {
+                    guiGraphics.text(font, Component.literal("🔒"), x + 4, rowY + 7, 0xFF908C7F);
+                }
+                guiGraphics.text(font, Component.literal(row.serverName()), x + 24, rowY + 7, row.respondedSuccessfully() ? 0xFFEAE8E1 : 0xFF605C50);
+                guiGraphics.text(font, Component.literal(row.players() + "/" + row.maxPlayers()), x + width - 180, rowY + 7, 0xFF908C7F);
+                guiGraphics.text(font, Component.literal(row.ping() + "ms"), x + width - 100, rowY + 7, pingStatusColor(row.ping()));
             }
-            boolean hovered = mouseX >= x && mouseX <= x + width && mouseY >= rowY && mouseY <= rowY + ROW_HEIGHT_COMPACT;
-            guiGraphics.fill(x, rowY, x + width, rowY + ROW_HEIGHT_COMPACT, hovered ? 0xFF2A2820 : 0xFF201E17);
-            if (row.hasPassword()) {
-                guiGraphics.text(font, Component.literal("🔒"), x + 4, rowY + 7, 0xFF908C7F);
-            }
-            guiGraphics.text(font, Component.literal(row.serverName()), x + 24, rowY + 7, row.respondedSuccessfully() ? 0xFFEAE8E1 : 0xFF605C50);
-            guiGraphics.text(font, Component.literal(row.players() + "/" + row.maxPlayers()), x + width - 180, rowY + 7, 0xFF908C7F);
-            guiGraphics.text(font, Component.literal(row.ping() + "ms"), x + width - 100, rowY + 7, pingStatusColor(row.ping()));
-            rowY += ROW_HEIGHT_COMPACT + 2;
+            rowY += rowStride;
         }
+        guiGraphics.disableScissor();
 
         if (browserSession != null && browserSession.isRefreshing()) {
             guiGraphics.text(font, Component.literal("Refreshing..."), x + width - 260, headerY, 0xFF908C7F);
         } else if (browserRefreshEverCompleted && browserRows.isEmpty()) {
-            guiGraphics.centeredText(font, Component.literal("No servers found."), x + width / 2, rowY + 12, 0xFF908C7F);
+            guiGraphics.centeredText(font, Component.literal("No servers found."), x + width / 2, viewportTop + 12, 0xFF908C7F);
         }
+    }
+
+    /**
+     * FX10.2: mouse-wheel forwarding from {@code MainMenuScreen} while the
+     * Browse sub-view is active and the mouse is over this panel. Clamping to
+     * [0, maxScroll] happens per-frame in {@link #renderBrowser}, so here we
+     * only need to accumulate the raw delta.
+     */
+    public boolean mouseScrolled(int x, int y, int width, int height, double mouseX, double mouseY, double scrollDelta) {
+        if (state.serversSubView() != MainMenuStateMachine.ServersSubView.BROWSER) {
+            return false;
+        }
+        if (mouseX < x || mouseX > x + width || mouseY < y || mouseY > y + height) {
+            return false;
+        }
+        browseScrollOffset -= (int) Math.round(scrollDelta * SCROLL_STEP);
+        if (browseScrollOffset < 0) {
+            browseScrollOffset = 0;
+        }
+        return true;
     }
 
     private void drawColumnHeader(GuiGraphicsExtractor guiGraphics, Font font, String label, int x, int y, ServerBrowserColumn column) {
@@ -318,6 +446,7 @@ public final class ServersPanel {
             if (expanded) {
                 int buttonY = rowY + rowHeight - 22;
                 if (mouseX >= x + width - 100 && mouseX <= x + width - 8 && mouseY >= buttonY && mouseY <= buttonY + 18) {
+                    MainMenuScreen.playClickSound();
                     connect(server);
                     return true;
                 }
@@ -338,23 +467,31 @@ public final class ServersPanel {
         int headerY = y + 24;
         if (mouseY >= headerY - 12 && mouseY < headerY + 4) {
             if (mouseX >= x + 24 && mouseX < x + width - 200) {
+                MainMenuScreen.playClickSound();
                 browserSession.setSortColumn(ServerBrowserColumn.NAME);
                 return true;
             } else if (mouseX >= x + width - 180 && mouseX < x + width - 110) {
+                MainMenuScreen.playClickSound();
                 browserSession.setSortColumn(ServerBrowserColumn.PLAYERS);
                 return true;
             } else if (mouseX >= x + width - 100 && mouseX < x + width) {
+                MainMenuScreen.playClickSound();
                 browserSession.setSortColumn(ServerBrowserColumn.PING);
                 return true;
             }
         }
 
-        int rowY = headerY + 16;
+        // FX10: rows are shifted by the current scroll offset (mirroring
+        // renderBrowser's viewport math) and clicks outside the viewport
+        // (scrolled off above/below the header/panel bounds) are ignored.
+        int viewportTop = headerY + 16;
+        int viewportBottom = y + height;
+        int rowY = viewportTop - browseScrollOffset;
         for (ServerBrowserRow row : browserRows) {
-            if (rowY + ROW_HEIGHT_COMPACT > y + height) {
-                break;
-            }
-            if (mouseX >= x && mouseX <= x + width && mouseY >= rowY && mouseY <= rowY + ROW_HEIGHT_COMPACT) {
+            if (rowY + ROW_HEIGHT_COMPACT > viewportTop && rowY < viewportBottom
+                    && mouseX >= x && mouseX <= x + width && mouseY >= Math.max(rowY, viewportTop)
+                    && mouseY <= Math.min(rowY + ROW_HEIGHT_COMPACT, viewportBottom)) {
+                MainMenuScreen.playClickSound();
                 joinBrowserRow(row);
                 return true;
             }

@@ -175,20 +175,46 @@ public final class MainMenuBackgroundRenderer {
      * Renders the continuously-updating background (FR8.1/FR1.4) -- called
      * every frame from {@link MainMenuScreen#extractRenderState}, regardless
      * of tab state.
+     *
+     * <p>FX8 note: this version's own scene is already the flat-2D,
+     * full-screen stand-in described in this class's own Javadoc (not the
+     * 3D {@code skin()}-submitted geometry 26.2 uses) -- it already fills the
+     * destination rect edge-to-edge, so FX8's "small/centered/stuck to the
+     * bottom" defect (a 3D-camera scale/pivot framing issue) does not apply
+     * to it structurally; per FX8.3/R4 this is the documented placeholder-
+     * model-limitation framing for this platform specifically, not a skipped
+     * fix. FX7 (character sizing/position) still applies below.
+     *
+     * @param reservedWidth the post-launch-fixes spec's reserved left-third
+     *                      background+character region's pixel width
+     *                      (FX6.1/FX7.1)
      */
-    public void render(GuiGraphicsExtractor guiGraphics, int screenWidth, int screenHeight) {
+    public void render(GuiGraphicsExtractor guiGraphics, int screenWidth, int screenHeight, int reservedWidth) {
         double elapsedSeconds = (System.nanoTime() - startNanos) / 1_000_000_000.0;
 
         renderSceneAsFlat2D(guiGraphics, screenWidth, screenHeight);
 
         // Character: still a genuine 3D picture-in-picture model, posed per-frame
-        // from the pure animation math (FR8.6), framed bottom-left per design doc.
+        // from the pure animation math (FR8.6). FX7: sized/positioned from the
+        // reserved left-third region's own actual pixel bounds, not
+        // screenWidth*0.08, grounded at the bottom and inset from the
+        // region's edges so it reads as "bottom-left of the region."
         CharacterPose pose = animator.poseAt(elapsedSeconds);
         applyPose(pose);
-        int charSize = Math.max(160, screenHeight / 2);
-        int charX0 = (int) (screenWidth * 0.08);
-        int charY0 = screenHeight - charSize;
-        guiGraphics.skin(characterModel, PALETTE, 22f, 0f, 20f, 0f, charX0, charY0, charX0 + charSize, screenHeight);
+        int region = Math.max(1, reservedWidth);
+        // Bug fix: at small logical GUI widths (high GUI scale / narrow window)
+        // reservedWidth() can clamp down to a few pixels or 0, and the old fixed
+        // inset (>= 4) made charX1 = region - inset go negative -- skin() then
+        // handed the renderer a negative-width destination rect, which the GPU
+        // rejects with GL_INVALID_VALUE and crashes the game. Cap the inset at
+        // region/2 - 1 so charX1 is always > charX0 (>= 1px wide) regardless of
+        // how small region gets.
+        int inset = Math.min(Math.max(4, region / 10), Math.max(0, region / 2 - 1));
+        int charX0 = inset;
+        int charX1 = Math.max(charX0 + 1, region - inset);
+        int charY0 = Math.max(0, (int) (screenHeight * 0.04));
+        int charY1 = Math.max(charY0 + 1, screenHeight);
+        guiGraphics.skin(characterModel, PALETTE, 22f, 0f, 20f, 0f, charX0, charY0, charX1, charY1);
     }
 
     /**

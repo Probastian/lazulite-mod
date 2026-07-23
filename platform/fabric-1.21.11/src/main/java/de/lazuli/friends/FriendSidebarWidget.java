@@ -10,7 +10,9 @@ import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.Click;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.narration.NarrationMessageBuilder;
+import net.minecraft.client.gui.screen.option.OptionsScreen;
 import net.minecraft.client.gui.widget.ClickableWidget;
+import net.minecraft.client.world.ClientWorld;
 import net.minecraft.text.Text;
 import net.minecraft.util.Identifier;
 
@@ -53,6 +55,11 @@ public final class FriendSidebarWidget extends ClickableWidget {
     private static final int ROW_HEIGHT = DISPLAY_SIZE + ROW_PADDING * 2;
     private static final int COLLAPSED_WIDTH = DISPLAY_SIZE + ROW_PADDING * 2;
     private static final int EXPANDED_WIDTH = 180;
+
+    /** The collapsed on-screen width, for hosts that need to reserve layout space next to it. */
+    public static int collapsedWidth() {
+        return COLLAPSED_WIDTH;
+    }
     private static final int SEPARATOR_HEIGHT = 1;
     private static final int SEPARATOR_GAP = 2;
     private static final int BORDER_WIDTH = 1;
@@ -162,6 +169,31 @@ public final class FriendSidebarWidget extends ClickableWidget {
     private final DropdownWidget joinPolicyDropdown;
     private int lastDropdownHeight = dropdownRowHeight();
 
+    // Bottom "utility" section: Options/Quit, pinned to the very bottom of
+    // the panel below the friends list -- mirrors the top pinned own-profile
+    // row's always-present placement, with different (functional, not
+    // avatar) content. Present in both collapsed (icon-glyph only, mirroring
+    // the handle's own single-letter convention) and expanded (icon + label)
+    // states. footerOptionsY/footerQuitY/footerWidth/footerVisible cache this
+    // frame's own drawn bounds (Risk pattern already used by dropdownX/Y/
+    // Width above) so mouseClicked()'s hit-test uses the exact same bounds
+    // renderNow() just drew, never independently recomputed.
+    private static final int FOOTER_BUTTON_HEIGHT = ROW_HEIGHT;
+    private static final int FOOTER_OPTIONS_COLOR = 0xFF2E2E2E;
+    private static final int FOOTER_OPTIONS_HOVER_COLOR = 0xFF3A3A3A;
+    private static final int FOOTER_QUIT_COLOR = 0xFF8A3A3A;
+    private static final int FOOTER_QUIT_HOVER_COLOR = 0xFFA84A4A;
+    private static final String OPTIONS_GLYPH = "O";
+    private static final String QUIT_GLYPH = "Q";
+    private boolean footerVisible;
+    private int footerWidth;
+    private int footerOptionsY;
+    private int footerQuitY;
+
+    private static int footerHeight() {
+        return SEPARATOR_GAP + SEPARATOR_HEIGHT + SEPARATOR_GAP + FOOTER_BUTTON_HEIGHT * 2;
+    }
+
     public interface RowClickListener {
         void onRowClicked(FriendSummary friend, int mouseX, int mouseY, int button, boolean isOwnProfile);
     }
@@ -257,7 +289,7 @@ public final class FriendSidebarWidget extends ClickableWidget {
         var window = MinecraftClient.getInstance().getWindow();
         screenWidth = window.getScaledWidth();
         screenHeight = window.getScaledHeight();
-        maxRows = Math.max(1, (screenHeight - topInset() - listTopOffset()) / ROW_HEIGHT);
+        maxRows = Math.max(1, (screenHeight - topInset() - listTopOffset() - footerHeight()) / ROW_HEIGHT);
     }
 
     private List<FriendSummary> sortedFriends() {
@@ -269,7 +301,7 @@ public final class FriendSidebarWidget extends ClickableWidget {
     }
 
     private int totalHeight(int totalFriends) {
-        return listTopOffset() + Math.max(ROW_HEIGHT, visibleFriendRows(totalFriends) * ROW_HEIGHT);
+        return listTopOffset() + Math.max(ROW_HEIGHT, visibleFriendRows(totalFriends) * ROW_HEIGHT) + footerHeight();
     }
 
     private static float moveTowards(float current, float target, float maxDelta) {
@@ -409,7 +441,8 @@ public final class FriendSidebarWidget extends ClickableWidget {
             // steamAvailable transition.
             dropdownVisible = false;
             joinPolicyDropdown.close();
-            drawStatus(context, getX(), getY(), width, height, showText);
+            drawStatus(context, getX(), getY(), width, height - footerHeight(), showText);
+            drawFooter(context, getX(), getY(), width, height, mouseX, mouseY, showText);
             return;
         }
 
@@ -451,7 +484,7 @@ public final class FriendSidebarWidget extends ClickableWidget {
         scrollPixelOffset = Math.max(0, Math.min(scrollPixelOffset, maxOffsetPx));
 
         int rowsTop = getY() + listTopOffset();
-        int rowsBottom = getY() + height;
+        int rowsBottom = getY() + height - footerHeight();
         context.enableScissor(getX(), rowsTop, getX() + width, rowsBottom);
         int startIndex = Math.max(0, (int) (scrollPixelOffset / ROW_HEIGHT));
         float subPixel = scrollPixelOffset - startIndex * (float) ROW_HEIGHT;
@@ -461,6 +494,8 @@ public final class FriendSidebarWidget extends ClickableWidget {
             rowY += ROW_HEIGHT;
         }
         context.disableScissor();
+
+        drawFooter(context, getX(), getY(), width, height, mouseX, mouseY, showText);
     }
 
     /**
@@ -503,6 +538,60 @@ public final class FriendSidebarWidget extends ClickableWidget {
         for (String line : wrapMessage(textRenderer::getWidth, facade.steamUnavailableMessage(), maxTextWidth)) {
             context.drawTextWithShadow(textRenderer, line, textX, textY, 0xFFFFFFFF);
             textY += 10;
+        }
+    }
+
+    /**
+     * Bottom "utility" section: Options and a context-sensitive Quit button
+     * (Quit to Desktop outside a world, Quit to Main Menu while in one),
+     * pinned to the very bottom of the panel -- present regardless of
+     * whether Steam is available, since it's unrelated to the friends list.
+     */
+    private void drawFooter(DrawContext context, int x, int y, int width, int panelHeight, int mouseX, int mouseY, boolean showText) {
+        int footerTop = y + panelHeight - footerHeight();
+        int separatorY = footerTop + SEPARATOR_GAP;
+        context.fill(x, separatorY, x + width, separatorY + SEPARATOR_HEIGHT, OWN_PROFILE_SEPARATOR);
+
+        footerWidth = width;
+        footerOptionsY = separatorY + SEPARATOR_HEIGHT + SEPARATOR_GAP;
+        footerQuitY = footerOptionsY + FOOTER_BUTTON_HEIGHT;
+        footerVisible = true;
+
+        boolean inWorld = MinecraftClient.getInstance().world != null;
+        String quitLabel = inWorld ? "Quit to Main Menu" : "Quit to Desktop";
+
+        boolean optionsHovered = mouseX >= x && mouseX < x + width && mouseY >= footerOptionsY && mouseY < footerOptionsY + FOOTER_BUTTON_HEIGHT;
+        boolean quitHovered = mouseX >= x && mouseX < x + width && mouseY >= footerQuitY && mouseY < footerQuitY + FOOTER_BUTTON_HEIGHT;
+
+        drawFooterButton(context, x, footerOptionsY, width, "Options", OPTIONS_GLYPH,
+                optionsHovered ? FOOTER_OPTIONS_HOVER_COLOR : FOOTER_OPTIONS_COLOR, showText);
+        drawFooterButton(context, x, footerQuitY, width, quitLabel, QUIT_GLYPH,
+                quitHovered ? FOOTER_QUIT_HOVER_COLOR : FOOTER_QUIT_COLOR, showText);
+    }
+
+    private void drawFooterButton(DrawContext context, int x, int y, int width, String label, String collapsedGlyph, int bgColor, boolean showText) {
+        context.fill(x, y, x + width, y + FOOTER_BUTTON_HEIGHT, bgColor);
+        var textRenderer = MinecraftClient.getInstance().textRenderer;
+        if (showText) {
+            context.drawTextWithShadow(textRenderer, label, x + ROW_PADDING, y + (FOOTER_BUTTON_HEIGHT - textRenderer.fontHeight) / 2, 0xFFFFFFFF);
+        } else {
+            int glyphX = x + (width - textRenderer.getWidth(collapsedGlyph)) / 2;
+            int glyphY = y + (FOOTER_BUTTON_HEIGHT - 8) / 2;
+            context.drawTextWithShadow(textRenderer, collapsedGlyph, glyphX, glyphY, 0xFFFFFFFF);
+        }
+    }
+
+    private void onOptionsClicked() {
+        MinecraftClient client = MinecraftClient.getInstance();
+        client.setScreen(new OptionsScreen(client.currentScreen, client.options));
+    }
+
+    private void onQuitClicked() {
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client.world != null) {
+            client.disconnect(ClientWorld.QUITTING_MULTIPLAYER_TEXT);
+        } else {
+            client.scheduleStop();
         }
     }
 
@@ -585,7 +674,7 @@ public final class FriendSidebarWidget extends ClickableWidget {
 
     @Override
     public boolean mouseClicked(Click click, boolean doubleClick) {
-        if (!facade.isEnabled() || !facade.isSteamAvailable()) {
+        if (!facade.isEnabled()) {
             return false;
         }
         if (handleOnly && !panelOpen) {
@@ -598,6 +687,22 @@ public final class FriendSidebarWidget extends ClickableWidget {
         }
         if (!isMouseOver(click.x(), click.y())) {
             return false;
+        }
+        // Footer (Options/Quit) is checked before Steam-gated content below --
+        // it's present and clickable regardless of Steam availability, unlike
+        // the dropdown/friend-row logic further down.
+        if (footerVisible && click.x() >= getX() && click.x() < getX() + footerWidth) {
+            if (click.y() >= footerOptionsY && click.y() < footerOptionsY + FOOTER_BUTTON_HEIGHT) {
+                onOptionsClicked();
+                return true;
+            }
+            if (click.y() >= footerQuitY && click.y() < footerQuitY + FOOTER_BUTTON_HEIGHT) {
+                onQuitClicked();
+                return true;
+            }
+        }
+        if (!facade.isSteamAvailable()) {
+            return true;
         }
         if (dropdownVisible && joinPolicyDropdown.mouseClicked(click.x(), click.y(),
                 dropdownX, dropdownY, dropdownWidth, dropdownRowHeight())) {

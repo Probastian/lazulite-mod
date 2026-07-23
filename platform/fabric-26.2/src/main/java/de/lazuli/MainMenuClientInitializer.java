@@ -1,5 +1,6 @@
 package de.lazuli;
 
+import de.lazuli.api.richpresence.RichPresenceFacade;
 import de.lazuli.api.serverbrowser.ServerBrowserSessionFactory;
 import de.lazuli.features.friendssidebar.services.FriendsSidebarFacade;
 import de.lazuli.features.mainmenu.config.StoreCatalogConfigIO;
@@ -48,6 +49,7 @@ public final class MainMenuClientInitializer implements ClientModInitializer {
         FriendsSidebarFacade friendsSidebarFacade = FriendsSidebarFacadeHandoff.require();
         ServerBrowserSessionFactory serverBrowserSessionFactory = ServerBrowserSessionFactoryHandoff.require();
         SteamworksService steamworksService = SteamworksServiceHandoff.require();
+        RichPresenceFacade richPresenceFacade = RichPresenceFacadeHandoff.require();
         boolean steamAvailable = steamworksService.isSteamAvailable();
 
         Path configDir = FabricLoader.getInstance().getConfigDir();
@@ -73,7 +75,7 @@ public final class MainMenuClientInitializer implements ClientModInitializer {
 
         java.util.function.Supplier<Screen> screenFactory = () -> buildScreen(background, friendsSidebarFacade,
                 serverBrowserSessionFactory, steamAvailable, storeCatalog, ownershipChecker, wardrobeResult,
-                wardrobeConfigIO, wardrobeConfigPath);
+                wardrobeConfigIO, wardrobeConfigPath, richPresenceFacade);
         MainMenuScreenFactoryHandoff.publish(screenFactory);
 
         ClientLifecycleEvents.CLIENT_STARTED.register(client -> Minecraft.getInstance().setScreenAndShow(screenFactory.get()));
@@ -83,9 +85,9 @@ public final class MainMenuClientInitializer implements ClientModInitializer {
                                        ServerBrowserSessionFactory serverBrowserSessionFactory, boolean steamAvailable,
                                        StoreCatalog storeCatalog, MainMenuStoreOwnershipChecker ownershipChecker,
                                        WardrobeConfigIO.ParseResult wardrobeResult, WardrobeConfigIO wardrobeConfigIO,
-                                       Path wardrobeConfigPath) {
+                                       Path wardrobeConfigPath, RichPresenceFacade richPresenceFacade) {
         return new MainMenuScreen(background, friendsSidebarFacade, serverBrowserSessionFactory,
-                steamAvailable, storeCatalog, ownershipChecker, wardrobeResult.config(),
+                steamAvailable, storeCatalog, ownershipChecker, wardrobeResult.config(), richPresenceFacade,
                 equipSnapshot -> {
                     try {
                         String serialized = wardrobeConfigIO.serialize(

@@ -1,6 +1,7 @@
 package de.lazuli.mainmenu;
 
 import de.lazuli.api.mainmenu.MainMenuTab;
+import de.lazuli.api.richpresence.RichPresenceFacade;
 import de.lazuli.api.serverbrowser.ServerBrowserSessionFactory;
 import de.lazuli.features.friendssidebar.services.FriendsSidebarFacade;
 import de.lazuli.features.mainmenu.config.WardrobeConfig;
@@ -9,10 +10,13 @@ import de.lazuli.features.mainmenu.services.StoreCatalog;
 import de.lazuli.friends.AvatarTextureCache;
 import de.lazuli.friends.FriendSidebarWidget;
 
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.MouseButtonEvent;
+import net.minecraft.client.resources.sounds.SimpleSoundInstance;
 import net.minecraft.network.chat.Component;
+import net.minecraft.sounds.SoundEvents;
 
 import java.util.function.Consumer;
 
@@ -67,7 +71,7 @@ public final class MainMenuScreen extends Screen {
     public MainMenuScreen(MainMenuBackgroundRenderer background, FriendsSidebarFacade friendsSidebarFacade,
                            ServerBrowserSessionFactory serverBrowserSessionFactory, boolean steamAvailable,
                            StoreCatalog storeCatalog, MainMenuStoreOwnershipChecker ownershipChecker,
-                           WardrobeConfig initialWardrobeConfig,
+                           WardrobeConfig initialWardrobeConfig, RichPresenceFacade richPresenceFacade,
                            Consumer<java.util.Map<de.lazuli.api.mainmenu.WardrobeSlot, String>> onWardrobeEquipChanged) {
         super(Component.literal("Stonebound"));
         this.background = background;
@@ -77,7 +81,7 @@ public final class MainMenuScreen extends Screen {
         state.loadEquipped(initialWardrobeConfig.equipped());
         this.wardrobePanel = new WardrobePanel(state, storeCatalog, (slot, itemId) -> onWardrobeEquipChanged.accept(state.equipSnapshot()));
         this.sidebar = new FriendSidebarWidget(friendsSidebarFacade, new AvatarTextureCache(msg -> { }),
-                (friend, mouseX, mouseY, button, isOwnProfile) -> { }, false, false, null);
+                (friend, mouseX, mouseY, button, isOwnProfile) -> { }, false, false, richPresenceFacade);
     }
 
     @Override
@@ -85,6 +89,8 @@ public final class MainMenuScreen extends Screen {
         addRenderableWidget(sidebar);
         worldsPanel.init(this::addRenderableWidget, panelX(), panelY(), panelWidth());
         serversPanel.init(this::addRenderableWidget, panelX(), panelY(), panelWidth());
+        worldsPanel.setTabActive(state.activeTab() == MainMenuTab.WORLDS);
+        serversPanel.setTabActive(state.activeTab() == MainMenuTab.SERVERS);
     }
 
     @Override
@@ -97,8 +103,21 @@ public final class MainMenuScreen extends Screen {
         return false;
     }
 
+    // FX6.2/R5: the reserved left-third background+character region has
+    // width-growth priority *inverted* from the panel's -- the panel is the
+    // flexible region that must never go below this floor, so the reserved
+    // region shrinks first at small window widths instead.
+    private static final int MIN_PANEL_WIDTH = 260;
+    private static final int RIGHT_MARGIN = 24;
+
+    private int reservedWidth() {
+        int naive = width / 3;
+        int maxAllowed = width - TAB_BAR_WIDTH - sidebarCollapsedWidth() - RIGHT_MARGIN - MIN_PANEL_WIDTH;
+        return Math.max(0, Math.min(naive, Math.max(0, maxAllowed)));
+    }
+
     private int panelX() {
-        return 24;
+        return reservedWidth();
     }
 
     private int panelY() {
@@ -106,11 +125,13 @@ public final class MainMenuScreen extends Screen {
     }
 
     private int panelWidth() {
-        return width - TAB_BAR_WIDTH - 48 - sidebarCollapsedWidth();
+        return Math.max(MIN_PANEL_WIDTH, width - panelX() - TAB_BAR_WIDTH - sidebarCollapsedWidth() - RIGHT_MARGIN);
     }
 
     private int sidebarCollapsedWidth() {
-        return 84;
+        // Was a guessed 84px, leaving a large gap before the tab bar since
+        // FriendSidebarWidget's real collapsed width is much smaller.
+        return FriendSidebarWidget.collapsedWidth();
     }
 
     @Override
@@ -119,9 +140,8 @@ public final class MainMenuScreen extends Screen {
         // (FR1.4/FR8.1) -- drawn first so every 2D element below layers on
         // top of it. See MainMenuBackgroundRenderer's own Javadoc for why no
         // manual matrix push/pop is needed around this call.
-        background.render(guiGraphics, width, height);
+        background.render(guiGraphics, width, height, reservedWidth());
 
-        renderTitle(guiGraphics);
         renderTabBar(guiGraphics, mouseX, mouseY);
 
         MainMenuTab active = state.activeTab();
@@ -130,7 +150,9 @@ public final class MainMenuScreen extends Screen {
             int y = panelY();
             int w = panelWidth();
             int h = (int) (height * 0.62);
-            guiGraphics.fill(x - 12, y - 12, x + w + 12, y + h + 12, 0x8C312E22);
+            // FX6.5: the panel's translucent fill must not bleed left of
+            // panelX() into the reserved background+character region.
+            guiGraphics.fill(x, y - 12, x + w + 12, y + h + 12, 0x8C312E22);
             switch (active) {
                 case WORLDS -> worldsPanel.render(guiGraphics, font, x, y, w, h, mouseX, mouseY);
                 case SERVERS -> serversPanel.render(guiGraphics, font, x, y, w, h, mouseX, mouseY);
@@ -140,14 +162,18 @@ public final class MainMenuScreen extends Screen {
         }
 
         super.extractRenderState(guiGraphics, mouseX, mouseY, delta);
+
+        // FX14: MainMenuScreen is a custom screen, not on
+        // FabricFriendsSidebarInjector's vanilla-screen allow-list, so the
+        // injector's ScreenEvents.afterExtract hook never fires for it --
+        // renderNow() must be invoked explicitly here instead. Deliberately
+        // NOT adding this screen to the injector's allow-list (would double-render).
+        sidebar.renderNow(guiGraphics, mouseX, mouseY, delta);
     }
 
-    private void renderTitle(GuiGraphicsExtractor guiGraphics) {
-        double scale = height / 1080.0;
-        int titleX = (int) (60 * scale);
-        int titleY = (int) (48 * scale);
-        guiGraphics.text(font, Component.literal("STONEBOUND"), titleX, titleY, 0xFFEAE8E1);
-        guiGraphics.text(font, Component.literal("OVERHAUL MOD · V2.1"), titleX, titleY + 14, 0xFF908C7F);
+    /** FX9: the standard vanilla UI click sound for every hand-hit-tested custom control in this class. */
+    static void playClickSound() {
+        Minecraft.getInstance().getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.UI_BUTTON_CLICK.value(), 1.0F));
     }
 
     private void renderTabBar(GuiGraphicsExtractor guiGraphics, int mouseX, int mouseY) {
@@ -195,7 +221,9 @@ public final class MainMenuScreen extends Screen {
         for (int i = 0; i < TABS.length; i++) {
             int y = startY + i * (buttonHeight + spacing);
             if (event.x() >= barX && event.x() <= barX + TAB_BAR_WIDTH && event.y() >= y && event.y() <= y + buttonHeight) {
+                playClickSound();
                 state.selectTab(TABS[i]);
+                worldsPanel.setTabActive(state.activeTab() == MainMenuTab.WORLDS);
                 serversPanel.setTabActive(state.activeTab() == MainMenuTab.SERVERS);
                 return true;
             }
@@ -219,6 +247,21 @@ public final class MainMenuScreen extends Screen {
             if (wardrobePanel.mouseClicked(panelX(), panelY(), panelWidth(), h, event.x(), event.y())) {
                 return true;
             }
+        }
+        return false;
+    }
+
+    @Override
+    public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
+        if (super.mouseScrolled(mouseX, mouseY, horizontalAmount, verticalAmount)) {
+            return true;
+        }
+        // FX10.2: forward scroll input to the Servers panel only -- Worlds/
+        // Store/Wardrobe don't need it in this batch (see plan's note on
+        // flagging, not silently expanding scope, if that changes).
+        int h = (int) (height * 0.62);
+        if (state.activeTab() == MainMenuTab.SERVERS) {
+            return serversPanel.mouseScrolled(panelX(), panelY(), panelWidth(), h, mouseX, mouseY, verticalAmount);
         }
         return false;
     }
