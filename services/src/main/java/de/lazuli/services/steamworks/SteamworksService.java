@@ -40,6 +40,9 @@ import java.util.function.Consumer;
  * ClientTickEvents.END_CLIENT_TICK.register(client -> steam.pumpCallbacks());
  * ClientLifecycleEvents.CLIENT_STOPPING.register(client -> steam.shutdown());
  * }</pre>
+ *
+ * <p>{@link #shutdown()} deliberately never calls the native
+ * {@code SteamAPI.shutdown()} - see that method's Javadoc.
  */
 public final class SteamworksService implements SteamAvailability {
 
@@ -124,13 +127,17 @@ public final class SteamworksService implements SteamAvailability {
     }
 
     /**
-     * Releases the Steamworks API session if it was ever successfully
-     * initialized. Safe to call multiple times, or when never initialized -
-     * idempotent, never throws.
+     * Marks this session as shut down. Deliberately does NOT call
+     * {@code SteamAPI.shutdown()}: that native call races with steamworks4j's
+     * own background callback thread during JVM exit and reliably produces an
+     * {@code EXCEPTION_ACCESS_VIOLATION} crash in {@code steamworks4j64.dll}
+     * on client stop (a known upstream issue, not specific to this mod's
+     * usage). The process is already tearing down at this point, so the OS
+     * reclaims the native session regardless. Safe to call multiple times, or
+     * when never initialized - idempotent, never throws.
      */
     public void shutdown() {
         if (available && !shutDown) {
-            SteamAPI.shutdown();
             shutDown = true;
         }
     }
