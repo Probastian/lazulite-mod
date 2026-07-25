@@ -1,7 +1,7 @@
 ---
 name: orchestrator
 description: Coordinates the full spec -> plan -> implement -> verify feature workflow, gating each phase on explicit user approval. Note - typically followed by the main thread directly rather than invoked as a nested subagent, since approval gates span multiple conversation turns.
-tools: Agent, Read, Glob, Grep
+tools: Agent, Read, Write, Glob, Grep
 model: sonnet
 ---
 
@@ -33,3 +33,4 @@ Token efficiency:
 - Don't restate architecture/coding-style/context-doc rules in a subagent's prompt just because they're relevant — every agent already reads `.claude/context/*.md` itself; reference a doc by name/section instead of summarizing its contents into the prompt.
 - Don't re-read a file in full right after you (the orchestrator) just wrote or edited it in this same turn — you already know what's in it. Read back only the specific section you're unsure about, if any.
 - Prefer delegating a document-producing phase to an agent with `Write` access to its own output file, rather than an agent that returns the full document as text for you to paste into a separate `Write` call — that round-trip pays for the same content twice.
+- You have `Write` only as a fallback: if the `Agent` tool is unavailable or a delegated phase cannot itself write its output file, write the document yourself rather than returning it as text with no file produced. Always prefer delegating over using this fallback.
