@@ -1,9 +1,12 @@
 package de.lazuli;
 
+import de.lazuli.services.steamworks.NoopSteamAchievementsGateway;
 import de.lazuli.services.steamworks.NoopSteamFriendsGateway;
+import de.lazuli.services.steamworks.SteamAchievementsGateway;
 import de.lazuli.services.steamworks.SteamAppIdResolver;
 import de.lazuli.services.steamworks.SteamFriendsGateway;
 import de.lazuli.services.steamworks.SteamworksService;
+import de.lazuli.services.steamworks.SteamworksSteamAchievementsGateway;
 import de.lazuli.services.steamworks.SteamworksSteamFriendsGateway;
 import de.lazuli.ui.FabricToastService;
 
@@ -71,6 +74,13 @@ public final class SteamworksClientInitializer implements ClientModInitializer {
                 ? new SteamworksSteamFriendsGateway(LazuliMod.LOGGER::warn)
                 : new NoopSteamFriendsGateway();
         SteamFriendsGatewayHandoff.publish(steamFriendsGateway);
+
+        // Batch-2-fixes Item F1: same extract-on-second-use pattern as the
+        // friends gateway above, for the Achievements tab's own real data.
+        SteamAchievementsGateway steamAchievementsGateway = steamworksService.isSteamAvailable()
+                ? new SteamworksSteamAchievementsGateway(LazuliMod.LOGGER::warn)
+                : new NoopSteamAchievementsGateway();
+        SteamAchievementsGatewayHandoff.publish(steamAchievementsGateway);
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> steamworksService.pumpCallbacks());
         ClientLifecycleEvents.CLIENT_STOPPING.register(client -> steamworksService.shutdown());

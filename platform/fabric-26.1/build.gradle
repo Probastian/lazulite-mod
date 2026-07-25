@@ -17,6 +17,8 @@ dependencies {
 	implementation project(':features:friends-sidebar')
 	implementation project(':features:rich-presence')
 	implementation project(':features:steam-world-hosting')
+	implementation project(':features:server-join-presence')
+	implementation project(':features:cross-world-stats')
 	implementation project(':features:server-browser')
 	implementation project(':services')
 
@@ -69,7 +71,20 @@ afterEvaluate {
 	}
 }
 
+// features/main-menu ships real texture assets (assets/lazuli/textures/achievements/*.png)
+// but is a plain Java library module with no fabric.mod.json of its own, so Fabric
+// Loader's resource-pack discovery never merges its assets/ folder into the lazuli
+// mod's resource pack (Loader only scans mod containers that declare fabric.mod.json).
+// Pulling its resources directory into this platform's own sourceSet makes those PNGs
+// land inside this module's actual fabric.mod.json-bearing jar instead.
+sourceSets.main.resources.srcDir project(':features:main-menu').file('src/main/resources')
+
 processResources {
+	// Explicit dependency since the added resources srcDir above is owned by another
+	// Gradle project; without this Gradle may warn/fail about an implicit cross-project
+	// task dependency depending on execution order.
+	dependsOn project(':features:main-menu').tasks.named('processResources')
+
 	def version = project.version
 	inputs.property "version", version
 

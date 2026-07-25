@@ -26,8 +26,18 @@ import java.util.Optional;
  */
 public final class StorePanel {
 
-    private static final int CARD_SIZE = 96;
+    private static final int CARD_WIDTH = 96;
     private static final int CARD_GAP = 12;
+    // FR-B3.8: near-full-card square swatch (design handoff's "square swatch,
+    // aspect-ratio 1:1" grid-card convention), rather than the previous
+    // ~42%-card-height placeholder fill -- the card grows taller than
+    // CARD_WIDTH to fit name/category/price/Buy below the swatch, but stays
+    // CARD_WIDTH wide (column layout unaffected).
+    private static final int SWATCH_MARGIN = 6;
+    private static final int SWATCH_SIZE = CARD_WIDTH - SWATCH_MARGIN * 2;
+    private static final int CARD_TEXT_ZONE = 50;
+    private static final int CARD_HEIGHT = SWATCH_MARGIN + SWATCH_SIZE + 4 + CARD_TEXT_ZONE;
+    private static final int CONTENT_LEFT_PAD = 8;
 
     private final StoreCatalog catalog;
     private final MainMenuStoreOwnershipChecker ownershipChecker;
@@ -38,49 +48,64 @@ public final class StorePanel {
     }
 
     public void render(GuiGraphicsExtractor guiGraphics, Font font, int x, int y, int width, int height, int mouseX, int mouseY) {
+        int leftX = x + CONTENT_LEFT_PAD;
+        int contentWidth = width - CONTENT_LEFT_PAD;
         int contentY = y;
 
         Optional<StoreItem> featured = catalog.featuredItem();
         if (featured.isPresent()) {
             StoreItem item = featured.get();
-            int bannerHeight = 72;
-            guiGraphics.fill(x, contentY, x + width, contentY + bannerHeight, 0xFF251F17);
-            guiGraphics.fill(x, contentY, x + 6, contentY + bannerHeight, 0xFF528A54);
-            guiGraphics.text(font, Component.literal("FEATURED"), x + 16, contentY + 6, 0xFF95C97F);
-            guiGraphics.text(font, Component.literal(item.displayName()), x + 16, contentY + 20, 0xFFEAE8E1);
-            guiGraphics.text(font, Component.literal(item.description()), x + 16, contentY + 32, 0xFF908C7F);
-            renderPrice(guiGraphics, font, item, x + 16, contentY + 48);
-            renderBuyPill(guiGraphics, font, item, x + width - 120, contentY + 44, 104, 20);
+            // FR-B3.7: banner height increased to accommodate a large item
+            // swatch inline (design handoff's "130x130px, diagonal-stripe
+            // placeholder texture", scaled down here to fit the panel's
+            // available banner width) in a swatch-left/text-right layout.
+            int bannerHeight = 96;
+            int swatchSize = bannerHeight - 16;
+            guiGraphics.fill(leftX, contentY, x + width, contentY + bannerHeight, 0xFF251F17);
+            guiGraphics.fill(leftX, contentY, leftX + 6, contentY + bannerHeight, 0xFF528A54);
+            int swatchX = leftX + 16;
+            int swatchY = contentY + 8;
+            guiGraphics.fill(swatchX, swatchY, swatchX + swatchSize, swatchY + swatchSize, 0xFF3A362B);
+            int textX = swatchX + swatchSize + 16;
+            guiGraphics.text(font, Component.literal("FEATURED"), textX, contentY + 8, 0xFF95C97F);
+            guiGraphics.text(font, Component.literal(item.displayName()), textX, contentY + 22, 0xFFEAE8E1);
+            guiGraphics.text(font, Component.literal(item.description()), textX, contentY + 34, 0xFF908C7F);
+            renderPrice(guiGraphics, font, item, textX, contentY + 50);
+            renderBuyPill(guiGraphics, font, item, x + width - 120, contentY + bannerHeight - 24, 104, 20);
             contentY += bannerHeight + 16;
         }
 
-        guiGraphics.text(font, Component.literal("All Cosmetics"), x, contentY, 0xFFEAE8E1);
+        guiGraphics.text(font, Component.literal("All Cosmetics"), leftX, contentY, 0xFFEAE8E1);
         contentY += 16;
 
-        int columns = Math.max(1, (width + CARD_GAP) / (CARD_SIZE + CARD_GAP));
+        int columns = Math.max(1, (contentWidth + CARD_GAP) / (CARD_WIDTH + CARD_GAP));
         int col = 0;
         int rowY = contentY;
         for (Map.Entry<String, List<StoreItem>> entry : catalog.itemsByCategory().entrySet()) {
             for (StoreItem item : entry.getValue()) {
-                int cardX = x + col * (CARD_SIZE + CARD_GAP);
-                boolean hovered = mouseX >= cardX && mouseX <= cardX + CARD_SIZE && mouseY >= rowY && mouseY <= rowY + CARD_SIZE;
+                int cardX = leftX + col * (CARD_WIDTH + CARD_GAP);
+                boolean hovered = mouseX >= cardX && mouseX <= cardX + CARD_WIDTH && mouseY >= rowY && mouseY <= rowY + CARD_HEIGHT;
                 int bg = hovered ? 0xFF2E3A26 : 0xFF201E17;
                 int cardTop = hovered ? rowY - 3 : rowY;
-                guiGraphics.fill(cardX, cardTop, cardX + CARD_SIZE, cardTop + CARD_SIZE, bg);
+                guiGraphics.fill(cardX, cardTop, cardX + CARD_WIDTH, cardTop + CARD_HEIGHT, bg);
                 if (hovered) {
-                    guiGraphics.fill(cardX, cardTop, cardX + CARD_SIZE, cardTop + 2, 0xFF528A54);
+                    guiGraphics.fill(cardX, cardTop, cardX + CARD_WIDTH, cardTop + 2, 0xFF528A54);
                 }
-                // Placeholder diagonal-stripe swatch (spec Non-goals: no real icon textures yet).
-                guiGraphics.fill(cardX + 8, cardTop + 8, cardX + CARD_SIZE - 8, cardTop + 48, 0xFF3A362B);
-                guiGraphics.text(font, Component.literal(item.displayName()), cardX + 8, cardTop + 52, 0xFFEAE8E1);
-                guiGraphics.text(font, Component.literal(item.category()), cardX + 8, cardTop + 63, 0xFF908C7F);
-                renderPrice(guiGraphics, font, item, cardX + 8, cardTop + 74);
-                renderBuyPill(guiGraphics, font, item, cardX + 8, cardTop + CARD_SIZE - 18, CARD_SIZE - 16, 16);
+                // FR-B3.8: near-full-card square swatch (placeholder fill,
+                // spec Non-goals: no real icon textures yet).
+                int swatchTop = cardTop + SWATCH_MARGIN;
+                guiGraphics.fill(cardX + SWATCH_MARGIN, swatchTop, cardX + SWATCH_MARGIN + SWATCH_SIZE,
+                        swatchTop + SWATCH_SIZE, 0xFF3A362B);
+                int textY = swatchTop + SWATCH_SIZE + 4;
+                guiGraphics.text(font, Component.literal(item.displayName()), cardX + 8, textY, 0xFFEAE8E1);
+                guiGraphics.text(font, Component.literal(item.category()), cardX + 8, textY + 11, 0xFF908C7F);
+                renderPrice(guiGraphics, font, item, cardX + 8, textY + 22);
+                renderBuyPill(guiGraphics, font, item, cardX + 8, textY + 34, CARD_WIDTH - 16, 16);
 
                 col++;
                 if (col >= columns) {
                     col = 0;
-                    rowY += CARD_SIZE + CARD_GAP;
+                    rowY += CARD_HEIGHT + CARD_GAP;
                 }
             }
         }
@@ -106,11 +131,14 @@ public final class StorePanel {
 
     /** @return true if this click was consumed by a Buy pill in this panel. */
     public boolean mouseClicked(int x, int y, int width, int height, double mouseX, double mouseY) {
+        int leftX = x + CONTENT_LEFT_PAD;
+        int contentWidth = width - CONTENT_LEFT_PAD;
         int contentY = y;
         Optional<StoreItem> featured = catalog.featuredItem();
         if (featured.isPresent()) {
-            int bannerHeight = 72;
-            if (mouseX >= x + width - 120 && mouseX <= x + width - 16 && mouseY >= contentY + 44 && mouseY <= contentY + 64) {
+            int bannerHeight = 96;
+            int pillTop = contentY + bannerHeight - 24;
+            if (mouseX >= x + width - 120 && mouseX <= x + width - 16 && mouseY >= pillTop && mouseY <= pillTop + 20) {
                 onBuyClicked(featured.get());
                 return true;
             }
@@ -118,21 +146,22 @@ public final class StorePanel {
         }
         contentY += 16;
 
-        int columns = Math.max(1, (width + CARD_GAP) / (CARD_SIZE + CARD_GAP));
+        int columns = Math.max(1, (contentWidth + CARD_GAP) / (CARD_WIDTH + CARD_GAP));
         int col = 0;
         int rowY = contentY;
         for (Map.Entry<String, List<StoreItem>> entry : catalog.itemsByCategory().entrySet()) {
             for (StoreItem item : entry.getValue()) {
-                int cardX = x + col * (CARD_SIZE + CARD_GAP);
-                int pillY = rowY + CARD_SIZE - 18;
-                if (mouseX >= cardX + 8 && mouseX <= cardX + CARD_SIZE - 8 && mouseY >= pillY && mouseY <= pillY + 16) {
+                int cardX = leftX + col * (CARD_WIDTH + CARD_GAP);
+                int textY = rowY + SWATCH_MARGIN + SWATCH_SIZE + 4;
+                int pillY = textY + 34;
+                if (mouseX >= cardX + 8 && mouseX <= cardX + CARD_WIDTH - 8 && mouseY >= pillY && mouseY <= pillY + 16) {
                     onBuyClicked(item);
                     return true;
                 }
                 col++;
                 if (col >= columns) {
                     col = 0;
-                    rowY += CARD_SIZE + CARD_GAP;
+                    rowY += CARD_HEIGHT + CARD_GAP;
                 }
             }
         }

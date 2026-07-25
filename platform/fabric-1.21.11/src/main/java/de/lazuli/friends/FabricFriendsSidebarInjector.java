@@ -29,12 +29,20 @@ import net.minecraft.client.input.KeyInput;
 import org.lwjgl.glfw.GLFW;
 
 import java.util.List;
+import java.util.Set;
 
 /**
  * Version Adapter for the Friends Sidebar overlay + context menu on
  * Minecraft 1.21.11 (Yarn-mapped, obfuscated) -- implementation plan
  * Decision 1 (Pattern 1, one injector, no mixin), Decision 2's FR2.2
  * allow-list, Decision 4's context-menu dismissal.
+ *
+ * <p>The sidebar attaches only to specific {@code Screen}s via
+ * {@link #ALLOW_LISTED_SCREENS} -- it is never rendered during ordinary
+ * gameplay (no {@code Screen} open). {@code MainMenuScreen} (which replaces
+ * {@code TitleScreen} outright, base spec Overview) is deliberately not in
+ * this list: it hosts its own dedicated {@link FriendSidebarWidget} instance
+ * directly, so adding it here would double-render.
  *
  * <p>{@link RealmsMainScreen} is included per Decision 1/2, but its
  * {@link ScreenEvents#AFTER_INIT} reachability is unconfirmed (Risk 2) -- if
@@ -55,6 +63,17 @@ public final class FabricFriendsSidebarInjector {
     private final WorldInviteSender worldInviteSender;
     private final ToastService toastService;
     private final RichPresenceFacade richPresenceFacade;
+
+    // The sidebar attaches only to these specific screens, never to
+    // de.lazuli.mainmenu.MainMenuScreen (which already owns its own
+    // dedicated sidebar instance).
+    private static final Set<Class<? extends Screen>> ALLOW_LISTED_SCREENS = Set.of(
+            SelectWorldScreen.class,
+            MultiplayerScreen.class,
+            OptionsScreen.class,
+            GameMenuScreen.class,
+            RealmsMainScreen.class
+    );
 
     private FriendContextMenuWidget openMenu;
     private Screen openMenuScreen;
@@ -89,12 +108,12 @@ public final class FabricFriendsSidebarInjector {
     }
 
     private boolean isAllowListed(Screen screen) {
-        return screen instanceof TitleScreen
-                || screen instanceof SelectWorldScreen
-                || screen instanceof MultiplayerScreen
-                || screen instanceof OptionsScreen
-                || screen instanceof GameMenuScreen
-                || screen instanceof RealmsMainScreen;
+        for (Class<? extends Screen> allowed : ALLOW_LISTED_SCREENS) {
+            if (allowed.isInstance(screen)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void onScreenInit(MinecraftClient client, Screen screen, int scaledWidth, int scaledHeight) {

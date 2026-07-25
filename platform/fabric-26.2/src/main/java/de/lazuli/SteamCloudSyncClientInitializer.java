@@ -112,7 +112,7 @@ public final class SteamCloudSyncClientInitializer implements ClientModInitializ
             return java.util.Optional.empty();
         }
         try {
-            Path worldFolder = server.getWorldPath(LevelResource.ROOT);
+            Path worldFolder = server.getWorldPath(LevelResource.ROOT).normalize();
             String worldSlug = worldFolder.getFileName().toString();
             String displayName = server.getWorldData().getLevelName();
             return java.util.Optional.of(new SingleplayerWorldInfo(worldSlug, displayName, worldFolder));

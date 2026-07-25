@@ -41,6 +41,24 @@ public final class MainMenuStateMachine {
     private boolean addServerModalOpen;
     private boolean worldCreateToastVisible;
 
+    /** Default constructor: no tab active (spec FR1.3). */
+    public MainMenuStateMachine() {
+        this(null);
+    }
+
+    /**
+     * Seeds the initial active tab at construction (batch-2-fixes FR-F2.2),
+     * used by {@code MainMenuScreen} to open with {@code MainMenuTab.HOME}
+     * already selected. All other {@link #selectTab} toggle semantics are
+     * unaffected once construction is done.
+     *
+     * @param initialTab the tab to start active, or {@code null} for the
+     *                    default "nothing selected" state
+     */
+    public MainMenuStateMachine(MainMenuTab initialTab) {
+        this.activeTab = initialTab;
+    }
+
     /** @return the currently active tab, or {@code null} if no tab is active (spec FR1.4). */
     public MainMenuTab activeTab() {
         return activeTab;

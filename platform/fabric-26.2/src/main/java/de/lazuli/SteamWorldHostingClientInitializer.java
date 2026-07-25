@@ -115,12 +115,34 @@ public final class SteamWorldHostingClientInitializer implements ClientModInitia
         };
         WorldHostingBridgeHandoff.publish(joinRequester, statusReader, inviteSender);
 
-        // FR3.1 path 1: Steam's native overlay "Join Game" callback.
-        gateway.setJoinRequestedListener((friendSteamId64, connect) -> {
+        // FR3.1 path 1: Steam's native overlay "Join Game" callback, now
+        // routed through the shared SteamJoinRequestDispatcher (Server Join
+        // Presence implementation plan, Decision 1) since a second feature
+        // (server-join-presence) also needs this single-listener seam.
+        // Behavior-preservation note (plan Risk 5): the previous version of
+        // this callback unconditionally fell back to connecting to
+        // `friendSteamId64` even when `connect` did not decode as this
+        // feature's own format -- that permissive fallback is intentionally
+        // NOT preserved here (the plan resolves this in favor of tightening,
+        // per its Decision 1/Risk 5 reasoning), since preserving it would
+        // make this route always report "handled" and silently reintroduce
+        // an entrypoint-ordering dependency the dispatcher redesign exists to
+        // remove.
+        SteamJoinRequestDispatcher.addRoute((friendSteamId64, connect) -> {
             OptionalLong host = ConnectStringCodec.decode(connect);
-            long target = host.isPresent() ? host.getAsLong() : friendSteamId64;
-            SteamAmbientSession.INSTANCE.connectToSteamPeer(target);
+            if (host.isEmpty()) {
+                return false;
+            }
+            SteamAmbientSession.INSTANCE.connectToSteamPeer(host.getAsLong());
+            // batch-3-fixes BF4: friend-initiated joins also record a
+            // friend-played-with entry on this route (both join routes are
+            // wired into join-history recording, per user direction).
+            MainMenuJoinHistoryWriteHandoff.ifPublishedFriendJoin(
+                    new de.lazuli.features.mainmenu.config.MainMenuJoinHistoryConfig.FriendJoinEntry(
+                            friendSteamId64, System.currentTimeMillis()));
+            return true;
         });
+        SteamJoinRequestDispatcher.ensureRegisteredWith(gateway);
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> scanner.tick());
         ClientLifecycleEvents.CLIENT_STOPPING.register(client -> lifecycle.stop());

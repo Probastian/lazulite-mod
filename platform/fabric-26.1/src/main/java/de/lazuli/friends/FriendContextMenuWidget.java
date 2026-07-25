@@ -32,9 +32,9 @@ import net.minecraft.network.chat.Component;
 public final class FriendContextMenuWidget extends AbstractWidget {
 
     private static final int OPTION_HEIGHT = 16;
-    static final int WIDTH = 110;
+    public static final int WIDTH = 110;
     private static final String[] LABELS = {"Open chat", "Show profile", "Invite to game", "Join game"};
-    static final int HEIGHT = OPTION_HEIGHT * LABELS.length;
+    public static final int HEIGHT = OPTION_HEIGHT * LABELS.length;
 
     private final FriendSummary friend;
     private final FriendsSidebarFacade facade;

@@ -21,7 +21,9 @@
 		"client": [
 			"de.lazuli.SteamworksClientInitializer",
 			"de.lazuli.SteamWorldHostingClientInitializer",
+			"de.lazuli.ServerJoinPresenceClientInitializer",
 			"de.lazuli.SteamCloudSyncClientInitializer",
+			"de.lazuli.CrossWorldStatsClientInitializer",
 			"de.lazuli.RichPresenceClientInitializer",
 			"de.lazuli.FriendsSidebarClientInitializer",
 			"de.lazuli.ServerBrowserClientInitializer",

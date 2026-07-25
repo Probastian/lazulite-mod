@@ -1,0 +1,16 @@
+dependencies {
+	// api-module serverjoinpresence contracts (ServerJoinRequester/
+	// FriendServerPresenceReader) appear in this feature's own public
+	// signatures (ServerSessionLifecycle callers, ServerPresenceScanner), so
+	// they leak to consumers -- hence `api`, not `implementation` (same
+	// rationale as every other feature module).
+	api project(':api')
+
+	// SteamFriendsGateway (the shared services-layer seam) is consumed by
+	// this feature's ServerSessionLifecycle/ServerPresenceScanner but never
+	// re-exposed on its own public surface -- so `services` stays
+	// `implementation`.
+	implementation project(':services')
+
+	// JUnit 5/AssertJ/Mockito are provided to every subproject by the root build.gradle.
+}

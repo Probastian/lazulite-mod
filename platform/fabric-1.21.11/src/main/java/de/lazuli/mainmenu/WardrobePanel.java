@@ -24,8 +24,19 @@ import java.util.function.BiConsumer;
  */
 public final class WardrobePanel {
 
-    private static final int CARD_SIZE = 96;
+    private static final int CARD_WIDTH = 96;
     private static final int CARD_GAP = 12;
+    // FR-B3.10: same near-full-card square swatch convention as StorePanel's
+    // grid (FR-B3.8) -- shared sizing constants, kept in lockstep deliberately.
+    private static final int SWATCH_MARGIN = 6;
+    private static final int SWATCH_SIZE = CARD_WIDTH - SWATCH_MARGIN * 2;
+    private static final int CARD_TEXT_ZONE = 26;
+    private static final int CARD_HEIGHT = SWATCH_MARGIN + SWATCH_SIZE + 4 + CARD_TEXT_ZONE;
+
+    private static final int SLOT_BUTTON_HEIGHT = 42;
+    private static final int SLOT_SWATCH_SIZE = 16;
+    private static final int CONTENT_LEFT_PAD = 8;
+
     private static final WardrobeSlot[] SLOTS = WardrobeSlot.values();
 
     private final MainMenuStateMachine state;
@@ -44,40 +55,59 @@ public final class WardrobePanel {
             WardrobeSlot slot = SLOTS[i];
             int slotX = x + i * slotButtonWidth;
             boolean active = slot == state.activeWardrobeSlot();
-            boolean hovered = mouseX >= slotX && mouseX <= slotX + slotButtonWidth && mouseY >= y && mouseY <= y + 26;
-            context.fill(slotX, y, slotX + slotButtonWidth - 2, y + 26, active ? 0xFF3A6B3C : (hovered ? 0xFF2A2820 : 0xFF201E17));
-            context.drawCenteredTextWithShadow(font, slotLabel(slot), slotX + slotButtonWidth / 2, y + 9, active ? 0xFFFFFFFF : 0xFFEAE8E1);
+            boolean hovered = mouseX >= slotX && mouseX <= slotX + slotButtonWidth && mouseY >= y && mouseY <= y + SLOT_BUTTON_HEIGHT;
+            context.fill(slotX, y, slotX + slotButtonWidth - 2, y + SLOT_BUTTON_HEIGHT,
+                    active ? 0xFF3A6B3C : (hovered ? 0xFF2A2820 : 0xFF201E17));
+
+            // FR-B3.9: each slot button shows a small swatch of the currently
+            // equipped item + the slot label + the equipped item's
+            // (truncated) name -- previously only the slot label was drawn.
+            int swatchX = slotX + 6;
+            int swatchY = y + 6;
+            context.fill(swatchX, swatchY, swatchX + SLOT_SWATCH_SIZE, swatchY + SLOT_SWATCH_SIZE, 0xFF3A362B);
+            int labelX = swatchX + SLOT_SWATCH_SIZE + 6;
+            context.drawText(font, Text.literal(slotLabel(slot)), labelX, y + 6, active ? 0xFFFFFFFF : 0xFFEAE8E1, false);
+            String equippedName = truncate(font, equippedItemName(slot), slotButtonWidth - 12);
+            context.drawText(font, Text.literal(equippedName), slotX + 6, y + SLOT_SWATCH_SIZE + 12,
+                    active ? 0xFFDCE8DC : 0xFF908C7F, false);
         }
 
-        int gridY = y + 40;
+        int leftX = x + CONTENT_LEFT_PAD;
+        int contentWidth = width - CONTENT_LEFT_PAD;
+        int gridY = y + SLOT_BUTTON_HEIGHT + 8;
         List<StoreItem> eligible = eligibleItems(state.activeWardrobeSlot());
         if (eligible.isEmpty()) {
-            context.drawText(font, Text.literal("No owned items for this slot yet."), x, gridY, 0xFF908C7F, false);
+            context.drawText(font, Text.literal("No owned items for this slot yet."), leftX, gridY, 0xFF908C7F, false);
             return;
         }
 
-        int columns = Math.max(1, (width + CARD_GAP) / (CARD_SIZE + CARD_GAP));
+        int columns = Math.max(1, (contentWidth + CARD_GAP) / (CARD_WIDTH + CARD_GAP));
         int col = 0;
         int rowY = gridY;
         for (StoreItem item : eligible) {
-            int cardX = x + col * (CARD_SIZE + CARD_GAP);
+            int cardX = leftX + col * (CARD_WIDTH + CARD_GAP);
             boolean equipped = item.id().equals(state.equippedItemId(state.activeWardrobeSlot()));
-            boolean hovered = mouseX >= cardX && mouseX <= cardX + CARD_SIZE && mouseY >= rowY && mouseY <= rowY + CARD_SIZE;
+            boolean hovered = mouseX >= cardX && mouseX <= cardX + CARD_WIDTH && mouseY >= rowY && mouseY <= rowY + CARD_HEIGHT;
             int bg = equipped ? 0xFF2E3A26 : (hovered ? 0xFF2A2820 : 0xFF201E17);
-            context.fill(cardX, rowY, cardX + CARD_SIZE, rowY + CARD_SIZE, bg);
+            context.fill(cardX, rowY, cardX + CARD_WIDTH, rowY + CARD_HEIGHT, bg);
             if (equipped) {
-                context.fill(cardX, rowY, cardX + CARD_SIZE, rowY + 2, 0xFF528A54);
+                context.fill(cardX, rowY, cardX + CARD_WIDTH, rowY + 2, 0xFF528A54);
             }
-            context.fill(cardX + 8, rowY + 8, cardX + CARD_SIZE - 8, rowY + 48, 0xFF3A362B);
-            context.drawText(font, Text.literal(item.displayName()), cardX + 8, rowY + 52, 0xFFEAE8E1, false);
+            // FR-B3.10: near-full-card square swatch (placeholder fill,
+            // same convention as StorePanel's grid, FR-B3.8).
+            int swatchTop = rowY + SWATCH_MARGIN;
+            context.fill(cardX + SWATCH_MARGIN, swatchTop, cardX + SWATCH_MARGIN + SWATCH_SIZE,
+                    swatchTop + SWATCH_SIZE, 0xFF3A362B);
+            int textY = swatchTop + SWATCH_SIZE + 4;
+            context.drawText(font, Text.literal(item.displayName()), cardX + 8, textY, 0xFFEAE8E1, false);
             String status = equipped ? "Equipped" : "Owned";
             int statusColor = equipped ? 0xFF95C97F : 0xFF908C7F;
-            context.drawText(font, Text.literal(status), cardX + 8, rowY + 64, statusColor, false);
+            context.drawText(font, Text.literal(status), cardX + 8, textY + 11, statusColor, false);
 
             col++;
             if (col >= columns) {
                 col = 0;
-                rowY += CARD_SIZE + CARD_GAP;
+                rowY += CARD_HEIGHT + CARD_GAP;
             }
         }
     }
@@ -94,6 +124,37 @@ public final class WardrobePanel {
         return result;
     }
 
+    /** @return the display name of the item currently equipped in {@code slot}, or "None" if nothing is equipped. */
+    private String equippedItemName(WardrobeSlot slot) {
+        String equippedId = state.equippedItemId(slot);
+        if (equippedId == null) {
+            return "None";
+        }
+        for (StoreItem item : catalog.itemsByCategory().getOrDefault(slot.name(), List.of())) {
+            if (item.id().equals(equippedId)) {
+                return item.displayName();
+            }
+        }
+        return equippedId;
+    }
+
+    /** Plain truncation with a trailing ellipsis once {@code text} exceeds {@code maxWidth}. */
+    private static String truncate(TextRenderer font, String text, int maxWidth) {
+        if (font.getWidth(text) <= maxWidth) {
+            return text;
+        }
+        String ellipsis = "...";
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < text.length(); i++) {
+            String candidate = sb.toString() + text.charAt(i) + ellipsis;
+            if (font.getWidth(candidate) > maxWidth) {
+                break;
+            }
+            sb.append(text.charAt(i));
+        }
+        return sb + ellipsis;
+    }
+
     private static String slotLabel(WardrobeSlot slot) {
         return switch (slot) {
             case HEAD -> "Head";
@@ -106,7 +167,7 @@ public final class WardrobePanel {
     /** @return true if this click was consumed by the slot selector or an item card in this panel. */
     public boolean mouseClicked(int x, int y, int width, int height, double mouseX, double mouseY) {
         int slotButtonWidth = width / SLOTS.length;
-        if (mouseY >= y && mouseY <= y + 26) {
+        if (mouseY >= y && mouseY <= y + SLOT_BUTTON_HEIGHT) {
             for (int i = 0; i < SLOTS.length; i++) {
                 int slotX = x + i * slotButtonWidth;
                 if (mouseX >= slotX && mouseX <= slotX + slotButtonWidth - 2) {
@@ -116,14 +177,16 @@ public final class WardrobePanel {
             }
         }
 
-        int gridY = y + 40;
+        int leftX = x + CONTENT_LEFT_PAD;
+        int contentWidth = width - CONTENT_LEFT_PAD;
+        int gridY = y + SLOT_BUTTON_HEIGHT + 8;
         List<StoreItem> eligible = eligibleItems(state.activeWardrobeSlot());
-        int columns = Math.max(1, (width + CARD_GAP) / (CARD_SIZE + CARD_GAP));
+        int columns = Math.max(1, (contentWidth + CARD_GAP) / (CARD_WIDTH + CARD_GAP));
         int col = 0;
         int rowY = gridY;
         for (StoreItem item : eligible) {
-            int cardX = x + col * (CARD_SIZE + CARD_GAP);
-            if (mouseX >= cardX && mouseX <= cardX + CARD_SIZE && mouseY >= rowY && mouseY <= rowY + CARD_SIZE) {
+            int cardX = leftX + col * (CARD_WIDTH + CARD_GAP);
+            if (mouseX >= cardX && mouseX <= cardX + CARD_WIDTH && mouseY >= rowY && mouseY <= rowY + CARD_HEIGHT) {
                 WardrobeSlot slot = state.activeWardrobeSlot();
                 state.equip(slot, item.id());
                 onEquip.accept(slot, item.id());
@@ -132,7 +195,7 @@ public final class WardrobePanel {
             col++;
             if (col >= columns) {
                 col = 0;
-                rowY += CARD_SIZE + CARD_GAP;
+                rowY += CARD_HEIGHT + CARD_GAP;
             }
         }
         return false;

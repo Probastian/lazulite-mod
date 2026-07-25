@@ -10,8 +10,14 @@ package de.lazuli.api.mainmenu;
  * implementation's choice).
  */
 public enum MainMenuTab {
+    /** Batch-2 FR-BB2.1: friends currently playing this game, live snapshot only. */
+    HOME,
     WORLDS,
     SERVERS,
     STORE,
-    WARDROBE
+    WARDROBE,
+    /** Batch-2 FR-BB3.4: read-only Steam achievement list. */
+    ACHIEVEMENTS,
+    /** Batch-2-fixes FR-F5.1: read-only vanilla Minecraft per-player statistics. */
+    STATISTICS
 }

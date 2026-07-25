@@ -119,8 +119,22 @@ public final class FriendSidebarWidget extends ClickableWidget {
     // row. Computed lazily from the live text renderer (rather than a
     // hardcoded magic number) since it's only needed once
     // MinecraftClient's textRenderer is actually available.
+    //
+    // Bug-fix: this widget is constructed inside the `client` entrypoint
+    // (FriendsSidebarClientInitializer), which fires before Minecraft's
+    // textRenderer is guaranteed to exist -- both the lastDropdownHeight
+    // field initializer and the super(...) call below run during that
+    // construction, so this falls back to vanilla's default font line
+    // height (9px) when textRenderer isn't up yet. Every later call (once
+    // per render frame, from renderNow()) recomputes from the live
+    // textRenderer, so the real dropdown height is still correct as soon
+    // as the game is actually running.
+    private static final int DEFAULT_FONT_LINE_HEIGHT = 9;
+
     private static int dropdownRowHeight() {
-        return MinecraftClient.getInstance().textRenderer.fontHeight + ROW_PADDING * 2;
+        var textRenderer = MinecraftClient.getInstance().textRenderer;
+        int fontHeight = textRenderer != null ? textRenderer.fontHeight : DEFAULT_FONT_LINE_HEIGHT;
+        return fontHeight + ROW_PADDING * 2;
     }
 
     // v2 ("Polish pass") fix: horizontal margin between the sidebar's own
@@ -190,6 +204,15 @@ public final class FriendSidebarWidget extends ClickableWidget {
     private int footerOptionsY;
     private int footerQuitY;
 
+    // Bug-fix (post-launch-fixes-3, FR-B1.1): the exact width/height actually
+    // drawn for the current frame (post width-animation, post overflow-height
+    // override) -- isMouseOver()/mouseScrolled() must hit-test against these
+    // cached values instead of independently recomputing target/animation-
+    // unaware constants, mirroring the same "cache what was actually drawn"
+    // pattern already used above for footerWidth/dropdownX etc.
+    private int drawnWidth = COLLAPSED_WIDTH;
+    private int drawnHeight;
+
     private static int footerHeight() {
         return SEPARATOR_GAP + SEPARATOR_HEIGHT + SEPARATOR_GAP + FOOTER_BUTTON_HEIGHT * 2;
     }
@@ -242,7 +265,7 @@ public final class FriendSidebarWidget extends ClickableWidget {
     }
 
     private int handleX() {
-        return screenWidth - HANDLE_WIDTH;
+        return 0;
     }
 
     private int handleY() {
@@ -377,7 +400,7 @@ public final class FriendSidebarWidget extends ClickableWidget {
         // expanded footprint (so moving left within it doesn't collapse);
         // while collapsed, test against the narrow collapsed footprint.
         int testWidth = expanded ? EXPANDED_WIDTH : COLLAPSED_WIDTH;
-        int testX = screenWidth - testWidth;
+        int testX = 0;
         boolean overPanel = panelOpen && facade.stateMachine().isExpanded(mouseX, mouseY, testX, topInset, testWidth, height);
 
         // Coyote time: expanding/opening on hover is instant, but collapsing
@@ -407,6 +430,14 @@ public final class FriendSidebarWidget extends ClickableWidget {
         animatedWidth = moveTowards(animatedWidth, targetWidth, WIDTH_ANIM_PX_PER_SECOND * dt);
         int width = Math.round(animatedWidth);
 
+        // Cache the actual drawn width/height for this frame (FR-B1.1) --
+        // covers both the steamAvailable and !steamAvailable branches below,
+        // since both share this same width/height computation; the
+        // handle-only early return just below does not update these fields
+        // since isMouseOver()'s isOverHandle branch (FR-B1.2) never reads them.
+        drawnWidth = width;
+        drawnHeight = height;
+
         // Only once the close animation has actually finished shrinking down
         // to handle size do we switch to drawing the standalone handle --
         // otherwise the panel keeps rendering (shrinking) as normal.
@@ -426,7 +457,7 @@ public final class FriendSidebarWidget extends ClickableWidget {
 
         boolean showText = expanded && width >= EXPANDED_WIDTH - 2;
 
-        setX(screenWidth - width);
+        setX(0);
         setY(topInset);
 
         context.fill(getX(), getY(), getX() + width, getY() + height, 0x99000000);
@@ -732,7 +763,7 @@ public final class FriendSidebarWidget extends ClickableWidget {
             return false;
         }
         List<FriendSummary> friends = sortedFriends();
-        int width = expanded ? EXPANDED_WIDTH : COLLAPSED_WIDTH;
+        int width = drawnWidth;
         int scrollAreaY = getY() + listTopOffset();
         int scrollAreaHeight = Math.max(ROW_HEIGHT, visibleFriendRows(friends.size()) * ROW_HEIGHT);
         boolean withinScrollArea = mouseX >= getX() && mouseX < getX() + width
@@ -753,9 +784,7 @@ public final class FriendSidebarWidget extends ClickableWidget {
         if (handleOnly && !panelOpen) {
             return isOverHandle(mouseX, mouseY);
         }
-        int height = facade.isSteamAvailable() ? totalHeight(facade.friends().size()) : screenHeight - topInset();
-        int width = expanded ? EXPANDED_WIDTH : COLLAPSED_WIDTH;
-        return mouseX >= getX() && mouseX < getX() + width && mouseY >= getY() && mouseY < getY() + height;
+        return mouseX >= getX() && mouseX < getX() + drawnWidth && mouseY >= getY() && mouseY < getY() + drawnHeight;
     }
 
     @Override

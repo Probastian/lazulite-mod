@@ -14,9 +14,6 @@ import net.minecraft.text.Text;
 import net.minecraft.util.Identifier;
 import net.minecraft.world.level.storage.LevelSummary;
 
-import java.time.Instant;
-import java.time.ZoneId;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -44,8 +41,47 @@ public final class WorldsPanel {
     private static final int ROW_HEIGHT_EXPANDED = 72;
     private static final int ICON_TEX_SIZE = 64;
     private static final int IMAGE_MARGIN = 2;
-    private static final DateTimeFormatter LAST_PLAYED_FORMAT =
-            DateTimeFormatter.ofPattern("MMM d, yyyy HH:mm").withZone(ZoneId.systemDefault());
+    private static final int PILL_PADDING = 10;
+    private static final int PILL_GAP = 10;
+
+    /**
+     * Bug-fix (post-launch-fixes-3, FR-B3.2): "Last played" must read as a
+     * relative time from the world's own last-played timestamp (spec FR3.4),
+     * not an absolute calendar date -- the previous {@code LAST_PLAYED_FORMAT}
+     * (a {@code DateTimeFormatter}) was a direct violation of that already-
+     * approved requirement.
+     */
+    static String relativeTime(long epochMillis) {
+        long diffMs = Math.max(0, System.currentTimeMillis() - epochMillis);
+        long minutes = diffMs / 60_000L;
+        long hours = minutes / 60L;
+        long days = hours / 24L;
+        if (days > 0) {
+            return days + (days == 1 ? " day ago" : " days ago");
+        }
+        if (hours > 0) {
+            return hours + (hours == 1 ? " hour ago" : " hours ago");
+        }
+        if (minutes > 0) {
+            return minutes + (minutes == 1 ? " minute ago" : " minutes ago");
+        }
+        return "just now";
+    }
+
+    /**
+     * Bug-fix (post-launch-fixes-3, FR-B3.3): Play/Edit width computed from
+     * label width + {@link #PILL_PADDING} on each side (rather than fixed
+     * 66px/62px blocks), separated by {@link #PILL_GAP} so they read as two
+     * distinct pill buttons. Shared by {@code render()} and {@code
+     * mouseClicked()} so the two never drift out of sync with each other.
+     */
+    private static int[] pillBounds(TextRenderer font, int x, int width) {
+        int playW = font.getWidth("Play") + PILL_PADDING * 2;
+        int editW = font.getWidth("Edit") + PILL_PADDING * 2;
+        int editX = x + width - 8 - editW;
+        int playX = editX - PILL_GAP - playW;
+        return new int[] { playX, playW, editX, editW };
+    }
 
     private final MainMenuStateMachine state;
     private final MainMenuScreen owner;
@@ -98,12 +134,15 @@ public final class WorldsPanel {
         }
     }
 
+    private static final int CONTENT_LEFT_PAD = 8;
+
     public void render(DrawContext context, TextRenderer font, int x, int y, int width, int height, int mouseX, int mouseY) {
-        context.drawText(font, Text.literal("Singleplayer Worlds"), x, y + 6, 0xFFEAE8E1, false);
+        int leftX = x + CONTENT_LEFT_PAD;
+        context.drawText(font, Text.literal("Singleplayer Worlds"), leftX, y + 6, 0xFFEAE8E1, false);
 
         int rowY = y + 30;
         if (entries.isEmpty()) {
-            context.drawText(font, Text.literal("No saved worlds yet."), x, rowY, 0xFF908C7F, false);
+            context.drawText(font, Text.literal("No saved worlds yet."), leftX, rowY, 0xFF908C7F, false);
             return;
         }
 
@@ -117,30 +156,44 @@ public final class WorldsPanel {
             boolean hovered = mouseX >= x && mouseX <= x + width && mouseY >= rowY && mouseY <= rowY + rowHeight;
             context.fill(x, rowY, x + width, rowY + rowHeight, hovered ? 0xFF2A2820 : 0xFF201E17);
 
-            // FX13.1/FX13.2: real-or-fallback world icon thumbnail, sized to
-            // 2/3 of the row height (full-height read as oversized against
-            // the text), 1:1, no border, vertically centered.
-            int iconSize = (rowHeight - IMAGE_MARGIN * 2) * 2 / 3;
-            int iconX = x + IMAGE_MARGIN;
-            int iconY = rowY + (rowHeight - iconSize) / 2;
             Identifier iconId = iconCache.forWorld(summary.getName(), summary.getIconPath());
-            context.drawTexture(RenderPipelines.GUI_TEXTURED, iconId, iconX, iconY, 0f, 0f,
-                    iconSize, iconSize, ICON_TEX_SIZE, ICON_TEX_SIZE);
+            int textX;
+            if (expanded) {
+                // FR-B3.1: expanded row shows the world icon scaled up to fill
+                // the larger thumbnail area (single real icon, no repeated tiles).
+                int gridSize = rowHeight - IMAGE_MARGIN * 2;
+                int gridX = leftX + IMAGE_MARGIN;
+                int gridY = rowY + IMAGE_MARGIN;
+                context.drawTexture(RenderPipelines.GUI_TEXTURED, iconId, gridX, gridY, 0f, 0f,
+                        gridSize, gridSize, ICON_TEX_SIZE, ICON_TEX_SIZE);
+                textX = gridX + gridSize + 6;
+            } else {
+                // FX13.1/FX13.2: real-or-fallback world icon thumbnail, sized to
+                // 2/3 of the row height (full-height read as oversized against
+                // the text), 1:1, no border, vertically centered.
+                int iconSize = (rowHeight - IMAGE_MARGIN * 2) * 2 / 3;
+                int iconX = leftX + IMAGE_MARGIN;
+                int iconY = rowY + (rowHeight - iconSize) / 2;
+                context.drawTexture(RenderPipelines.GUI_TEXTURED, iconId, iconX, iconY, 0f, 0f,
+                        iconSize, iconSize, ICON_TEX_SIZE, ICON_TEX_SIZE);
+                textX = iconX + iconSize + 6;
+            }
 
-            int textX = iconX + iconSize + 6;
             context.drawText(font, Text.literal(entry.getLevelDisplayName()), textX, rowY + 4, 0xFFEAE8E1, false);
             String subtitle = summary.getGameMode().getTranslatableName().getString() + " · "
-                    + LAST_PLAYED_FORMAT.format(Instant.ofEpochMilli(summary.getLastPlayed()));
+                    + relativeTime(summary.getLastPlayed());
             context.drawText(font, Text.literal(subtitle), textX, rowY + 15, 0xFF908C7F, false);
 
             if (expanded) {
                 int buttonY = rowY + rowHeight - 22;
-                boolean playHover = mouseX >= x + width - 140 && mouseX <= x + width - 74 && mouseY >= buttonY && mouseY <= buttonY + 18;
-                boolean editHover = mouseX >= x + width - 70 && mouseX <= x + width - 8 && mouseY >= buttonY && mouseY <= buttonY + 18;
-                context.fill(x + width - 140, buttonY, x + width - 74, buttonY + 18, playHover ? 0xFF64A066 : 0xFF528A54);
-                context.drawCenteredTextWithShadow(font, "Play", x + width - 107, buttonY + 5, 0xFFFFFFFF);
-                context.fill(x + width - 70, buttonY, x + width - 8, buttonY + 18, editHover ? 0xFF3A3A3A : 0xFF2E2E2E);
-                context.drawCenteredTextWithShadow(font, "Edit", x + width - 39, buttonY + 5, 0xFFFFFFFF);
+                int[] bounds = pillBounds(font, x, width);
+                int playX = bounds[0], playW = bounds[1], editX = bounds[2], editW = bounds[3];
+                boolean playHover = mouseX >= playX && mouseX <= playX + playW && mouseY >= buttonY && mouseY <= buttonY + 18;
+                boolean editHover = mouseX >= editX && mouseX <= editX + editW && mouseY >= buttonY && mouseY <= buttonY + 18;
+                context.fill(playX, buttonY, playX + playW, buttonY + 18, playHover ? 0xFF64A066 : 0xFF528A54);
+                context.drawCenteredTextWithShadow(font, "Play", playX + playW / 2, buttonY + 5, 0xFFFFFFFF);
+                context.fill(editX, buttonY, editX + editW, buttonY + 18, editHover ? 0xFF3A3A3A : 0xFF2E2E2E);
+                context.drawCenteredTextWithShadow(font, "Edit", editX + editW / 2, buttonY + 5, 0xFFFFFFFF);
             }
             rowY += rowHeight + 4;
         }
@@ -158,12 +211,14 @@ public final class WorldsPanel {
             }
             if (expanded) {
                 int buttonY = rowY + rowHeight - 22;
-                if (mouseX >= x + width - 140 && mouseX <= x + width - 74 && mouseY >= buttonY && mouseY <= buttonY + 18) {
+                int[] bounds = pillBounds(MinecraftClient.getInstance().textRenderer, x, width);
+                int playX = bounds[0], playW = bounds[1], editX = bounds[2], editW = bounds[3];
+                if (mouseX >= playX && mouseX <= playX + playW && mouseY >= buttonY && mouseY <= buttonY + 18) {
                     MainMenuScreen.playClickSound();
                     playWorld(entry);
                     return true;
                 }
-                if (mouseX >= x + width - 70 && mouseX <= x + width - 8 && mouseY >= buttonY && mouseY <= buttonY + 18) {
+                if (mouseX >= editX && mouseX <= editX + editW && mouseY >= buttonY && mouseY <= buttonY + 18) {
                     MainMenuScreen.playClickSound();
                     editWorld(entry);
                     return true;
@@ -178,7 +233,13 @@ public final class WorldsPanel {
         return false;
     }
 
-    private void playWorld(WorldListWidget.WorldEntry entry) {
+    /** Batch-2-fixes FR-F4.2: real saved-world data for Home's Recent section, already loaded, no new read. */
+    List<WorldListWidget.WorldEntry> recentEntries() {
+        return entries;
+    }
+
+    /** Batch-2-fixes FR-F4.2: package-private so {@code HomePanel} can invoke the same real play action a Worlds row click does. */
+    void playWorld(WorldListWidget.WorldEntry entry) {
         try {
             entry.play();
         } catch (Exception e) {

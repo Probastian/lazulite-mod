@@ -225,6 +225,11 @@ public final class MainMenuBackgroundRenderer {
      * every frame from {@link MainMenuScreen#extractRenderState}, regardless
      * of tab state.
      *
+     * @param leftOffset    Batch-2 FR-BB1.2: the left-docked sidebar's own
+     *                      collapsed width + margin -- the reserved
+     *                      background+character region now starts here
+     *                      instead of at screen x = 0, since the sidebar
+     *                      itself occupies that column.
      * @param reservedWidth the post-launch-fixes spec's reserved left-third
      *                      background+character region's pixel width
      *                      (FX6.1/FX7.1) -- recomputed once by
@@ -233,7 +238,7 @@ public final class MainMenuBackgroundRenderer {
      *                      independently computing {@code width / 3} (plan
      *                      Files to modify note on this class)
      */
-    public void render(GuiGraphicsExtractor guiGraphics, int screenWidth, int screenHeight, int reservedWidth) {
+    public void render(GuiGraphicsExtractor guiGraphics, int screenWidth, int screenHeight, int leftOffset, int reservedWidth) {
         double elapsedSeconds = (System.nanoTime() - startNanos) / 1_000_000_000.0;
 
         // Scene: fixed camera, no rotation, fills the whole screen (FR8.7 -- no dynamic time-of-day/camera movement).
@@ -272,8 +277,10 @@ public final class MainMenuBackgroundRenderer {
         // region/2 - 1 so charX1 is always > charX0 (>= 1px wide) regardless of
         // how small region gets.
         int inset = Math.min(Math.max(4, region / 10), Math.max(0, region / 2 - 1));
-        int charX0 = inset;
-        int charX1 = Math.max(charX0 + 1, region - inset);
+        // Batch-2 FR-BB1.2: the region now starts at leftOffset (past the
+        // left-docked sidebar), not at screen x = 0.
+        int charX0 = leftOffset + inset;
+        int charX1 = Math.max(charX0 + 1, leftOffset + region - inset);
         int charY0 = Math.max(0, (int) (screenHeight * 0.04));
         int charY1 = Math.max(charY0 + 1, screenHeight);
         guiGraphics.skin(characterModel, PALETTE, 22f, 0f, 20f, 0f, charX0, charY0, charX1, charY1);

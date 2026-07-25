@@ -1,0 +1,17 @@
+dependencies {
+	// api-module crossworldstats contracts (TrackedStat/CrossWorldStatsSnapshot/
+	// CrossWorldStatsFacade) appear in this feature's own public signatures
+	// (CrossWorldStatsService implements CrossWorldStatsFacade), so they leak
+	// to consumers -- hence `api`, not `implementation` (same rationale as
+	// every other feature module).
+	api project(':api')
+
+	// This feature has no need for the shared services-layer seam itself --
+	// SteamFriendsGateway.localSteamId64()/SteamworksService.isSteamAvailable()
+	// are only ever consumed by the platform Version Adapter's composition
+	// root (CrossWorldStatsClientInitializer), which resolves the account key
+	// once and hands this feature's services a plain String -- so no
+	// `project(':services')` dependency is needed here at all.
+
+	// JUnit 5/AssertJ/Mockito are provided to every subproject by the root build.gradle.
+}

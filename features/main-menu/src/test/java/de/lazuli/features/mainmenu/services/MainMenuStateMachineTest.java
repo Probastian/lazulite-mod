@@ -18,6 +18,29 @@ class MainMenuStateMachineTest {
     }
 
     @Test
+    void seededInitialTabConstructorStartsWithThatTabActive() {
+        // Batch-2-fixes FR-F2.2: MainMenuScreen seeds MainMenuTab.HOME so it
+        // opens already-selected, without a click.
+        MainMenuStateMachine seeded = new MainMenuStateMachine(MainMenuTab.HOME);
+        assertThat(seeded.activeTab()).isEqualTo(MainMenuTab.HOME);
+    }
+
+    @Test
+    void seededInitialTabStillTogglesClosedOnSecondSelect() {
+        // FR2.2's existing toggle-to-deselect behavior must be unaffected by
+        // the new seeded-initial-tab constructor path once the tab bar is
+        // interacted with.
+        MainMenuStateMachine seeded = new MainMenuStateMachine(MainMenuTab.HOME);
+        seeded.selectTab(MainMenuTab.HOME);
+        assertThat(seeded.activeTab()).isNull();
+    }
+
+    @Test
+    void nullConstructorArgumentStartsWithNoTabActive() {
+        assertThat(new MainMenuStateMachine(null).activeTab()).isNull();
+    }
+
+    @Test
     void selectingATabOpensIt() {
         state.selectTab(MainMenuTab.WORLDS);
         assertThat(state.activeTab()).isEqualTo(MainMenuTab.WORLDS);
