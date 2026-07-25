@@ -28,16 +28,12 @@
 <div data-screen-label="Main Menu" style="width:1920px;height:1080px;position:relative;overflow:hidden;background:oklch(19% 0.014 95);font-family:'Oswald',sans-serif;color:oklch(93% 0.01 95);">
 
   <!-- LEFT: 3D scene (full-bleed background) -->
-  <div style="position:absolute;inset:0;overflow:hidden;background:linear-gradient(180deg, oklch(28% 0.06 300) 0%, oklch(52% 0.13 45) 45%, oklch(74% 0.13 68) 68%, oklch(80% 0.1 75) 100%);">
-    <div style="position:absolute;top:120px;right:90px;width:150px;height:150px;border-radius:50%;background:radial-gradient(circle, oklch(90% 0.1 80) 0%, oklch(85% 0.13 65) 55%, transparent 75%);box-shadow:0 0 90px 30px oklch(75% 0.13 65 / 0.5);"></div>
+  <div style="position:absolute;inset:0;overflow:hidden;background:{{ skyGrad }};">
+    <div style="position:absolute;top:120px;right:90px;width:150px;height:150px;border-radius:50%;background:{{ sunRadial }};box-shadow:{{ sunShadow }};"></div>
+    <div style="position:absolute;inset:0;background:{{ skyTint }};pointer-events:none;"></div>
     <div style="position:absolute;bottom:270px;left:0;right:0;height:120px;background:oklch(38% 0.05 60 / 0.55);clip-path:polygon(0 100%,0 45%,12% 60%,24% 35%,38% 55%,52% 30%,66% 58%,80% 40%,100% 60%,100% 100%);"></div>
     <div style="position:absolute;bottom:230px;left:0;right:0;height:100px;background:oklch(30% 0.04 55 / 0.7);clip-path:polygon(0 100%,0 60%,15% 40%,30% 65%,45% 38%,60% 62%,75% 42%,90% 68%,100% 50%,100% 100%);"></div>
     <div style="position:absolute;bottom:0;left:0;right:0;height:240px;background:linear-gradient(180deg, oklch(38% 0.08 140) 0%, oklch(30% 0.06 140) 100%);border-top:4px solid oklch(44% 0.09 140);"></div>
-
-    <div style="position:absolute;top:44px;left:48px;">
-      <div style="font-size:34px;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:oklch(97% 0.01 95);text-shadow:0 2px 10px oklch(15% 0.02 95 / 0.6);">Stonebound</div>
-      <div style="font-size:13px;font-weight:500;letter-spacing:4px;text-transform:uppercase;color:oklch(90% 0.03 80 / 0.85);margin-top:2px;">Overhaul Mod &nbsp;·&nbsp; v2.1</div>
-    </div>
 
     <!-- blocky idle character -->
     <div style="position:absolute;bottom:150px;left:230px;width:180px;height:340px;animation:idleBob 2.6s ease-in-out infinite;transform-origin:bottom center;">
@@ -45,7 +41,7 @@
       <div style="position:absolute;top:0;left:60px;width:60px;height:16px;background:oklch(30% 0.03 50);border:3px solid oklch(20% 0.02 90);"></div>
       <div style="position:absolute;top:20px;left:70px;width:9px;height:9px;background:oklch(22% 0.02 90);"></div>
       <div style="position:absolute;top:20px;left:100px;width:9px;height:9px;background:oklch(22% 0.02 90);"></div>
-      <div style="position:absolute;top:56px;left:54px;width:72px;height:96px;background:oklch(52% 0.1 145);border:3px solid oklch(24% 0.02 90);"></div>
+      <div style="position:absolute;top:56px;left:54px;width:72px;height:96px;background:{{ accentAvatar }};border:3px solid oklch(24% 0.02 90);"></div>
       <div style="position:absolute;top:56px;left:54px;width:72px;height:14px;background:oklch(38% 0.07 60);border:3px solid oklch(24% 0.02 90);"></div>
       <div style="position:absolute;top:60px;left:26px;width:28px;height:88px;background:oklch(72% 0.05 70);border:3px solid oklch(28% 0.02 90);animation:armSwingL 2.6s ease-in-out infinite;transform-origin:top center;"></div>
       <div style="position:absolute;top:60px;left:126px;width:28px;height:88px;background:oklch(72% 0.05 70);border:3px solid oklch(28% 0.02 90);animation:armSwingR 2.6s ease-in-out infinite;transform-origin:top center;"></div>
@@ -56,281 +52,12 @@
 
   <!-- Foreground UI, overlaid on the full-bleed scene -->
   <div style="position:relative;z-index:1;display:flex;width:100%;height:100%;">
-  <div style="flex:0 0 620px;"></div>
 
-  <!-- CENTER: active tab panel (empty/transparent when no tab selected) -->
-  <div style="flex:1 1 auto;position:relative;display:flex;flex-direction:column;padding:{{ centerPadding }};gap:20px;background:{{ centerBg }};backdrop-filter:{{ centerBlur }};min-width:0;transition:background 0.2s ease;">
-
-    <sc-if value="{{ isWorlds }}" hint-placeholder-val="{{ false }}">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
-        <div style="font-size:15px;font-weight:600;letter-spacing:3px;text-transform:uppercase;color:oklch(70% 0.03 95);">Singleplayer Worlds</div>
-        <div onClick="{{ createWorld }}" style="display:flex;align-items:center;gap:8px;background:oklch(58% 0.1 145);color:oklch(15% 0.02 95);font-size:13.5px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;padding:10px 18px;border-radius:5px;cursor:pointer;" style-hover="background:oklch(66% 0.11 145);">
-          <div style="width:14px;height:14px;position:relative;">
-            <div style="position:absolute;top:6px;left:0;width:14px;height:2.5px;background:oklch(15% 0.02 95);"></div>
-            <div style="position:absolute;left:6px;top:0;width:2.5px;height:14px;background:oklch(15% 0.02 95);"></div>
-          </div>
-          Create New World
-        </div>
-      </div>
-      <div style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:10px;padding-right:4px;">
-        <sc-for list="{{ spWorlds }}" as="w" hint-placeholder-count="4">
-          <sc-if value="{{ w.selected }}" hint-placeholder-val="{{ false }}">
-            <div onClick="{{ w.toggle }}" style="cursor:pointer;background:oklch(27% 0.02 95 / 0.65);border:2px solid oklch(58% 0.1 145);border-radius:6px;padding:18px;display:flex;gap:18px;backdrop-filter:blur(3px);">
-              <div style="flex:0 0 96px;height:96px;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;border:2px solid oklch(15% 0.02 90);border-radius:4px;overflow:hidden;">
-                <div style="background:{{ w.tile1 }};"></div><div style="background:{{ w.tile2 }};"></div>
-                <div style="background:{{ w.tile3 }};"></div><div style="background:{{ w.tile4 }};"></div>
-              </div>
-              <div style="flex:1;display:flex;flex-direction:column;justify-content:center;gap:6px;min-width:0;">
-                <div style="font-size:22px;font-weight:600;">{{ w.name }}</div>
-                <div style="font-size:14px;color:oklch(70% 0.02 95);">{{ w.mode }} · {{ w.difficulty }}</div>
-                <div style="font-size:13px;color:oklch(60% 0.02 95);">Last played {{ w.lastPlayed }}</div>
-                <div style="display:flex;gap:10px;margin-top:8px;">
-                  <div style="background:oklch(58% 0.1 145);color:oklch(15% 0.02 95);font-size:14px;font-weight:600;letter-spacing:1px;text-transform:uppercase;padding:9px 22px;border-radius:4px;" style-hover="background:oklch(64% 0.1 145);">Play</div>
-                  <div style="background:oklch(32% 0.02 95);color:oklch(90% 0.01 95);font-size:14px;font-weight:500;letter-spacing:1px;text-transform:uppercase;padding:9px 18px;border-radius:4px;" style-hover="background:oklch(38% 0.02 95);">Edit</div>
-                </div>
-              </div>
-            </div>
-          </sc-if>
-          <sc-if value="{{ w.notSelected }}" hint-placeholder-val="{{ true }}">
-            <div onClick="{{ w.toggle }}" style="cursor:pointer;background:oklch(24% 0.015 95 / 0.55);border:1px solid oklch(30% 0.015 95);border-radius:6px;padding:10px 14px;display:flex;align-items:center;gap:14px;backdrop-filter:blur(3px);" style-hover="background:oklch(27% 0.017 95 / 0.7);">
-              <div style="flex:0 0 48px;height:48px;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;border:2px solid oklch(15% 0.02 90);border-radius:3px;overflow:hidden;">
-                <div style="background:{{ w.tile1 }};"></div><div style="background:{{ w.tile2 }};"></div>
-                <div style="background:{{ w.tile3 }};"></div><div style="background:{{ w.tile4 }};"></div>
-              </div>
-              <div style="flex:1;min-width:0;">
-                <div style="font-size:17px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ w.name }}</div>
-                <div style="font-size:12.5px;color:oklch(62% 0.02 95);">{{ w.mode }} · {{ w.lastPlayed }}</div>
-              </div>
-            </div>
-          </sc-if>
-        </sc-for>
-      </div>
-      <div style="font-size:12.5px;color:oklch(58% 0.02 95);margin-top:4px;">Create New World opens the vanilla world-creation menu.</div>
-      <sc-if value="{{ worldCreateToast }}" hint-placeholder-val="{{ false }}">
-        <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:oklch(15% 0.01 90 / 0.55);backdrop-filter:blur(2px);z-index:5;">
-          <div style="background:oklch(24% 0.015 95);border:1px solid oklch(58% 0.1 145 / 0.5);border-radius:8px;padding:24px 32px;font-size:16px;font-weight:500;">Launching vanilla world creation…</div>
-        </div>
-      </sc-if>
-    </sc-if>
-
-    <sc-if value="{{ isServers }}" hint-placeholder-val="{{ false }}">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:10px;">
-        <div style="font-size:15px;font-weight:600;letter-spacing:3px;text-transform:uppercase;color:oklch(70% 0.03 95);">{{ serverPanelTitle }}</div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;">
-          <div onClick="{{ toggleServerView }}" style="background:oklch(30% 0.018 95);color:oklch(90% 0.01 95);font-size:13px;font-weight:500;letter-spacing:0.5px;text-transform:uppercase;padding:9px 16px;border-radius:5px;cursor:pointer;" style-hover="background:oklch(35% 0.02 95);">{{ serverToggleLabel }}</div>
-          <div onClick="{{ openDirectConnect }}" style="background:oklch(30% 0.018 95);color:oklch(90% 0.01 95);font-size:13px;font-weight:500;letter-spacing:0.5px;text-transform:uppercase;padding:9px 16px;border-radius:5px;cursor:pointer;" style-hover="background:oklch(35% 0.02 95);">Direct Connect</div>
-          <div onClick="{{ openAddServer }}" style="background:oklch(58% 0.1 145);color:oklch(15% 0.02 95);font-size:13px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;padding:9px 16px;border-radius:5px;cursor:pointer;" style-hover="background:oklch(66% 0.11 145);">+ Add Server</div>
-          <div onClick="{{ doRefresh }}" style="width:38px;height:38px;display:flex;align-items:center;justify-content:center;background:oklch(30% 0.018 95);border-radius:5px;cursor:pointer;" style-hover="background:oklch(35% 0.02 95);">
-            <div style="width:16px;height:16px;border-radius:50%;border:2.5px solid oklch(90% 0.01 95);border-top-color:transparent;transition:transform 0.6s ease;transform:rotate({{ refreshRotation }});"></div>
-          </div>
-        </div>
-      </div>
-
-      <sc-if value="{{ isSavedView }}" hint-placeholder-val="{{ true }}">
-      <div style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:10px;padding-right:4px;">
-        <sc-for list="{{ mpWorlds }}" as="s" hint-placeholder-count="4">
-          <sc-if value="{{ s.selected }}" hint-placeholder-val="{{ false }}">
-            <div onClick="{{ s.toggle }}" style="cursor:pointer;background:oklch(27% 0.02 95 / 0.65);border:2px solid oklch(58% 0.1 145);border-radius:6px;padding:18px;display:flex;gap:18px;backdrop-filter:blur(3px);">
-              <div style="flex:0 0 96px;height:96px;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;border:2px solid oklch(15% 0.02 90);border-radius:4px;overflow:hidden;">
-                <div style="background:{{ s.tile1 }};"></div><div style="background:{{ s.tile2 }};"></div>
-                <div style="background:{{ s.tile3 }};"></div><div style="background:{{ s.tile4 }};"></div>
-              </div>
-              <div style="flex:1;display:flex;flex-direction:column;justify-content:center;gap:6px;min-width:0;">
-                <div style="font-size:22px;font-weight:600;">{{ s.name }}</div>
-                <div style="font-size:14px;color:oklch(70% 0.02 95);">{{ s.address }}</div>
-                <div style="display:flex;align-items:center;gap:8px;font-size:13px;color:oklch(60% 0.02 95);">
-                  <div style="width:9px;height:9px;border-radius:50%;background:{{ s.pingColor }};"></div>
-                  {{ s.players }} players online
-                </div>
-                <div style="margin-top:8px;">
-                  <div style="display:inline-block;background:oklch(58% 0.1 145);color:oklch(15% 0.02 95);font-size:14px;font-weight:600;letter-spacing:1px;text-transform:uppercase;padding:9px 22px;border-radius:4px;" style-hover="background:oklch(64% 0.1 145);">Connect</div>
-                </div>
-              </div>
-            </div>
-          </sc-if>
-          <sc-if value="{{ s.notSelected }}" hint-placeholder-val="{{ true }}">
-            <div onClick="{{ s.toggle }}" style="cursor:pointer;background:oklch(24% 0.015 95 / 0.55);border:1px solid oklch(30% 0.015 95);border-radius:6px;padding:10px 14px;display:flex;align-items:center;gap:14px;backdrop-filter:blur(3px);" style-hover="background:oklch(27% 0.017 95 / 0.7);">
-              <div style="flex:0 0 48px;height:48px;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;border:2px solid oklch(15% 0.02 90);border-radius:3px;overflow:hidden;">
-                <div style="background:{{ s.tile1 }};"></div><div style="background:{{ s.tile2 }};"></div>
-                <div style="background:{{ s.tile3 }};"></div><div style="background:{{ s.tile4 }};"></div>
-              </div>
-              <div style="flex:1;min-width:0;">
-                <div style="font-size:17px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ s.name }}</div>
-                <div style="font-size:12.5px;color:oklch(62% 0.02 95);display:flex;align-items:center;gap:6px;">
-                  <span style="width:7px;height:7px;border-radius:50%;background:{{ s.pingColor }};display:inline-block;"></span>{{ s.players }} online
-                </div>
-              </div>
-            </div>
-          </sc-if>
-        </sc-for>
-      </div>
-      </sc-if>
-
-      <sc-if value="{{ isBrowserView }}" hint-placeholder-val="{{ false }}">
-      <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;background:oklch(24% 0.015 95 / 0.55);border:1px solid oklch(30% 0.015 95);border-radius:6px;padding:12px 16px;margin-bottom:12px;backdrop-filter:blur(3px);">
-        <input value="{{ filterName }}" onInput="{{ onFilterNameInput }}" placeholder="Search server name…" style="flex:1 1 180px;min-width:150px;background:oklch(19% 0.014 95);border:1px solid oklch(34% 0.02 95);border-radius:5px;padding:9px 12px;font-size:13.5px;color:oklch(93% 0.01 95);font-family:'Oswald',sans-serif;"></input>
-
-        <select value="{{ latencyFilter }}" onChange="{{ onLatencyFilterChange }}" style="background:oklch(19% 0.014 95);border:1px solid oklch(34% 0.02 95);border-radius:5px;padding:9px 10px;font-size:13.5px;color:oklch(93% 0.01 95);font-family:'Oswald',sans-serif;">
-          <option value="any">Any latency</option>
-          <option value="50">Under 50 ms</option>
-          <option value="100">Under 100 ms</option>
-          <option value="200">Under 200 ms</option>
-        </select>
-
-        <div onClick="{{ toggleHideFull }}" style="display:flex;align-items:center;gap:9px;cursor:pointer;">
-          <div style="width:34px;height:18px;border-radius:9px;background:{{ hideFullBg }};position:relative;transition:background 0.15s ease;">
-            <div style="position:absolute;top:1px;left:{{ hideFullKnob }};width:16px;height:16px;border-radius:50%;background:oklch(96% 0.005 90);transition:left 0.15s ease;"></div>
-          </div>
-          <div style="font-size:13px;color:oklch(85% 0.01 95);white-space:nowrap;">Hide Full</div>
-        </div>
-
-        <div onClick="{{ toggleHidePassword }}" style="display:flex;align-items:center;gap:9px;cursor:pointer;">
-          <div style="width:34px;height:18px;border-radius:9px;background:{{ hidePasswordBg }};position:relative;transition:background 0.15s ease;">
-            <div style="position:absolute;top:1px;left:{{ hidePasswordKnob }};width:16px;height:16px;border-radius:50%;background:oklch(96% 0.005 90);transition:left 0.15s ease;"></div>
-          </div>
-          <div style="font-size:13px;color:oklch(85% 0.01 95);white-space:nowrap;">Hide Password Protected</div>
-        </div>
-      </div>
-
-      <div style="flex:1;overflow-y:auto;display:flex;flex-direction:column;">
-        <div style="display:grid;grid-template-columns:64px 1fr 130px 120px 110px;gap:0;position:sticky;top:0;background:oklch(21% 0.015 95);z-index:1;">
-          <sc-for list="{{ columns }}" as="col" hint-placeholder-count="4">
-            <div onClick="{{ col.select }}" style="padding:10px 12px;font-size:12px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:oklch(70% 0.02 95);cursor:pointer;display:flex;align-items:center;gap:6px;border-bottom:2px solid oklch(32% 0.015 95);" style-hover="color:oklch(90% 0.01 95);">{{ col.label }}<span style="font-size:10px;color:oklch(70% 0.13 145);">{{ col.arrow }}</span></div>
-          </sc-for>
-          <div style="padding:10px 12px;border-bottom:2px solid oklch(32% 0.015 95);"></div>
-        </div>
-        <sc-for list="{{ publicServers }}" as="p" hint-placeholder-count="5">
-          <div style="display:grid;grid-template-columns:64px 1fr 130px 120px 110px;align-items:center;border-bottom:1px solid oklch(28% 0.012 95);" style-hover="background:oklch(25% 0.015 95 / 0.6);">
-            <div style="padding:12px;display:flex;justify-content:center;">
-              <sc-if value="{{ p.locked }}" hint-placeholder-val="{{ false }}">
-                <div style="width:18px;height:20px;position:relative;">
-                  <div style="position:absolute;top:0;left:2px;width:14px;height:12px;border:2.5px solid oklch(70% 0.1 60);border-bottom:none;border-radius:8px 8px 0 0;"></div>
-                  <div style="position:absolute;bottom:0;left:0;width:18px;height:11px;background:oklch(70% 0.1 60);border-radius:2px;"></div>
-                </div>
-              </sc-if>
-            </div>
-            <div style="padding:12px;min-width:0;">
-              <div style="font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ p.name }}</div>
-              <div style="font-size:12px;color:oklch(60% 0.02 95);">{{ p.address }} · {{ p.tag }}</div>
-            </div>
-            <div style="padding:12px;font-size:14px;color:oklch(80% 0.01 95);">{{ p.playersLabel }}</div>
-            <div style="padding:12px;font-size:14px;color:oklch(80% 0.01 95);">{{ p.latencyLabel }}</div>
-            <div style="padding:12px;">
-              <div style="display:inline-block;background:oklch(58% 0.1 145);color:oklch(15% 0.02 95);font-size:12.5px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;padding:8px 16px;border-radius:4px;cursor:pointer;" style-hover="background:oklch(66% 0.11 145);">Connect</div>
-            </div>
-          </div>
-        </sc-for>
-      </div>
-      </sc-if>
-
-      <sc-if value="{{ directConnectOpen }}" hint-placeholder-val="{{ false }}">
-        <div onClick="{{ closeDirectConnect }}" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:oklch(15% 0.01 90 / 0.55);backdrop-filter:blur(2px);z-index:5;">
-          <div onClick="{{ stopClick }}" style="background:oklch(24% 0.015 95);border:1px solid oklch(58% 0.1 145 / 0.5);border-radius:8px;padding:26px;width:360px;display:flex;flex-direction:column;gap:14px;">
-            <div style="font-size:17px;font-weight:600;">Direct Connect</div>
-            <input placeholder="Server address (e.g. play.example.net)" style="background:oklch(19% 0.014 95);border:1px solid oklch(34% 0.02 95);border-radius:5px;padding:11px 12px;font-size:14px;color:oklch(93% 0.01 95);font-family:'Oswald',sans-serif;"></input>
-            <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:4px;">
-              <div onClick="{{ closeDirectConnect }}" style="padding:9px 18px;border-radius:5px;background:oklch(30% 0.018 95);cursor:pointer;font-size:13px;font-weight:500;text-transform:uppercase;" style-hover="background:oklch(35% 0.02 95);">Cancel</div>
-              <div onClick="{{ closeDirectConnect }}" style="padding:9px 18px;border-radius:5px;background:oklch(58% 0.1 145);color:oklch(15% 0.02 95);cursor:pointer;font-size:13px;font-weight:600;text-transform:uppercase;" style-hover="background:oklch(66% 0.11 145);">Connect</div>
-            </div>
-          </div>
-        </div>
-      </sc-if>
-
-      <sc-if value="{{ addServerOpen }}" hint-placeholder-val="{{ false }}">
-        <div onClick="{{ closeAddServer }}" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:oklch(15% 0.01 90 / 0.55);backdrop-filter:blur(2px);z-index:5;">
-          <div onClick="{{ stopClick }}" style="background:oklch(24% 0.015 95);border:1px solid oklch(58% 0.1 145 / 0.5);border-radius:8px;padding:26px;width:360px;display:flex;flex-direction:column;gap:14px;">
-            <div style="font-size:17px;font-weight:600;">Add Server</div>
-            <input placeholder="Server name" style="background:oklch(19% 0.014 95);border:1px solid oklch(34% 0.02 95);border-radius:5px;padding:11px 12px;font-size:14px;color:oklch(93% 0.01 95);font-family:'Oswald',sans-serif;"></input>
-            <input placeholder="Server address" style="background:oklch(19% 0.014 95);border:1px solid oklch(34% 0.02 95);border-radius:5px;padding:11px 12px;font-size:14px;color:oklch(93% 0.01 95);font-family:'Oswald',sans-serif;"></input>
-            <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:4px;">
-              <div onClick="{{ closeAddServer }}" style="padding:9px 18px;border-radius:5px;background:oklch(30% 0.018 95);cursor:pointer;font-size:13px;font-weight:500;text-transform:uppercase;" style-hover="background:oklch(35% 0.02 95);">Cancel</div>
-              <div onClick="{{ closeAddServer }}" style="padding:9px 18px;border-radius:5px;background:oklch(58% 0.1 145);color:oklch(15% 0.02 95);cursor:pointer;font-size:13px;font-weight:600;text-transform:uppercase;" style-hover="background:oklch(66% 0.11 145);">Add</div>
-            </div>
-          </div>
-        </div>
-      </sc-if>
-    </sc-if>
-
-    <sc-if value="{{ isStore }}" hint-placeholder-val="{{ false }}">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
-        <div style="font-size:15px;font-weight:600;letter-spacing:3px;text-transform:uppercase;color:oklch(70% 0.03 95);">Store</div>
-      </div>
-
-      <div style="flex:1;overflow-y:auto;padding-right:4px;display:flex;flex-direction:column;gap:20px;">
-        <!-- Featured banner -->
-        <div style="display:flex;gap:22px;align-items:center;background:linear-gradient(120deg, oklch(34% 0.06 60 / 0.65), oklch(30% 0.08 145 / 0.55));border:1px solid oklch(58% 0.1 145 / 0.5);border-radius:8px;padding:22px;backdrop-filter:blur(3px);">
-          <div style="flex:0 0 130px;height:130px;border-radius:6px;background:repeating-linear-gradient(45deg, oklch(45% 0.1 35) 0 10px, oklch(38% 0.08 30) 10px 20px);border:2px solid oklch(15% 0.02 90);position:relative;">
-            <div style="position:absolute;top:-8px;left:-8px;background:oklch(70% 0.15 40);color:oklch(15% 0.02 95);font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;padding:4px 9px;border-radius:4px;">Featured</div>
-          </div>
-          <div style="flex:1;display:flex;flex-direction:column;gap:8px;">
-            <div style="font-size:22px;font-weight:700;">Emberwake Cloak Bundle</div>
-            <div style="font-size:14px;color:oklch(78% 0.05 90);">Full outfit set · limited-time offer</div>
-            <div style="display:flex;align-items:center;gap:14px;margin-top:6px;">
-              <div style="font-size:20px;font-weight:700;color:oklch(85% 0.13 85);">€7.20</div>
-              <div style="font-size:15px;font-weight:500;color:oklch(60% 0.02 95);text-decoration:line-through;">€9.60</div>
-              <div style="background:oklch(58% 0.1 145);color:oklch(15% 0.02 95);font-size:14px;font-weight:700;letter-spacing:1px;text-transform:uppercase;padding:10px 26px;border-radius:5px;cursor:pointer;margin-left:auto;" style-hover="background:oklch(66% 0.11 145);transform:scale(1.03);">Buy Now</div>
-            </div>
-          </div>
-        </div>
-
-        <div style="font-size:12.5px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:oklch(62% 0.02 95);">All Cosmetics</div>
-        <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:16px;">
-          <sc-for list="{{ storeItems }}" as="it" hint-placeholder-count="6">
-            <div style="background:oklch(24% 0.015 95 / 0.55);border:1px solid oklch(30% 0.015 95);border-radius:6px;padding:14px;display:flex;flex-direction:column;gap:10px;backdrop-filter:blur(3px);transition:transform 0.15s ease, border-color 0.15s ease;" style-hover="border-color:oklch(58% 0.1 145 / 0.7);transform:translateY(-3px);">
-              <div style="width:100%;aspect-ratio:1;border-radius:4px;background:repeating-linear-gradient(45deg, {{ it.tile1 }} 0 10px, {{ it.tile2 }} 10px 20px);border:2px solid oklch(15% 0.02 90);"></div>
-              <div style="font-size:15px;font-weight:600;">{{ it.name }}</div>
-              <div style="font-size:12.5px;color:oklch(62% 0.02 95);">{{ it.category }}</div>
-              <div style="display:flex;align-items:center;justify-content:space-between;margin-top:2px;">
-                <div style="font-size:14px;font-weight:600;color:oklch(78% 0.11 85);">€{{ it.priceEur }}</div>
-                <div style="background:oklch(58% 0.1 145);color:oklch(15% 0.02 95);font-size:12.5px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;padding:7px 14px;border-radius:4px;cursor:pointer;" style-hover="background:oklch(66% 0.11 145);">Buy</div>
-              </div>
-            </div>
-          </sc-for>
-        </div>
-      </div>
-    </sc-if>
-
-    <sc-if value="{{ isWardrobe }}" hint-placeholder-val="{{ false }}">
-      <div style="font-size:15px;font-weight:600;letter-spacing:3px;text-transform:uppercase;color:oklch(70% 0.03 95);margin-bottom:16px;">Wardrobe</div>
-
-      <div style="display:flex;gap:10px;margin-bottom:18px;">
-        <sc-for list="{{ slots }}" as="sl" hint-placeholder-count="4">
-          <div onClick="{{ sl.select }}" style="flex:1;cursor:pointer;background:{{ sl.bg }};border:1px solid {{ sl.border }};border-radius:6px;padding:12px;display:flex;flex-direction:column;align-items:center;gap:8px;" style-hover="border-color:oklch(58% 0.1 145 / 0.7);">
-            <div style="width:44px;height:44px;border-radius:4px;background:repeating-linear-gradient(45deg, {{ sl.tile1 }} 0 8px, {{ sl.tile2 }} 8px 16px);border:2px solid oklch(15% 0.02 90);"></div>
-            <div style="font-size:12.5px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;color:{{ sl.textColor }};">{{ sl.label }}</div>
-            <div style="font-size:11.5px;color:oklch(60% 0.02 95);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;">{{ sl.equippedName }}</div>
-          </div>
-        </sc-for>
-      </div>
-
-      <div style="font-size:12.5px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:oklch(62% 0.02 95);margin-bottom:12px;">{{ selectedSlotLabel }} Options</div>
-      <div style="flex:1;overflow-y:auto;display:grid;grid-template-columns:repeat(3, 1fr);gap:16px;align-content:start;">
-        <sc-for list="{{ wardrobeItems }}" as="it" hint-placeholder-count="3">
-          <div onClick="{{ it.equip }}" style="cursor:pointer;background:oklch(24% 0.015 95 / 0.55);border:2px solid {{ it.borderColor }};border-radius:6px;padding:14px;display:flex;flex-direction:column;gap:10px;backdrop-filter:blur(3px);">
-            <div style="width:100%;aspect-ratio:1;border-radius:4px;background:repeating-linear-gradient(45deg, {{ it.tile1 }} 0 10px, {{ it.tile2 }} 10px 20px);border:2px solid oklch(15% 0.02 90);"></div>
-            <div style="font-size:15px;font-weight:600;">{{ it.name }}</div>
-            <div style="font-size:12.5px;color:{{ it.statusColor }};font-weight:500;">{{ it.statusLabel }}</div>
-          </div>
-        </sc-for>
-      </div>
-    </sc-if>
-  </div>
-
-  <!-- TAB BAR: select which panel is open to the left -->
-  <div style="flex:0 0 108px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:10px;gap:10px;background:oklch(22% 0.016 95 / 0.7);backdrop-filter:blur(4px);border-left:1px solid oklch(30% 0.015 95);border-right:1px solid oklch(30% 0.015 95);">
-    <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="4">
-      <div onClick="{{ t.select }}" style="width:100%;display:flex;flex-direction:column;align-items:center;gap:8px;padding:14px 6px;border-radius:6px;cursor:pointer;background:{{ t.bg }};border-left:3px solid {{ t.accent }};" style-hover="background:oklch(30% 0.02 95 / 0.6);">
-        <div style="width:26px;height:26px;{{ t.iconRadius }}background:{{ t.iconBg }};border:2px solid {{ t.accent }};"></div>
-        <div style="font-size:11.5px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:{{ t.textColor }};text-align:center;">{{ t.label }}</div>
-      </div>
-    </sc-for>
-  </div>
-
-  <!-- RIGHT: sidebar spacer (reserves collapsed width in flow; the real panel overlays absolutely so expansion doesn't reflow siblings) -->
+  <!-- LEFT: sidebar spacer (reserves collapsed width in flow; the real panel overlays absolutely so expansion doesn't reflow siblings) -->
   <div style="flex:0 0 84px;position:relative;">
-  <div onMouseEnter="{{ onSidebarEnter }}" onMouseLeave="{{ onSidebarLeave }}" style="position:absolute;top:0;right:0;bottom:0;z-index:10;width:{{ expanded }};box-sizing:border-box;display:flex;flex-direction:column;padding:32px 14px;background:oklch(27% 0.006 240);border-left:1px solid oklch(20% 0.005 240);box-shadow:-8px 0 24px oklch(10% 0.01 240 / 0.35);transition:width 0.22s ease;overflow:hidden;">
+  <div onMouseEnter="{{ onSidebarEnter }}" onMouseLeave="{{ onSidebarLeave }}" style="position:absolute;top:0;left:0;bottom:0;z-index:10;width:{{ expanded }};box-sizing:border-box;display:flex;flex-direction:column;padding:32px 14px;background:oklch(27% 0.006 240);border-right:1px solid oklch(20% 0.005 240);box-shadow:8px 0 24px oklch(10% 0.01 240 / 0.35);transition:width 0.22s ease;overflow:hidden;">
     <div style="display:flex;align-items:center;gap:14px;cursor:pointer;padding:0 8px;" style-hover="opacity:0.85;">
-      <div style="flex:0 0 auto;width:56px;height:56px;border-radius:8px;background:oklch(52% 0.1 145);display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;color:oklch(15% 0.02 95);border:2px solid oklch(65% 0.13 145);">P</div>
+      <div style="flex:0 0 auto;width:56px;height:56px;border-radius:8px;background:{{ accentAvatar }};display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;color:oklch(15% 0.02 95);border:2px solid {{ accentBright }};">P</div>
       <sc-if value="{{ expandedFlag }}" hint-placeholder-val="{{ false }}">
         <div style="flex:1;min-width:0;white-space:nowrap;">
           <div style="font-size:19px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Playername</div>
@@ -381,23 +108,546 @@
     </div>
   </div>
   </div>
+
+  <div style="flex:0 0 620px;"></div>
+
+  <!-- CENTER: active tab panel (empty/transparent when no tab selected) -->
+  <div style="flex:1 1 auto;position:relative;display:flex;flex-direction:column;padding:{{ centerPadding }};gap:20px;background:{{ centerBg }};backdrop-filter:{{ centerBlur }};min-width:0;transition:background 0.2s ease;">
+
+    <sc-if value="{{ isHome }}" hint-placeholder-val="{{ true }}">
+      <div style="font-size:26px;font-weight:600;">{{ greeting }}</div>
+
+      <div style="font-size:13px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:oklch(62% 0.02 95);margin-top:6px;">Activity</div>
+      <div style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:2px;min-height:0;">
+        <sc-for list="{{ activityRows }}" as="a" hint-placeholder-count="5">
+          <div onClick="{{ a.openShot }}" style="display:flex;align-items:center;gap:14px;padding:10px 4px;border-bottom:1px solid oklch(30% 0.012 95 / 0.6);cursor:{{ a.rowCursor }};">
+            <sc-if value="{{ a.isAnnouncement }}" hint-placeholder-val="{{ false }}">
+              <div style="flex:0 0 auto;width:38px;height:38px;border-radius:6px;background:oklch(24% 0.015 95);border:1px solid {{ a.color }};display:flex;align-items:center;justify-content:center;">
+                <div style="width:16px;height:11px;border:2px solid {{ a.color }};border-right:none;position:relative;">
+                  <div style="position:absolute;top:-2px;right:-2px;width:2px;height:15px;background:{{ a.color }};"></div>
+                </div>
+              </div>
+            </sc-if>
+            <sc-if value="{{ a.notAnnouncement }}" hint-placeholder-val="{{ true }}">
+              <div style="flex:0 0 auto;width:38px;height:38px;border-radius:6px;background:{{ a.color }};display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;color:oklch(15% 0.02 95);">{{ a.initial }}</div>
+            </sc-if>
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:14.5px;"><span style="font-weight:600;">{{ a.actor }}</span> {{ a.text }}</div>
+              <div style="font-size:12px;color:oklch(58% 0.02 95);margin-top:2px;">{{ a.kindLabel }} · {{ a.time }}</div>
+            </div>
+            <sc-if value="{{ a.hasThumb }}" hint-placeholder-val="{{ false }}">
+              <div style="flex:0 0 auto;width:52px;height:36px;border-radius:4px;background:repeating-linear-gradient(45deg, {{ a.tile1 }} 0 8px, {{ a.tile2 }} 8px 16px);border:1px solid oklch(15% 0.02 90);"></div>
+            </sc-if>
+          </div>
+        </sc-for>
+      </div>
+
+      <div>
+        <div style="font-size:13px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:oklch(62% 0.02 95);margin-bottom:10px;">Recent</div>
+        <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:14px;">
+          <sc-for list="{{ recentItems }}" as="r" hint-placeholder-count="3">
+            <div onClick="{{ r.action }}" style="cursor:pointer;background:{{ panelBg1 }};border:1px solid oklch(30% 0.015 95);border-radius:6px;padding:12px;display:flex;gap:12px;align-items:center;backdrop-filter:{{ panelBlur }};">
+              <div style="flex:0 0 46px;height:46px;position:relative;border-radius:3px;overflow:hidden;">
+                <div style="width:100%;height:100%;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;border:2px solid oklch(15% 0.02 90);box-sizing:border-box;">
+                  <div style="background:{{ r.tile1 }};"></div><div style="background:{{ r.tile2 }};"></div>
+                  <div style="background:{{ r.tile3 }};"></div><div style="background:{{ r.tile4 }};"></div>
+                </div>
+                <div onClick="{{ r.action }}" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:oklch(10% 0.01 90 / 0.55);opacity:0;transition:opacity 0.15s ease;cursor:pointer;" style-hover="opacity:1;">
+                  <div style="width:0;height:0;border-top:6px solid transparent;border-bottom:6px solid transparent;border-left:10px solid oklch(97% 0.005 90);margin-left:2px;"></div>
+                </div>
+              </div>
+              <div style="flex:1;min-width:0;">
+                <div style="font-size:14.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ r.name }}</div>
+                <div style="font-size:11.5px;color:oklch(62% 0.02 95);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ r.sub }}</div>
+                <div style="font-size:11px;color:oklch(56% 0.02 95);margin-top:2px;">{{ r.lastPlayed }}</div>
+              </div>
+              <sc-if value="{{ r.hasFriendsOnline }}" hint-placeholder-val="{{ false }}">
+                <div style="flex:0 0 auto;display:flex;align-items:center;">
+                  <sc-for list="{{ r.onlineFriendsShown }}" as="fr" hint-placeholder-count="2">
+                    <div title="{{ fr.name }}" style="width:26px;height:26px;border-radius:6px;background:{{ fr.color }};border:2px solid oklch(20% 0.012 95);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:oklch(15% 0.02 95);margin-left:-8px;">{{ fr.initial }}</div>
+                  </sc-for>
+                  <sc-if value="{{ r.hasExtraFriends }}" hint-placeholder-val="{{ false }}">
+                    <div style="width:26px;height:26px;border-radius:6px;background:oklch(32% 0.015 95);border:2px solid oklch(20% 0.012 95);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:oklch(85% 0.01 95);margin-left:-8px;">{{ r.extraFriendsLabel }}</div>
+                  </sc-if>
+                </div>
+              </sc-if>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+
+      <div style="background:{{ panelBg1 }};border:1px solid {{ accentBannerBorder }};border-radius:8px;padding:16px 20px;display:flex;align-items:center;gap:18px;backdrop-filter:{{ panelBlur }};">
+        <div style="flex:0 0 72px;height:72px;border-radius:6px;background:repeating-linear-gradient(45deg, {{ carouselItem.tile1 }} 0 10px, {{ carouselItem.tile2 }} 10px 20px);border:2px solid oklch(15% 0.02 90);"></div>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:11px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:oklch(62% 0.02 95);">Featured in Store</div>
+          <div style="font-size:17px;font-weight:600;margin-top:2px;">{{ carouselItem.name }}</div>
+          <div style="font-size:12.5px;color:oklch(62% 0.02 95);">{{ carouselItem.category }} · €{{ carouselItem.priceEur }}</div>
+        </div>
+        <div style="display:flex;gap:6px;">
+          <sc-for list="{{ carouselDots }}" as="d" hint-placeholder-count="3">
+            <div onClick="{{ d.select }}" style="width:8px;height:8px;border-radius:50%;cursor:pointer;background:{{ d.active }};"></div>
+          </sc-for>
+        </div>
+        <div onClick="{{ openStore }}" style="background:{{ accentBase }};color:oklch(15% 0.02 95);font-size:13px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;padding:10px 20px;border-radius:5px;cursor:pointer;" style-hover="background:{{ accentHover }};">View</div>
+      </div>
+
+      <sc-if value="{{ screenshotOpen }}" hint-placeholder-val="{{ false }}">
+        <div onClick="{{ closeScreenshot }}" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:oklch(15% 0.01 90 / 0.65);backdrop-filter:blur(2px);z-index:5;">
+          <div onClick="{{ stopClickX }}" style="background:oklch(24% 0.015 95);border:1px solid {{ accentBannerBorder }};border-radius:8px;padding:20px;width:520px;display:flex;flex-direction:column;gap:14px;">
+            <div style="width:100%;aspect-ratio:16/9;border-radius:6px;background:repeating-linear-gradient(45deg, {{ activeScreenshot.tile1 }} 0 16px, {{ activeScreenshot.tile2 }} 16px 32px);border:2px solid oklch(15% 0.02 90);"></div>
+            <div>
+              <div style="font-size:16px;font-weight:600;">{{ activeScreenshot.actor }}</div>
+              <div style="font-size:13px;color:oklch(65% 0.02 95);margin-top:2px;">{{ activeScreenshot.text }} · {{ activeScreenshot.time }}</div>
+            </div>
+            <div style="display:flex;justify-content:flex-end;">
+              <div onClick="{{ closeScreenshot }}" style="padding:9px 18px;border-radius:5px;background:oklch(30% 0.018 95);cursor:pointer;font-size:13px;font-weight:500;text-transform:uppercase;" style-hover="background:oklch(35% 0.02 95);">Close</div>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+    </sc-if>
+
+    <sc-if value="{{ isWorlds }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+        <div style="font-size:15px;font-weight:600;letter-spacing:3px;text-transform:uppercase;color:oklch(70% 0.03 95);">Singleplayer Worlds</div>
+        <div onClick="{{ createWorld }}" style="display:flex;align-items:center;gap:8px;background:{{ accentBase }};color:oklch(15% 0.02 95);font-size:13.5px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;padding:10px 18px;border-radius:5px;cursor:pointer;" style-hover="background:{{ accentHover }};">
+          <div style="width:14px;height:14px;position:relative;">
+            <div style="position:absolute;top:6px;left:0;width:14px;height:2.5px;background:oklch(15% 0.02 95);"></div>
+            <div style="position:absolute;left:6px;top:0;width:2.5px;height:14px;background:oklch(15% 0.02 95);"></div>
+          </div>
+          Create New World
+        </div>
+      </div>
+      <div style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:10px;padding-right:4px;">
+        <sc-for list="{{ spWorlds }}" as="w" hint-placeholder-count="4">
+          <sc-if value="{{ w.selected }}" hint-placeholder-val="{{ false }}">
+            <div onClick="{{ w.toggle }}" style="cursor:pointer;background:{{ panelBg2 }};border:2px solid {{ accentBase }};border-radius:6px;padding:18px;display:flex;gap:18px;backdrop-filter:{{ panelBlur }};">
+              <div style="flex:0 0 96px;height:96px;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;border:2px solid oklch(15% 0.02 90);border-radius:4px;overflow:hidden;">
+                <div style="background:{{ w.tile1 }};"></div><div style="background:{{ w.tile2 }};"></div>
+                <div style="background:{{ w.tile3 }};"></div><div style="background:{{ w.tile4 }};"></div>
+              </div>
+              <div style="flex:1;display:flex;flex-direction:column;justify-content:center;gap:6px;min-width:0;">
+                <div style="font-size:22px;font-weight:600;">{{ w.name }}</div>
+                <div style="font-size:14px;color:oklch(70% 0.02 95);">{{ w.mode }} · {{ w.difficulty }}</div>
+                <div style="font-size:13px;color:oklch(60% 0.02 95);">Last played {{ w.lastPlayed }}</div>
+                <div style="display:flex;gap:10px;margin-top:8px;">
+                  <div style="background:{{ accentBase }};color:oklch(15% 0.02 95);font-size:14px;font-weight:600;letter-spacing:1px;text-transform:uppercase;padding:9px 22px;border-radius:4px;" style-hover="background:{{ accentHover }};">Play</div>
+                  <div style="background:oklch(32% 0.02 95);color:oklch(90% 0.01 95);font-size:14px;font-weight:500;letter-spacing:1px;text-transform:uppercase;padding:9px 18px;border-radius:4px;" style-hover="background:oklch(38% 0.02 95);">Edit</div>
+                </div>
+              </div>
+            </div>
+          </sc-if>
+          <sc-if value="{{ w.notSelected }}" hint-placeholder-val="{{ true }}">
+            <div onClick="{{ w.toggle }}" style="cursor:pointer;background:{{ panelBg1 }};border:1px solid oklch(30% 0.015 95);border-radius:6px;padding:10px 14px;display:flex;align-items:center;gap:14px;backdrop-filter:{{ panelBlur }};" style-hover="background:oklch(27% 0.017 95 / 0.7);">
+              <div style="flex:0 0 48px;height:48px;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;border:2px solid oklch(15% 0.02 90);border-radius:3px;overflow:hidden;">
+                <div style="background:{{ w.tile1 }};"></div><div style="background:{{ w.tile2 }};"></div>
+                <div style="background:{{ w.tile3 }};"></div><div style="background:{{ w.tile4 }};"></div>
+              </div>
+              <div style="flex:1;min-width:0;">
+                <div style="font-size:17px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ w.name }}</div>
+                <div style="font-size:12.5px;color:oklch(62% 0.02 95);">{{ w.mode }} · {{ w.lastPlayed }}</div>
+              </div>
+            </div>
+          </sc-if>
+        </sc-for>
+      </div>
+      <div style="font-size:12.5px;color:oklch(58% 0.02 95);margin-top:4px;">Create New World opens the vanilla world-creation menu.</div>
+      <sc-if value="{{ worldCreateToast }}" hint-placeholder-val="{{ false }}">
+        <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:oklch(15% 0.01 90 / 0.55);backdrop-filter:blur(2px);z-index:5;">
+          <div style="background:oklch(24% 0.015 95);border:1px solid oklch(58% 0.1 145 / 0.5);border-radius:8px;padding:24px 32px;font-size:16px;font-weight:500;">Launching vanilla world creation…</div>
+        </div>
+      </sc-if>
+    </sc-if>
+
+    <sc-if value="{{ isServers }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:10px;">
+        <div style="font-size:15px;font-weight:600;letter-spacing:3px;text-transform:uppercase;color:oklch(70% 0.03 95);">{{ serverPanelTitle }}</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <div onClick="{{ toggleServerView }}" style="background:oklch(30% 0.018 95);color:oklch(90% 0.01 95);font-size:13px;font-weight:500;letter-spacing:0.5px;text-transform:uppercase;padding:9px 16px;border-radius:5px;cursor:pointer;" style-hover="background:oklch(35% 0.02 95);">{{ serverToggleLabel }}</div>
+          <div onClick="{{ openDirectConnect }}" style="background:oklch(30% 0.018 95);color:oklch(90% 0.01 95);font-size:13px;font-weight:500;letter-spacing:0.5px;text-transform:uppercase;padding:9px 16px;border-radius:5px;cursor:pointer;" style-hover="background:oklch(35% 0.02 95);">Direct Connect</div>
+          <div onClick="{{ openAddServer }}" style="background:{{ accentBase }};color:oklch(15% 0.02 95);font-size:13px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;padding:9px 16px;border-radius:5px;cursor:pointer;" style-hover="background:{{ accentHover }};">+ Add Server</div>
+          <div onClick="{{ doRefresh }}" style="width:38px;height:38px;display:flex;align-items:center;justify-content:center;background:oklch(30% 0.018 95);border-radius:5px;cursor:pointer;" style-hover="background:oklch(35% 0.02 95);">
+            <div style="width:16px;height:16px;border-radius:50%;border:2.5px solid oklch(90% 0.01 95);border-top-color:transparent;transition:transform 0.6s ease;transform:rotate({{ refreshRotation }});"></div>
+          </div>
+        </div>
+      </div>
+
+      <sc-if value="{{ isSavedView }}" hint-placeholder-val="{{ true }}">
+      <div style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:10px;padding-right:4px;">
+        <sc-for list="{{ mpWorlds }}" as="s" hint-placeholder-count="4">
+          <sc-if value="{{ s.selected }}" hint-placeholder-val="{{ false }}">
+            <div onClick="{{ s.toggle }}" style="cursor:pointer;background:{{ panelBg2 }};border:2px solid {{ accentBase }};border-radius:6px;padding:18px;display:flex;gap:18px;backdrop-filter:{{ panelBlur }};">
+              <div style="flex:0 0 96px;height:96px;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;border:2px solid oklch(15% 0.02 90);border-radius:4px;overflow:hidden;">
+                <div style="background:{{ s.tile1 }};"></div><div style="background:{{ s.tile2 }};"></div>
+                <div style="background:{{ s.tile3 }};"></div><div style="background:{{ s.tile4 }};"></div>
+              </div>
+              <div style="flex:1;display:flex;flex-direction:column;justify-content:center;gap:6px;min-width:0;">
+                <div style="font-size:22px;font-weight:600;">{{ s.name }}</div>
+                <div style="font-size:14px;color:oklch(70% 0.02 95);">{{ s.address }}</div>
+                <div style="display:flex;align-items:center;gap:8px;font-size:13px;color:oklch(60% 0.02 95);">
+                  <div style="width:9px;height:9px;border-radius:50%;background:{{ s.pingColor }};"></div>
+                  {{ s.players }} players online
+                </div>
+                <sc-if value="{{ s.hasFriendsOnline }}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex;align-items:center;margin-top:2px;">
+                    <sc-for list="{{ s.onlineFriendsShown }}" as="fr" hint-placeholder-count="2">
+                      <div title="{{ fr.name }}" style="width:26px;height:26px;border-radius:6px;background:{{ fr.color }};border:2px solid oklch(24% 0.015 95);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:oklch(15% 0.02 95);margin-left:-8px;">{{ fr.initial }}</div>
+                    </sc-for>
+                    <sc-if value="{{ s.hasExtraFriends }}" hint-placeholder-val="{{ false }}">
+                      <div style="width:26px;height:26px;border-radius:6px;background:oklch(32% 0.015 95);border:2px solid oklch(24% 0.015 95);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:oklch(85% 0.01 95);margin-left:-8px;">{{ s.extraFriendsLabel }}</div>
+                    </sc-if>
+                  </div>
+                </sc-if>
+                <div style="margin-top:8px;">
+                  <div style="display:inline-block;background:{{ accentBase }};color:oklch(15% 0.02 95);font-size:14px;font-weight:600;letter-spacing:1px;text-transform:uppercase;padding:9px 22px;border-radius:4px;" style-hover="background:{{ accentHover }};">Connect</div>
+                </div>
+              </div>
+            </div>
+          </sc-if>
+          <sc-if value="{{ s.notSelected }}" hint-placeholder-val="{{ true }}">
+            <div onClick="{{ s.toggle }}" style="cursor:pointer;background:{{ panelBg1 }};border:1px solid oklch(30% 0.015 95);border-radius:6px;padding:10px 14px;display:flex;align-items:center;gap:14px;backdrop-filter:{{ panelBlur }};" style-hover="background:oklch(27% 0.017 95 / 0.7);">
+              <div style="flex:0 0 48px;height:48px;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;border:2px solid oklch(15% 0.02 90);border-radius:3px;overflow:hidden;">
+                <div style="background:{{ s.tile1 }};"></div><div style="background:{{ s.tile2 }};"></div>
+                <div style="background:{{ s.tile3 }};"></div><div style="background:{{ s.tile4 }};"></div>
+              </div>
+              <div style="flex:1;min-width:0;">
+                <div style="font-size:17px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ s.name }}</div>
+                <div style="font-size:12.5px;color:oklch(62% 0.02 95);display:flex;align-items:center;gap:6px;">
+                  <span style="width:7px;height:7px;border-radius:50%;background:{{ s.pingColor }};display:inline-block;"></span>{{ s.players }} online
+                </div>
+              </div>
+              <sc-if value="{{ s.hasFriendsOnline }}" hint-placeholder-val="{{ false }}">
+                <div style="flex:0 0 auto;display:flex;align-items:center;">
+                  <sc-for list="{{ s.onlineFriendsShown }}" as="fr" hint-placeholder-count="2">
+                    <div title="{{ fr.name }}" style="width:24px;height:24px;border-radius:6px;background:{{ fr.color }};border:2px solid oklch(22% 0.015 95);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:oklch(15% 0.02 95);margin-left:-7px;">{{ fr.initial }}</div>
+                  </sc-for>
+                  <sc-if value="{{ s.hasExtraFriends }}" hint-placeholder-val="{{ false }}">
+                    <div style="width:24px;height:24px;border-radius:6px;background:oklch(32% 0.015 95);border:2px solid oklch(22% 0.015 95);display:flex;align-items:center;justify-content:center;font-size:9.5px;font-weight:600;color:oklch(85% 0.01 95);margin-left:-7px;">{{ s.extraFriendsLabel }}</div>
+                  </sc-if>
+                </div>
+              </sc-if>
+            </div>
+          </sc-if>
+        </sc-for>
+      </div>
+      </sc-if>
+
+      <sc-if value="{{ isBrowserView }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;background:{{ panelBg1 }};border:1px solid oklch(30% 0.015 95);border-radius:6px;padding:12px 16px;margin-bottom:12px;backdrop-filter:{{ panelBlur }};">
+        <input value="{{ filterName }}" onInput="{{ onFilterNameInput }}" placeholder="Search server name…" style="flex:1 1 180px;min-width:150px;background:oklch(19% 0.014 95);border:1px solid oklch(34% 0.02 95);border-radius:5px;padding:9px 12px;font-size:13.5px;color:oklch(93% 0.01 95);font-family:'Oswald',sans-serif;"></input>
+
+        <select value="{{ latencyFilter }}" onChange="{{ onLatencyFilterChange }}" style="background:oklch(19% 0.014 95);border:1px solid oklch(34% 0.02 95);border-radius:5px;padding:9px 10px;font-size:13.5px;color:oklch(93% 0.01 95);font-family:'Oswald',sans-serif;">
+          <option value="any">Any latency</option>
+          <option value="50">Under 50 ms</option>
+          <option value="100">Under 100 ms</option>
+          <option value="200">Under 200 ms</option>
+        </select>
+
+        <div onClick="{{ toggleHideFull }}" style="display:flex;align-items:center;gap:9px;cursor:pointer;">
+          <div style="width:34px;height:18px;border-radius:9px;background:{{ hideFullBg }};position:relative;transition:background 0.15s ease;">
+            <div style="position:absolute;top:1px;left:{{ hideFullKnob }};width:16px;height:16px;border-radius:50%;background:oklch(96% 0.005 90);transition:left 0.15s ease;"></div>
+          </div>
+          <div style="font-size:13px;color:oklch(85% 0.01 95);white-space:nowrap;">Hide Full</div>
+        </div>
+
+        <div onClick="{{ toggleHidePassword }}" style="display:flex;align-items:center;gap:9px;cursor:pointer;">
+          <div style="width:34px;height:18px;border-radius:9px;background:{{ hidePasswordBg }};position:relative;transition:background 0.15s ease;">
+            <div style="position:absolute;top:1px;left:{{ hidePasswordKnob }};width:16px;height:16px;border-radius:50%;background:oklch(96% 0.005 90);transition:left 0.15s ease;"></div>
+          </div>
+          <div style="font-size:13px;color:oklch(85% 0.01 95);white-space:nowrap;">Hide Password Protected</div>
+        </div>
+      </div>
+
+      <div style="flex:1;overflow-y:auto;display:flex;flex-direction:column;">
+        <div style="display:grid;grid-template-columns:64px 1fr 130px 120px 110px;gap:0;position:sticky;top:0;background:oklch(21% 0.015 95);z-index:1;">
+          <sc-for list="{{ columns }}" as="col" hint-placeholder-count="4">
+            <div onClick="{{ col.select }}" style="padding:10px 12px;font-size:12px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:oklch(70% 0.02 95);cursor:pointer;display:flex;align-items:center;gap:6px;border-bottom:2px solid oklch(32% 0.015 95);" style-hover="color:oklch(90% 0.01 95);">{{ col.label }}<span style="font-size:10px;color:{{ accentBright }};">{{ col.arrow }}</span></div>
+          </sc-for>
+          <div style="padding:10px 12px;border-bottom:2px solid oklch(32% 0.015 95);"></div>
+        </div>
+        <sc-for list="{{ publicServers }}" as="p" hint-placeholder-count="5">
+          <div style="display:grid;grid-template-columns:64px 1fr 130px 120px 110px;align-items:center;border-bottom:1px solid oklch(28% 0.012 95);" style-hover="background:oklch(25% 0.015 95 / 0.6);">
+            <div style="padding:12px;display:flex;justify-content:center;">
+              <sc-if value="{{ p.locked }}" hint-placeholder-val="{{ false }}">
+                <div style="width:18px;height:20px;position:relative;">
+                  <div style="position:absolute;top:0;left:2px;width:14px;height:12px;border:2.5px solid oklch(70% 0.1 60);border-bottom:none;border-radius:8px 8px 0 0;"></div>
+                  <div style="position:absolute;bottom:0;left:0;width:18px;height:11px;background:oklch(70% 0.1 60);border-radius:2px;"></div>
+                </div>
+              </sc-if>
+            </div>
+            <div style="padding:12px;min-width:0;">
+              <div style="font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ p.name }}</div>
+              <div style="font-size:12px;color:oklch(60% 0.02 95);">{{ p.address }} · {{ p.tag }}</div>
+            </div>
+            <div style="padding:12px;font-size:14px;color:oklch(80% 0.01 95);">{{ p.playersLabel }}</div>
+            <div style="padding:12px;font-size:14px;color:oklch(80% 0.01 95);">{{ p.latencyLabel }}</div>
+            <div style="padding:12px;">
+              <div style="display:inline-block;background:{{ accentBase }};color:oklch(15% 0.02 95);font-size:12.5px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;padding:8px 16px;border-radius:4px;cursor:pointer;" style-hover="background:{{ accentHover }};">Connect</div>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+      </sc-if>
+
+      <sc-if value="{{ directConnectOpen }}" hint-placeholder-val="{{ false }}">
+        <div onClick="{{ closeDirectConnect }}" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:oklch(15% 0.01 90 / 0.55);backdrop-filter:blur(2px);z-index:5;">
+          <div onClick="{{ stopClick }}" style="background:oklch(24% 0.015 95);border:1px solid oklch(58% 0.1 145 / 0.5);border-radius:8px;padding:26px;width:360px;display:flex;flex-direction:column;gap:14px;">
+            <div style="font-size:17px;font-weight:600;">Direct Connect</div>
+            <input placeholder="Server address (e.g. play.example.net)" style="background:oklch(19% 0.014 95);border:1px solid oklch(34% 0.02 95);border-radius:5px;padding:11px 12px;font-size:14px;color:oklch(93% 0.01 95);font-family:'Oswald',sans-serif;"></input>
+            <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:4px;">
+              <div onClick="{{ closeDirectConnect }}" style="padding:9px 18px;border-radius:5px;background:oklch(30% 0.018 95);cursor:pointer;font-size:13px;font-weight:500;text-transform:uppercase;" style-hover="background:oklch(35% 0.02 95);">Cancel</div>
+              <div onClick="{{ closeDirectConnect }}" style="padding:9px 18px;border-radius:5px;background:{{ accentBase }};color:oklch(15% 0.02 95);cursor:pointer;font-size:13px;font-weight:600;text-transform:uppercase;" style-hover="background:{{ accentHover }};">Connect</div>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ addServerOpen }}" hint-placeholder-val="{{ false }}">
+        <div onClick="{{ closeAddServer }}" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:oklch(15% 0.01 90 / 0.55);backdrop-filter:blur(2px);z-index:5;">
+          <div onClick="{{ stopClick }}" style="background:oklch(24% 0.015 95);border:1px solid oklch(58% 0.1 145 / 0.5);border-radius:8px;padding:26px;width:360px;display:flex;flex-direction:column;gap:14px;">
+            <div style="font-size:17px;font-weight:600;">Add Server</div>
+            <input placeholder="Server name" style="background:oklch(19% 0.014 95);border:1px solid oklch(34% 0.02 95);border-radius:5px;padding:11px 12px;font-size:14px;color:oklch(93% 0.01 95);font-family:'Oswald',sans-serif;"></input>
+            <input placeholder="Server address" style="background:oklch(19% 0.014 95);border:1px solid oklch(34% 0.02 95);border-radius:5px;padding:11px 12px;font-size:14px;color:oklch(93% 0.01 95);font-family:'Oswald',sans-serif;"></input>
+            <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:4px;">
+              <div onClick="{{ closeAddServer }}" style="padding:9px 18px;border-radius:5px;background:oklch(30% 0.018 95);cursor:pointer;font-size:13px;font-weight:500;text-transform:uppercase;" style-hover="background:oklch(35% 0.02 95);">Cancel</div>
+              <div onClick="{{ closeAddServer }}" style="padding:9px 18px;border-radius:5px;background:{{ accentBase }};color:oklch(15% 0.02 95);cursor:pointer;font-size:13px;font-weight:600;text-transform:uppercase;" style-hover="background:{{ accentHover }};">Add</div>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+    </sc-if>
+
+    <sc-if value="{{ isStore }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+        <div style="font-size:15px;font-weight:600;letter-spacing:3px;text-transform:uppercase;color:oklch(70% 0.03 95);">Store</div>
+      </div>
+
+      <div style="flex:1;overflow-y:auto;padding-right:4px;display:flex;flex-direction:column;gap:20px;">
+        <!-- Featured banner -->
+        <div style="display:flex;gap:22px;align-items:center;background:linear-gradient(120deg, oklch(34% 0.06 60 / 0.65), {{ accentBannerGrad }});border:1px solid {{ accentBannerBorder }};border-radius:8px;padding:22px;backdrop-filter:{{ panelBlur }};">
+          <div style="flex:0 0 130px;height:130px;border-radius:6px;background:repeating-linear-gradient(45deg, oklch(45% 0.1 35) 0 10px, oklch(38% 0.08 30) 10px 20px);border:2px solid oklch(15% 0.02 90);position:relative;">
+            <div style="position:absolute;top:-8px;left:-8px;background:oklch(70% 0.15 40);color:oklch(15% 0.02 95);font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;padding:4px 9px;border-radius:4px;">Featured</div>
+          </div>
+          <div style="flex:1;display:flex;flex-direction:column;gap:8px;">
+            <div style="font-size:22px;font-weight:700;">Emberwake Cloak Bundle</div>
+            <div style="font-size:14px;color:oklch(78% 0.05 90);">Full outfit set · limited-time offer</div>
+            <div style="display:flex;align-items:center;gap:14px;margin-top:6px;">
+              <div style="font-size:20px;font-weight:700;color:oklch(85% 0.13 85);">€7.20</div>
+              <div style="font-size:15px;font-weight:500;color:oklch(60% 0.02 95);text-decoration:line-through;">€9.60</div>
+              <div style="background:{{ accentBase }};color:oklch(15% 0.02 95);font-size:14px;font-weight:700;letter-spacing:1px;text-transform:uppercase;padding:10px 26px;border-radius:5px;cursor:pointer;margin-left:auto;" style-hover="background:{{ accentHover }};transform:scale(1.03);">Buy Now</div>
+            </div>
+          </div>
+        </div>
+
+        <div style="font-size:12.5px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:oklch(62% 0.02 95);">All Cosmetics</div>
+        <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:16px;">
+          <sc-for list="{{ storeItems }}" as="it" hint-placeholder-count="6">
+            <div style="background:{{ panelBg1 }};border:1px solid oklch(30% 0.015 95);border-radius:6px;padding:14px;display:flex;flex-direction:column;gap:10px;backdrop-filter:{{ panelBlur }};transition:transform 0.15s ease, border-color 0.15s ease;" style-hover="border-color:oklch(58% 0.1 145 / 0.7);transform:translateY(-3px);">
+              <div style="width:100%;aspect-ratio:1;border-radius:4px;background:repeating-linear-gradient(45deg, {{ it.tile1 }} 0 10px, {{ it.tile2 }} 10px 20px);border:2px solid oklch(15% 0.02 90);"></div>
+              <div style="font-size:15px;font-weight:600;">{{ it.name }}</div>
+              <div style="font-size:12.5px;color:oklch(62% 0.02 95);">{{ it.category }}</div>
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-top:2px;">
+                <div style="font-size:14px;font-weight:600;color:oklch(78% 0.11 85);">€{{ it.priceEur }}</div>
+                <div style="background:{{ accentBase }};color:oklch(15% 0.02 95);font-size:12.5px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;padding:7px 14px;border-radius:4px;cursor:pointer;" style-hover="background:{{ accentHover }};">Buy</div>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isStats }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+        <div style="font-size:15px;font-weight:600;letter-spacing:3px;text-transform:uppercase;color:oklch(70% 0.03 95);">Statistics</div>
+        <div style="font-size:12px;color:oklch(60% 0.02 95);">Tracked for Playername · across all worlds &amp; servers</div>
+      </div>
+
+      <div style="display:flex;gap:8px;margin-top:8px;margin-bottom:6px;flex-wrap:wrap;">
+        <sc-for list="{{ statCategories }}" as="c" hint-placeholder-count="4">
+          <div onClick="{{ c.select }}" style="padding:9px 18px;border-radius:5px;font-size:13px;font-weight:600;letter-spacing:1px;text-transform:uppercase;cursor:pointer;background:{{ c.bg }};color:{{ c.textColor }};border:1px solid {{ c.border }};" style-hover="background:oklch(32% 0.02 95 / 0.7);">{{ c.label }}</div>
+        </sc-for>
+      </div>
+
+      <sc-if value="{{ notTable }}" hint-placeholder-val="{{ true }}">
+      <div style="flex:1;overflow-y:auto;padding-right:4px;display:flex;flex-direction:column;">
+        <sc-for list="{{ statRows }}" as="row" hint-placeholder-count="10">
+          <div style="display:flex;align-items:center;gap:12px;padding:10px 8px;border-bottom:1px solid oklch(30% 0.012 95 / 0.6);background:{{ row.rowBg }};width:100%;box-sizing:border-box;">
+            <div style="flex:0 0 auto;width:28px;height:28px;border-radius:4px;background:{{ row.tile1 }};border:2px solid oklch(15% 0.02 90);"></div>
+            <div style="flex:1;min-width:0;font-size:14px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ row.label }}</div>
+            <div style="flex:0 0 auto;font-size:14px;font-weight:600;color:{{ accentBright }};">{{ row.value }}</div>
+          </div>
+        </sc-for>
+      </div>
+      </sc-if>
+
+      <sc-if value="{{ isItemsTable }}" hint-placeholder-val="{{ false }}">
+      <div style="flex:1;overflow-y:auto;overflow-x:hidden;padding-right:4px;min-width:0;">
+        <div style="display:grid;grid-template-columns:64px repeat(6, minmax(0,1fr));width:100%;min-width:0;box-sizing:border-box;position:sticky;top:0;background:oklch(21% 0.015 95);z-index:1;">
+          <div style="padding:8px 6px;border-bottom:2px solid oklch(32% 0.015 95);"></div>
+          <sc-for list="{{ itemColumns }}" as="col" hint-placeholder-count="6">
+            <div onClick="{{ col.select }}" style="padding:8px 6px;font-size:11px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:oklch(70% 0.02 95);border-bottom:2px solid oklch(32% 0.015 95);cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" style-hover="color:oklch(90% 0.01 95);">{{ col.label }}</div>
+          </sc-for>
+        </div>
+        <sc-for list="{{ itemStatRows }}" as="it" hint-placeholder-count="8">
+          <div style="display:grid;grid-template-columns:64px repeat(6, minmax(0,1fr));align-items:center;background:{{ it.rowBg }};width:100%;min-width:0;box-sizing:border-box;border-bottom:1px solid oklch(30% 0.012 95 / 0.6);">
+            <div style="padding:10px;display:flex;justify-content:center;">
+              <div title="{{ it.name }}" style="width:32px;height:32px;border-radius:4px;background:{{ it.tile1 }};border:2px solid oklch(15% 0.02 90);cursor:default;"></div>
+            </div>
+            <div style="padding:10px 6px;font-size:14px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ it.minedLabel }}</div>
+            <div style="padding:10px 6px;font-size:14px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ it.brokenLabel }}</div>
+            <div style="padding:10px 6px;font-size:14px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ it.craftedLabel }}</div>
+            <div style="padding:10px 6px;font-size:14px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ it.usedLabel }}</div>
+            <div style="padding:10px 6px;font-size:14px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ it.pickedUpLabel }}</div>
+            <div style="padding:10px 6px;font-size:14px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ it.droppedLabel }}</div>
+          </div>
+        </sc-for>
+      </div>
+      </sc-if>
+
+      <sc-if value="{{ isMobsTable }}" hint-placeholder-val="{{ false }}">
+      <div style="flex:1;overflow-y:auto;overflow-x:hidden;padding-right:4px;min-width:0;">
+        <div style="display:grid;grid-template-columns:minmax(0,2fr) minmax(0,2fr) minmax(0,1fr);width:100%;min-width:0;box-sizing:border-box;position:sticky;top:0;background:oklch(21% 0.015 95);z-index:1;">
+          <sc-for list="{{ mobColumns }}" as="col" hint-placeholder-count="3">
+            <div onClick="{{ col.select }}" style="padding:8px 6px;font-size:11px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:oklch(70% 0.02 95);border-bottom:2px solid oklch(32% 0.015 95);cursor:pointer;" style-hover="color:oklch(90% 0.01 95);">{{ col.label }}</div>
+          </sc-for>
+        </div>
+        <sc-for list="{{ mobStatRows }}" as="m" hint-placeholder-count="8">
+          <div style="display:grid;grid-template-columns:minmax(0,2fr) minmax(0,2fr) minmax(0,1fr);align-items:center;background:{{ m.rowBg }};width:100%;min-width:0;box-sizing:border-box;border-bottom:1px solid oklch(30% 0.012 95 / 0.6);">
+            <div style="padding:10px 6px;display:flex;align-items:center;gap:10px;">
+              <div style="flex:0 0 auto;width:24px;height:24px;border-radius:4px;background:{{ m.tile1 }};border:2px solid oklch(15% 0.02 90);"></div>
+              <div style="font-size:14px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ m.name }}</div>
+            </div>
+            <div style="padding:10px 6px;font-size:14px;color:oklch(80% 0.01 95);">{{ m.killedByLabel }}</div>
+            <div style="padding:10px 6px;font-size:14px;font-weight:600;color:{{ accentBright }};">{{ m.killedLabel }}</div>
+          </div>
+        </sc-for>
+      </div>
+      </sc-if>
+    </sc-if>
+
+    <sc-if value="{{ isAchievements }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+        <div style="font-size:15px;font-weight:600;letter-spacing:3px;text-transform:uppercase;color:oklch(70% 0.03 95);">Achievements</div>
+        <div style="font-size:12px;color:oklch(60% 0.02 95);">{{ achievementsUnlockedLabel }}</div>
+      </div>
+
+      <div style="display:flex;gap:8px;margin-top:8px;margin-bottom:10px;">
+        <sc-for list="{{ achievementFilters }}" as="f" hint-placeholder-count="3">
+          <div onClick="{{ f.select }}" style="padding:9px 18px;border-radius:5px;font-size:13px;font-weight:600;letter-spacing:1px;text-transform:uppercase;cursor:pointer;background:{{ f.bg }};color:{{ f.textColor }};border:1px solid {{ f.border }};" style-hover="background:oklch(32% 0.02 95 / 0.7);">{{ f.label }}</div>
+        </sc-for>
+      </div>
+
+      <div style="flex:1;overflow-y:auto;padding-right:4px;display:flex;flex-direction:column;">
+        <sc-for list="{{ achievementRows }}" as="ach" hint-placeholder-count="8">
+          <div style="display:flex;align-items:center;gap:16px;padding:12px 8px;border-bottom:1px solid oklch(30% 0.012 95 / 0.6);opacity:{{ ach.rowOpacity }};">
+            <div style="flex:0 0 auto;width:52px;height:52px;border-radius:5px;background:{{ ach.tile1 }};border:2px solid oklch(15% 0.02 90);position:relative;">
+              <sc-if value="{{ ach.notUnlocked }}" hint-placeholder-val="{{ false }}">
+                <div style="position:absolute;inset:0;background:oklch(10% 0.01 90 / 0.55);border-radius:3px;"></div>
+              </sc-if>
+            </div>
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:16px;font-weight:600;">{{ ach.name }}</div>
+              <div style="font-size:13px;color:oklch(62% 0.02 95);margin-top:2px;">{{ ach.description }}</div>
+            </div>
+            <sc-if value="{{ ach.showLock }}" hint-placeholder-val="{{ false }}">
+              <div style="flex:0 0 auto;width:22px;height:24px;position:relative;">
+                <div style="position:absolute;top:0;left:2px;width:18px;height:15px;border:3px solid oklch(55% 0.02 95);border-bottom:none;border-radius:10px 10px 0 0;"></div>
+                <div style="position:absolute;bottom:0;left:0;width:22px;height:13px;background:oklch(55% 0.02 95);border-radius:2px;"></div>
+              </div>
+            </sc-if>
+            <sc-if value="{{ ach.showProgress }}" hint-placeholder-val="{{ false }}">
+              <div style="flex:0 0 auto;width:140px;">
+                <div style="width:100%;height:8px;border-radius:4px;background:oklch(30% 0.015 95);overflow:hidden;">
+                  <div style="height:100%;width:{{ ach.progressPct }};background:{{ accentBase }};border-radius:4px;"></div>
+                </div>
+                <div style="font-size:11.5px;color:oklch(60% 0.02 95);margin-top:4px;text-align:right;">{{ ach.progressLabel }}</div>
+              </div>
+            </sc-if>
+            <sc-if value="{{ ach.showCheck }}" hint-placeholder-val="{{ false }}">
+              <div style="flex:0 0 auto;width:24px;height:24px;border-radius:50%;background:{{ accentBase }};display:flex;align-items:center;justify-content:center;">
+                <div style="width:11px;height:6px;border-left:2.5px solid oklch(15% 0.02 95);border-bottom:2.5px solid oklch(15% 0.02 95);transform:rotate(-45deg);margin-top:-2px;"></div>
+              </div>
+            </sc-if>
+          </div>
+        </sc-for>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isWardrobe }}" hint-placeholder-val="{{ false }}">
+      <div style="font-size:15px;font-weight:600;letter-spacing:3px;text-transform:uppercase;color:oklch(70% 0.03 95);margin-bottom:16px;">Wardrobe</div>
+
+      <div style="display:flex;gap:10px;margin-bottom:18px;">
+        <sc-for list="{{ slots }}" as="sl" hint-placeholder-count="4">
+          <div onClick="{{ sl.select }}" style="flex:1;cursor:pointer;background:{{ sl.bg }};border:1px solid {{ sl.border }};border-radius:6px;padding:12px;display:flex;flex-direction:column;align-items:center;gap:8px;" style-hover="border-color:oklch(58% 0.1 145 / 0.7);">
+            <div style="width:44px;height:44px;border-radius:4px;background:repeating-linear-gradient(45deg, {{ sl.tile1 }} 0 8px, {{ sl.tile2 }} 8px 16px);border:2px solid oklch(15% 0.02 90);"></div>
+            <div style="font-size:12.5px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;color:{{ sl.textColor }};">{{ sl.label }}</div>
+            <div style="font-size:11.5px;color:oklch(60% 0.02 95);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;">{{ sl.equippedName }}</div>
+          </div>
+        </sc-for>
+      </div>
+
+      <div style="font-size:12.5px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:oklch(62% 0.02 95);margin-bottom:12px;">{{ selectedSlotLabel }} Options</div>
+      <div style="flex:1;overflow-y:auto;display:grid;grid-template-columns:repeat(3, 1fr);gap:16px;align-content:start;">
+        <sc-for list="{{ wardrobeItems }}" as="it" hint-placeholder-count="3">
+          <div onClick="{{ it.equip }}" style="cursor:pointer;background:{{ panelBg1 }};border:2px solid {{ it.borderColor }};border-radius:6px;padding:14px;display:flex;flex-direction:column;gap:10px;backdrop-filter:{{ panelBlur }};">
+            <div style="width:100%;aspect-ratio:1;border-radius:4px;background:repeating-linear-gradient(45deg, {{ it.tile1 }} 0 10px, {{ it.tile2 }} 10px 20px);border:2px solid oklch(15% 0.02 90);"></div>
+            <div style="font-size:15px;font-weight:600;">{{ it.name }}</div>
+            <div style="font-size:12.5px;color:{{ it.statusColor }};font-weight:500;">{{ it.statusLabel }}</div>
+          </div>
+        </sc-for>
+      </div>
+    </sc-if>
+  </div>
+
+  <!-- TAB BAR: select which panel is open to the left -->
+  <div style="flex:0 0 108px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:10px;gap:10px;background:{{ tabBarBg }};backdrop-filter:{{ tabBarBlur }};border-left:1px solid oklch(30% 0.015 95);border-right:1px solid oklch(30% 0.015 95);">
+    <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="4">
+      <div onClick="{{ t.select }}" style="width:100%;display:flex;flex-direction:column;align-items:center;gap:8px;padding:14px 6px;border-radius:6px;cursor:pointer;background:{{ t.bg }};border-left:3px solid {{ t.accent }};" style-hover="background:oklch(30% 0.02 95 / 0.6);">
+        <div style="width:26px;height:26px;{{ t.iconRadius }}background:{{ t.iconBg }};border:2px solid {{ t.accent }};"></div>
+        <div style="font-size:11.5px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:{{ t.textColor }};text-align:center;">{{ t.label }}</div>
+      </div>
+    </sc-for>
+  </div>
+
   </div>
 </div>
 
 </x-dc>
-<script type="text/x-dc" data-dc-script>
+<script type="text/x-dc" data-dc-script data-props="{
+  &quot;accentTheme&quot;: {&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;moss&quot;,&quot;options&quot;:[&quot;moss&quot;,&quot;ember&quot;,&quot;frost&quot;,&quot;amethyst&quot;],&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Theme&quot;},
+  &quot;skyMood&quot;: {&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;dusk&quot;,&quot;options&quot;:[&quot;day&quot;,&quot;dusk&quot;,&quot;night&quot;],&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Theme&quot;},
+  &quot;panelStyle&quot;: {&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;glass&quot;,&quot;options&quot;:[&quot;glass&quot;,&quot;solid&quot;],&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Theme&quot;}
+}">
 class Component extends DCLogic {
+  greetingsList = ['Welcome back, Playername', 'Ready to dig in?', 'The vale missed you', 'Good to see you again', 'Adventure awaits', 'Back for more, are we?'];
   state = {
-    selectedSP: 'sp1', selectedMP: null, sidebarExpanded: false, selectedTab: 'worlds',
+    selectedSP: 'sp1', selectedMP: null, sidebarExpanded: false, selectedTab: 'home',
+    greeting: '', carouselIndex: 0, screenshotViewerId: null,
     selectedSlot: 'Torso',
     equippedBySlot: { Head: 'h1', Torso: 't1', Legs: 'l2', Feet: 'f1' },
     serverView: 'saved', directConnectOpen: false, addServerOpen: false,
     refreshSpin: false, worldCreateToast: false,
     sortKey: 'name', sortDir: 'asc',
     filterName: '', hideFull: false, hidePassword: false, latencyFilter: 'any',
-    joinPolicy: 'friends'
+    joinPolicy: 'friends',
+    statCategory: 'General', achievementsFilter: 'All',
+    itemSortKey: 'name', itemSortDir: 'asc',
+    mobSortKey: 'name', mobSortDir: 'asc'
   };
 
+  activityData = [
+    { id:'a1', kind:'announcement', actor:'Dev Team', initial:'D', color:'oklch(50% 0.1 250)', text:'Stonebound v2.2 patch notes are live', time:'2h ago' },
+    { id:'a2', kind:'achievement', actor:'BirchAndVine', initial:'B', color:'oklch(58% 0.1 145)', text:'unlocked "Deep Diver"', time:'5h ago' },
+    { id:'a3', kind:'screenshot', actor:'Quarrywolf', initial:'Q', color:'oklch(50% 0.08 55)', text:'shared a screenshot from Ridgeline SMP', time:'1d ago', tile1:'oklch(48% 0.07 60)', tile2:'oklch(42% 0.06 55)' },
+    { id:'a4', kind:'announcement', actor:'Dev Team', initial:'D', color:'oklch(50% 0.1 250)', text:'Weekend double-XP event starts Friday', time:'2d ago' },
+    { id:'a5', kind:'achievement', actor:'Thistledown', initial:'T', color:'oklch(52% 0.1 30)', text:'unlocked "Master Builder"', time:'3d ago' },
+    { id:'a6', kind:'screenshot', actor:'MossJara', initial:'M', color:'oklch(55% 0.09 90)', text:'shared a screenshot from Sunfield Homestead', time:'4d ago', tile1:'oklch(70% 0.09 90)', tile2:'oklch(62% 0.08 85)' }
+  ];
+  recentDefs = [
+    { kind:'world', id:'sp1' },
+    { kind:'server', id:'mp1' },
+    { kind:'world', id:'sp2' }
+  ];
   publicServersData = [
     { id:'p1', name:'Wayfarer Public', address:'wayfarer.mc.gg', playersCurrent:340, playersMax:500, latency:42, locked:false, tag:'Survival' },
     { id:'p2', name:'Greatwood Vanilla', address:'greatwood.net', playersCurrent:88, playersMax:200, latency:71, locked:false, tag:'Vanilla' },
@@ -415,26 +665,31 @@ class Component extends DCLogic {
     { id:'sp4', name:'The Deep Cistern', mode:'Hardcore', difficulty:'Hard', lastPlayed:'3 weeks ago', tile1:'oklch(35% 0.03 250)', tile2:'oklch(30% 0.02 250)', tile3:'oklch(40% 0.02 90)', tile4:'oklch(33% 0.02 90)' }
   ];
   mpData = [
-    { id:'mp1', name:'Ridgeline SMP', address:'play.ridgeline.net', players:'24/60', pingColor:'oklch(65% 0.13 145)', tile1:'oklch(48% 0.07 60)', tile2:'oklch(42% 0.06 55)', tile3:'oklch(52% 0.1 145)', tile4:'oklch(45% 0.08 140)' },
-    { id:'mp2', name:'Copperhall Realms', address:'copperhall.gg', players:'8/40', pingColor:'oklch(70% 0.15 85)', tile1:'oklch(55% 0.08 60)', tile2:'oklch(48% 0.06 55)', tile3:'oklch(60% 0.02 90)', tile4:'oklch(52% 0.02 90)' },
-    { id:'mp3', name:'Emberfall Kingdoms', address:'ember.fallnet.io', players:'112/200', pingColor:'oklch(65% 0.13 145)', tile1:'oklch(45% 0.1 35)', tile2:'oklch(38% 0.08 30)', tile3:'oklch(50% 0.09 60)', tile4:'oklch(42% 0.07 55)' },
-    { id:'mp4', name:'Old Growth Anarchy', address:'oldgrowth.mc', players:'3/20', pingColor:'oklch(60% 0.14 30)', tile1:'oklch(38% 0.05 140)', tile2:'oklch(32% 0.04 140)', tile3:'oklch(35% 0.02 90)', tile4:'oklch(30% 0.02 90)' }
+    { id:'mp1', name:'Ridgeline SMP', address:'play.ridgeline.net', players:'24/60', lastPlayed:'Today', pingColor:'oklch(65% 0.13 145)', tile1:'oklch(48% 0.07 60)', tile2:'oklch(42% 0.06 55)', tile3:'oklch(52% 0.1 145)', tile4:'oklch(45% 0.08 140)' },
+    { id:'mp2', name:'Copperhall Realms', address:'copperhall.gg', players:'8/40', lastPlayed:'4 days ago', pingColor:'oklch(70% 0.15 85)', tile1:'oklch(55% 0.08 60)', tile2:'oklch(48% 0.06 55)', tile3:'oklch(60% 0.02 90)', tile4:'oklch(52% 0.02 90)' },
+    { id:'mp3', name:'Emberfall Kingdoms', address:'ember.fallnet.io', players:'112/200', lastPlayed:'2 days ago', pingColor:'oklch(65% 0.13 145)', tile1:'oklch(45% 0.1 35)', tile2:'oklch(38% 0.08 30)', tile3:'oklch(50% 0.09 60)', tile4:'oklch(42% 0.07 55)' },
+    { id:'mp4', name:'Old Growth Anarchy', address:'oldgrowth.mc', players:'3/20', lastPlayed:'2 weeks ago', pingColor:'oklch(60% 0.14 30)', tile1:'oklch(38% 0.05 140)', tile2:'oklch(32% 0.04 140)', tile3:'oklch(35% 0.02 90)', tile4:'oklch(30% 0.02 90)' }
   ];
   friendsData = [
     { id:'f1', name:'BirchAndVine', initial:'B', color:'oklch(58% 0.1 145)', status:'Online — Hollowbrook Vale', online:true },
     { id:'f2', name:'Quarrywolf', initial:'Q', color:'oklch(50% 0.08 55)', status:'Online — Ridgeline SMP', online:true },
     { id:'f3', name:'MossJara', initial:'M', color:'oklch(55% 0.09 90)', status:'Offline — 4h ago', online:false },
     { id:'f4', name:'Kettlebrook', initial:'K', color:'oklch(48% 0.06 250)', status:'Offline — 1d ago', online:false },
-    { id:'f5', name:'Thistledown', initial:'T', color:'oklch(52% 0.1 30)', status:'Online — Copperhall Realms', online:true }
+    { id:'f5', name:'Thistledown', initial:'T', color:'oklch(52% 0.1 30)', status:'Online — Copperhall Realms', online:true },
+    { id:'f6', name:'Emberholt', initial:'E', color:'oklch(50% 0.1 35)', status:'Online — Ridgeline SMP', online:true },
+    { id:'f7', name:'Fennwick', initial:'F', color:'oklch(45% 0.08 200)', status:'Online — Ridgeline SMP', online:true },
+    { id:'f8', name:'Larkspur', initial:'L', color:'oklch(55% 0.1 300)', status:'Online — Ridgeline SMP', online:true },
+    { id:'f9', name:'Oatmoor', initial:'O', color:'oklch(60% 0.05 90)', status:'Online — Ridgeline SMP', online:true },
+    { id:'f10', name:'Pinevale', initial:'P', color:'oklch(48% 0.09 250)', status:'Online — Ridgeline SMP', online:true }
   ];
 
   storeData = [
-    { id:'st1', name:'Emberwake Cloak', category:'Cloak', priceEur:'4.80', tile1:'oklch(45% 0.1 35)', tile2:'oklch(38% 0.08 30)' },
+    { id:'st1', name:'Emberwake Cloak', category:'Cloak', priceEur:'4.80', featured:true, tile1:'oklch(45% 0.1 35)', tile2:'oklch(38% 0.08 30)' },
     { id:'st2', name:'Mossback Helm', category:'Headwear', priceEur:'3.20', tile1:'oklch(52% 0.1 145)', tile2:'oklch(44% 0.08 140)' },
     { id:'st3', name:'Quarry Pickaxe Skin', category:'Tool Skin', priceEur:'2.60', tile1:'oklch(60% 0.02 90)', tile2:'oklch(50% 0.02 90)' },
-    { id:'st4', name:'Dusk Wing Glider', category:'Emote', priceEur:'6.40', tile1:'oklch(35% 0.06 300)', tile2:'oklch(28% 0.05 300)' },
+    { id:'st4', name:'Dusk Wing Glider', category:'Emote', priceEur:'6.40', featured:true, tile1:'oklch(35% 0.06 300)', tile2:'oklch(28% 0.05 300)' },
     { id:'st5', name:'Golden Lantern', category:'Accessory', priceEur:'1.80', tile1:'oklch(78% 0.13 85)', tile2:'oklch(65% 0.11 80)' },
-    { id:'st6', name:'Riverstone Cape', category:'Cloak', priceEur:'4.00', tile1:'oklch(55% 0.03 220)', tile2:'oklch(46% 0.02 220)' }
+    { id:'st6', name:'Riverstone Cape', category:'Cloak', priceEur:'4.00', featured:true, tile1:'oklch(55% 0.03 220)', tile2:'oklch(46% 0.02 220)' }
   ];
   wardrobeData = [
     { id:'h1', slot:'Head', name:'Ranger Hood', tile1:'oklch(48% 0.07 60)', tile2:'oklch(40% 0.06 55)' },
@@ -448,11 +703,82 @@ class Component extends DCLogic {
   ];
   slotDefs = ['Head', 'Torso', 'Legs', 'Feet'];
   tabDefs = [
+    { id:'home', label:'Home' },
     { id:'worlds', label:'Worlds' },
     { id:'servers', label:'Servers' },
     { id:'store', label:'Store' },
-    { id:'wardrobe', label:'Wardrobe' }
+    { id:'wardrobe', label:'Wardrobe' },
+    { id:'achievements', label:'Achievements' },
+    { id:'stats', label:'Statistics' }
   ];
+
+  achievementsData = [
+    { id:'ac1', name:'First Steps', description:'Craft a wooden pickaxe.', tile1:'oklch(60% 0.06 70)', unlocked:true, tracking:false },
+    { id:'ac2', name:'Getting an Upgrade', description:'Craft a stone pickaxe.', tile1:'oklch(58% 0.02 90)', unlocked:true, tracking:false },
+    { id:'ac3', name:'Deep Diver', description:'Explore a cave below Y level 0.', tile1:'oklch(45% 0.06 230)', unlocked:true, tracking:false },
+    { id:'ac4', name:'Master Builder', description:'Place 5,000 blocks.', tile1:'oklch(52% 0.1 145)', unlocked:false, tracking:true, current:3820, target:5000 },
+    { id:'ac5', name:'Monster Hunter', description:'Defeat 250 hostile mobs.', tile1:'oklch(45% 0.1 30)', unlocked:false, tracking:true, current:167, target:250 },
+    { id:'ac6', name:'Well Traveled', description:'Walk 1,000,000 cm total.', tile1:'oklch(55% 0.03 220)', unlocked:false, tracking:true, current:482910, target:1000000 },
+    { id:'ac7', name:'Sky High', description:'Craft and equip an Elytra.', tile1:'oklch(70% 0.05 260)', unlocked:false, tracking:false },
+    { id:'ac8', name:'Diamonds!', description:'Mine a diamond ore block.', tile1:'oklch(78% 0.1 200)', unlocked:true, tracking:false },
+    { id:'ac9', name:'Raid Champion', description:'Successfully defend against 10 raids.', tile1:'oklch(52% 0.1 30)', unlocked:false, tracking:true, current:4, target:10 },
+    { id:'ac10', name:'Homebody', description:'Sleep in a bed 100 times.', tile1:'oklch(35% 0.06 300)', unlocked:false, tracking:true, current:96, target:100 },
+    { id:'ac11', name:'Green Thumb', description:'Harvest 500 crops.', tile1:'oklch(55% 0.09 145)', unlocked:true, tracking:false },
+    { id:'ac12', name:'Ender Slayer', description:'Defeat the Ender Dragon.', tile1:'oklch(40% 0.1 300)', unlocked:false, tracking:false }
+  ];
+  achievementFilterDefs = ['All', 'Unlocked', 'Locked'];
+
+  statCategoryDefs = ['General', 'Items', 'Mobs'];
+  itemStatsData = [
+    { name:'Diamond Pickaxe', tile1:'oklch(78% 0.1 200)', mined:0, broken:2, crafted:11, used:1840, pickedUp:0, dropped:1 },
+    { name:'Bread', tile1:'oklch(70% 0.1 85)', mined:0, broken:0, crafted:96, used:304, pickedUp:412, dropped:8 },
+    { name:'Iron Ingot', tile1:'oklch(65% 0.03 70)', mined:0, broken:0, crafted:0, used:0, pickedUp:588, dropped:22 },
+    { name:'Bow', tile1:'oklch(60% 0.05 70)', mined:0, broken:3, crafted:4, used:2410, pickedUp:6, dropped:2 },
+    { name:'Fishing Rod', tile1:'oklch(55% 0.08 220)', mined:0, broken:1, crafted:2, used:142, pickedUp:0, dropped:0 },
+    { name:'Enchanted Book', tile1:'oklch(50% 0.12 300)', mined:0, broken:0, crafted:0, used:19, pickedUp:19, dropped:0 },
+    { name:'Stone', tile1:'oklch(55% 0.01 90)', mined:8204, broken:0, crafted:0, used:0, pickedUp:8204, dropped:340 },
+    { name:'Oak Log', tile1:'oklch(48% 0.07 60)', mined:1442, broken:0, crafted:0, used:0, pickedUp:1442, dropped:12 }
+  ];
+  statsData = {
+    General: [
+      { label:'Play Time', value:'14d 6h 32m', tile1:'oklch(55% 0.03 220)' },
+      { label:'Distance Walked', value:'482,910 cm', tile1:'oklch(60% 0.02 90)' },
+      { label:'Distance Sprinted', value:'211,004 cm', tile1:'oklch(60% 0.02 90)' },
+      { label:'Distance Flown (Elytra)', value:'88,220 cm', tile1:'oklch(70% 0.05 260)' },
+      { label:'Jumps', value:'9,842', tile1:'oklch(60% 0.02 90)' },
+      { label:'Damage Dealt', value:'38,410', tile1:'oklch(52% 0.14 30)' },
+      { label:'Damage Taken', value:'12,904', tile1:'oklch(52% 0.14 30)' },
+      { label:'Deaths', value:'27', tile1:'oklch(30% 0.02 90)' },
+      { label:'Mob Kills', value:'1,204', tile1:'oklch(45% 0.1 145)' },
+      { label:'Player Kills', value:'3', tile1:'oklch(45% 0.1 145)' },
+      { label:'Times Slept', value:'96', tile1:'oklch(35% 0.06 300)' },
+      { label:'Raids Won', value:'4', tile1:'oklch(52% 0.1 30)' }
+    ],
+  };
+  mobStatsData = [
+    { name:'Zombie', killedBy:14, killed:412, tile1:'oklch(52% 0.1 145)' },
+    { name:'Skeleton', killedBy:22, killed:389, tile1:'oklch(70% 0.01 90)' },
+    { name:'Creeper', killedBy:31, killed:201, tile1:'oklch(58% 0.13 145)' },
+    { name:'Spider', killedBy:8, killed:167, tile1:'oklch(30% 0.03 30)' },
+    { name:'Cow', killedBy:0, killed:54, tile1:'oklch(50% 0.03 90)' },
+    { name:'Chicken', killedBy:0, killed:98, tile1:'oklch(80% 0.03 95)' },
+    { name:'Enderman', killedBy:3, killed:22, tile1:'oklch(35% 0.06 300)' },
+    { name:'Witch', killedBy:2, killed:9, tile1:'oklch(45% 0.1 300)' }
+  ];
+
+  componentDidMount() {
+    this.setState({ greeting: this.greetingsList[Math.floor(Math.random() * this.greetingsList.length)] });
+    const featured = this.storeData.filter(it => it.featured);
+    this._carouselTimer = setInterval(() => {
+      this.setState(s => ({ carouselIndex: (s.carouselIndex + 1) % featured.length }));
+    }, 4500);
+  }
+  componentWillUnmount() {
+    if (this._carouselTimer) clearInterval(this._carouselTimer);
+  }
+  setCarouselIndex(i) { this.setState({ carouselIndex: i }); }
+  openScreenshot(id) { this.setState({ screenshotViewerId: id }); }
+  closeScreenshot() { this.setState({ screenshotViewerId: null }); }
 
   toggleSP(id) { this.setState(s => ({ selectedSP: s.selectedSP === id ? null : id })); }
   toggleMP(id) { this.setState(s => ({ selectedMP: s.selectedMP === id ? null : id })); }
@@ -482,20 +808,57 @@ class Component extends DCLogic {
   setFilterName(v) { this.setState({ filterName: v }); }
   setLatencyFilter(v) { this.setState({ latencyFilter: v }); }
   setJoinPolicy(v) { this.setState({ joinPolicy: v }); }
+  selectStatCategory(c) { this.setState({ statCategory: c }); }
+  selectAchievementFilter(f) { this.setState({ achievementsFilter: f }); }
+  sortItemsBy(key) {
+    this.setState(s => ({ itemSortKey: key, itemSortDir: s.itemSortKey === key ? (s.itemSortDir === 'asc' ? 'desc' : 'asc') : 'asc' }));
+  }
+  sortMobsBy(key) {
+    this.setState(s => ({ mobSortKey: key, mobSortDir: s.mobSortKey === key ? (s.mobSortDir === 'asc' ? 'desc' : 'asc') : 'asc' }));
+  }
   toggleHideFull() { this.setState(s => ({ hideFull: !s.hideFull })); }
   toggleHidePassword() { this.setState(s => ({ hidePassword: !s.hidePassword })); }
 
   renderVals() {
+    const hueMap = { moss: 145, ember: 35, frost: 225, amethyst: 300 };
+    const hue = hueMap[this.props.accentTheme] ?? 145;
+    const accentBase = `oklch(58% 0.1 ${hue})`;
+    const accentHover = `oklch(66% 0.11 ${hue})`;
+    const accentBright = `oklch(70% 0.13 ${hue})`;
+    const accentAvatar = `oklch(52% 0.1 ${hue})`;
+    const accentBannerGrad = `oklch(30% 0.08 ${hue} / 0.55)`;
+    const accentBannerBorder = `oklch(58% 0.1 ${hue} / 0.5)`;
+
+    const skyPresets = {
+      day: { grad: 'linear-gradient(180deg, oklch(58% 0.09 250) 0%, oklch(74% 0.08 220) 45%, oklch(87% 0.05 200) 68%, oklch(93% 0.03 210) 100%)', sunRadial: 'radial-gradient(circle, oklch(97% 0.05 95) 0%, oklch(93% 0.1 85) 55%, transparent 75%)', sunShadow: '0 0 90px 30px oklch(90% 0.1 85 / 0.45)', tint: 'oklch(85% 0.02 90 / 0)' },
+      dusk: { grad: 'linear-gradient(180deg, oklch(28% 0.06 300) 0%, oklch(52% 0.13 45) 45%, oklch(74% 0.13 68) 68%, oklch(80% 0.1 75) 100%)', sunRadial: 'radial-gradient(circle, oklch(90% 0.1 80) 0%, oklch(85% 0.13 65) 55%, transparent 75%)', sunShadow: '0 0 90px 30px oklch(75% 0.13 65 / 0.5)', tint: 'oklch(55% 0.05 40 / 0.08)' },
+      night: { grad: 'linear-gradient(180deg, oklch(14% 0.03 270) 0%, oklch(20% 0.04 265) 45%, oklch(26% 0.045 260) 68%, oklch(30% 0.03 255) 100%)', sunRadial: 'radial-gradient(circle, oklch(90% 0.02 260) 0%, oklch(80% 0.03 260) 55%, transparent 75%)', sunShadow: '0 0 60px 20px oklch(75% 0.03 260 / 0.35)', tint: 'oklch(15% 0.03 260 / 0.4)' }
+    };
+    const sky = skyPresets[this.props.skyMood] ?? skyPresets.dusk;
+
+    const glass = (this.props.panelStyle ?? 'glass') === 'glass';
+    const panelBlur = glass ? 'blur(3px)' : 'none';
+    const panelBg1 = glass ? 'oklch(24% 0.015 95 / 0.55)' : 'oklch(20% 0.012 95 / 0.97)';
+    const panelBg2 = glass ? 'oklch(27% 0.02 95 / 0.65)' : 'oklch(23% 0.016 95 / 0.98)';
+    const tabBarBg = glass ? 'oklch(22% 0.016 95 / 0.7)' : 'oklch(19% 0.013 95 / 0.98)';
+    const tabBarBlur = glass ? 'blur(4px)' : 'none';
+
     const spWorlds = this.spData.map(w => ({
       ...w, selected: w.id === this.state.selectedSP, notSelected: w.id !== this.state.selectedSP,
       toggle: () => this.toggleSP(w.id)
     }));
-    const mpWorlds = this.mpData.map(s => ({
-      ...s, selected: s.id === this.state.selectedMP, notSelected: s.id !== this.state.selectedMP,
-      toggle: () => this.toggleMP(s.id)
-    }));
+    const mpWorlds = this.mpData.map(s => {
+      const onlineFriends = this.friendsData.filter(f => f.online && f.status.includes(s.name));
+      const extraCount = Math.max(0, onlineFriends.length - 2);
+      return {
+        ...s, selected: s.id === this.state.selectedMP, notSelected: s.id !== this.state.selectedMP,
+        toggle: () => this.toggleMP(s.id),
+        onlineFriendsShown: onlineFriends.slice(0, 2), hasFriendsOnline: onlineFriends.length > 0,
+        hasExtraFriends: extraCount > 0, extraFriendsLabel: `+${extraCount}`
+      };
+    });
     const friends = this.friendsData.map(f => ({
-      ...f, borderColor: f.online ? 'oklch(65% 0.13 145)' : 'oklch(48% 0.01 95)'
+      ...f, borderColor: f.online ? accentBright : 'oklch(48% 0.01 95)'
     }));
     const expandedFlag = this.state.sidebarExpanded;
     const active = this.state.selectedTab;
@@ -507,8 +870,8 @@ class Component extends DCLogic {
       const equipped = w.id === equippedBySlot[w.slot];
       return {
         ...w, equip: () => this.equipWardrobe(w.id, w.slot),
-        borderColor: equipped ? 'oklch(65% 0.13 145)' : 'oklch(30% 0.015 95)',
-        statusColor: equipped ? 'oklch(70% 0.13 145)' : 'oklch(62% 0.02 95)',
+        borderColor: equipped ? accentBright : 'oklch(30% 0.015 95)',
+        statusColor: equipped ? accentBright : 'oklch(62% 0.02 95)',
         statusLabel: equipped ? 'Equipped' : 'Owned'
       };
     });
@@ -526,7 +889,7 @@ class Component extends DCLogic {
       };
     });
 
-    const moss = 'oklch(65% 0.13 145)';
+    const moss = accentBright;
     const tabs = this.tabDefs.map(t => {
       const isActive = active === t.id;
       return {
@@ -539,6 +902,104 @@ class Component extends DCLogic {
         iconRadius: t.id === 'store' || t.id === 'wardrobe' ? 'border-radius:4px;' : 'border-radius:50%;'
       };
     });
+
+    const activityRows = this.activityData.map(a => ({
+      ...a,
+      isAnnouncement: a.kind === 'announcement', notAnnouncement: a.kind !== 'announcement',
+      kindLabel: a.kind === 'announcement' ? 'Announcement' : a.kind === 'achievement' ? 'Achievement' : 'Screenshot',
+      hasThumb: a.kind === 'screenshot',
+      openShot: a.kind === 'screenshot' ? () => this.openScreenshot(a.id) : undefined,
+      rowCursor: a.kind === 'screenshot' ? 'pointer' : 'default'
+    }));
+    const activeScreenshot = this.activityData.find(a => a.id === this.state.screenshotViewerId);
+    const screenshotOpen = !!activeScreenshot;
+    const recentItems = this.recentDefs.map(r => {
+      if (r.kind === 'world') {
+        const w = this.spData.find(x => x.id === r.id);
+        return { kind:'world', name:w.name, sub:`${w.mode} · ${w.difficulty}`, lastPlayed:w.lastPlayed, tile1:w.tile1, tile2:w.tile2, tile3:w.tile3, tile4:w.tile4, actionLabel:'Play', action:() => this.selectTab('worlds') };
+      }
+      const s = this.mpData.find(x => x.id === r.id);
+      const onlineFriends = this.friendsData.filter(f => f.online && f.status.includes(s.name));
+      const extraCount = Math.max(0, onlineFriends.length - 2);
+      return { kind:'server', name:s.name, sub:s.address, lastPlayed:s.lastPlayed, tile1:s.tile1, tile2:s.tile2, tile3:s.tile3, tile4:s.tile4, actionLabel:'Connect', action:() => this.selectTab('servers'), onlineFriendsShown: onlineFriends.slice(0, 2), hasFriendsOnline: onlineFriends.length > 0, hasExtraFriends: extraCount > 0, extraFriendsLabel: `+${extraCount}` };
+    });
+    const featuredStore = this.storeData.filter(it => it.featured);
+    const carouselIdx = this.state.carouselIndex % featuredStore.length;
+    const carouselItem = featuredStore[carouselIdx];
+    const carouselDots = featuredStore.map((it, i) => ({ id: it.id, active: i === carouselIdx ? accentBase : 'oklch(40% 0.015 95)', select: () => this.setCarouselIndex(i) }));
+
+    const statCategories = this.statCategoryDefs.map(c => {
+      const isActive = this.state.statCategory === c;
+      return {
+        label: c, select: () => this.selectStatCategory(c),
+        bg: isActive ? accentBase : 'oklch(28% 0.015 95 / 0.5)',
+        textColor: isActive ? 'oklch(15% 0.02 95)' : 'oklch(85% 0.01 95)',
+        border: isActive ? accentBase : 'oklch(34% 0.015 95)'
+      };
+    });
+    const statRows = (this.statsData[this.state.statCategory] ?? []).map((row, i) => ({
+      ...row, rowBg: i % 2 === 0 ? 'transparent' : 'oklch(26% 0.012 95 / 0.4)'
+    }));
+    const fmt = (n) => n.toLocaleString();
+    const isItemsTable = this.state.statCategory === 'Items';
+    const isMobsTable = this.state.statCategory === 'Mobs';
+
+    const iSk = this.state.itemSortKey, iSd = this.state.itemSortDir === 'asc' ? 1 : -1;
+    const sortedItems = [...this.itemStatsData].sort((a, b) => {
+      const av = a[iSk], bv = b[iSk];
+      if (typeof av === 'string') return av.localeCompare(bv) * iSd;
+      return (av - bv) * iSd;
+    });
+    const itemArrow = (key) => this.state.itemSortKey === key ? (this.state.itemSortDir === 'asc' ? ' ▲' : ' ▼') : '';
+    const itemColumns = [
+      { key:'mined', label:'Mined' }, { key:'broken', label:'Broken' }, { key:'crafted', label:'Crafted' },
+      { key:'used', label:'Used' }, { key:'pickedUp', label:'Picked Up' }, { key:'dropped', label:'Dropped' }
+    ].map(c => ({ ...c, label: c.label + itemArrow(c.key), select: () => this.sortItemsBy(c.key) }));
+    const itemStatRows = sortedItems.map((it, i) => ({
+      ...it, rowBg: i % 2 === 0 ? 'transparent' : 'oklch(26% 0.012 95 / 0.4)',
+      minedLabel: fmt(it.mined), brokenLabel: fmt(it.broken), craftedLabel: fmt(it.crafted),
+      usedLabel: fmt(it.used), pickedUpLabel: fmt(it.pickedUp), droppedLabel: fmt(it.dropped)
+    }));
+
+    const mSk = this.state.mobSortKey, mSd = this.state.mobSortDir === 'asc' ? 1 : -1;
+    const sortedMobs = [...this.mobStatsData].sort((a, b) => {
+      const av = a[mSk], bv = b[mSk];
+      if (typeof av === 'string') return av.localeCompare(bv) * mSd;
+      return (av - bv) * mSd;
+    });
+    const mobArrow = (key) => this.state.mobSortKey === key ? (this.state.mobSortDir === 'asc' ? ' ▲' : ' ▼') : '';
+    const mobColumns = [
+      { key:'name', label:'Mob' }, { key:'killedBy', label:'Killed By' }, { key:'killed', label:'Killed' }
+    ].map(c => ({ ...c, label: c.label + mobArrow(c.key), select: () => this.sortMobsBy(c.key) }));
+
+    const mobStatRows = sortedMobs.map((m, i) => ({
+      ...m, rowBg: i % 2 === 0 ? 'transparent' : 'oklch(26% 0.012 95 / 0.4)', killedLabel: fmt(m.killed), killedByLabel: fmt(m.killedBy)
+    }));
+
+    const achievementFilters = this.achievementFilterDefs.map(f => {
+      const isActive = this.state.achievementsFilter === f;
+      return {
+        label: f, select: () => this.selectAchievementFilter(f),
+        bg: isActive ? accentBase : 'oklch(28% 0.015 95 / 0.5)',
+        textColor: isActive ? 'oklch(15% 0.02 95)' : 'oklch(85% 0.01 95)',
+        border: isActive ? accentBase : 'oklch(34% 0.015 95)'
+      };
+    });
+    const achFilter = this.state.achievementsFilter;
+    const achievementRows = this.achievementsData
+      .filter(a => achFilter === 'All' || (achFilter === 'Unlocked' ? a.unlocked : !a.unlocked))
+      .map(a => ({
+        ...a,
+        notUnlocked: !a.unlocked,
+        rowOpacity: a.unlocked ? '1' : '0.75',
+        showCheck: a.unlocked,
+        showLock: !a.unlocked && !a.tracking,
+        showProgress: !a.unlocked && a.tracking,
+        progressPct: a.tracking ? `${Math.min(100, Math.round((a.current / a.target) * 100))}%` : '0%',
+        progressLabel: a.tracking ? `${a.current.toLocaleString()} / ${a.target.toLocaleString()}` : ''
+      }));
+    const achievementsUnlockedCount = this.achievementsData.filter(a => a.unlocked).length;
+    const achievementsUnlockedLabel = `${achievementsUnlockedCount} / ${this.achievementsData.length} unlocked`;
 
     const isSavedView = this.state.serverView === 'saved';
 
@@ -571,15 +1032,24 @@ class Component extends DCLogic {
       latencyFilter: this.state.latencyFilter,
       onLatencyFilterChange: (e) => this.setLatencyFilter(e.target.value),
       hideFull: this.state.hideFull, toggleHideFull: () => this.toggleHideFull(),
-      hideFullBg: this.state.hideFull ? 'oklch(58% 0.1 145)' : 'oklch(34% 0.015 95)',
+      hideFullBg: this.state.hideFull ? accentBase : 'oklch(34% 0.015 95)',
       hideFullKnob: this.state.hideFull ? '17px' : '1px',
       hidePassword: this.state.hidePassword, toggleHidePassword: () => this.toggleHidePassword(),
-      hidePasswordBg: this.state.hidePassword ? 'oklch(58% 0.1 145)' : 'oklch(34% 0.015 95)',
+      hidePasswordBg: this.state.hidePassword ? accentBase : 'oklch(34% 0.015 95)',
       hidePasswordKnob: this.state.hidePassword ? '17px' : '1px',
+      accentBase, accentHover, accentBright, accentAvatar, accentBannerGrad, accentBannerBorder,
+      skyGrad: sky.grad, sunRadial: sky.sunRadial, sunShadow: sky.sunShadow, skyTint: sky.tint,
+      panelBg1, panelBg2, panelBlur, tabBarBg, tabBarBlur,
       joinPolicy: this.state.joinPolicy, onJoinPolicyChange: (e) => this.setJoinPolicy(e.target.value),
       spWorlds, mpWorlds, friends, storeItems, wardrobeItems, slots, selectedSlotLabel: selectedSlot, tabs,
+      isHome: active === 'home', greeting: this.state.greeting, activityRows, recentItems,
+      carouselItem, carouselDots, openStore: () => this.selectTab('store'),
+      screenshotOpen, activeScreenshot, closeScreenshot: () => this.closeScreenshot(), stopClickX: (e) => this.stopClick(e),
       isWorlds: active === 'worlds', isServers: active === 'servers',
       isStore: active === 'store', isWardrobe: active === 'wardrobe',
+      isAchievements: active === 'achievements', achievementFilters, achievementRows, achievementsUnlockedLabel,
+      isStats: active === 'stats', statCategories, statRows, itemStatRows, isItemsTable,
+      mobStatRows, isMobsTable, notTable: !isItemsTable && !isMobsTable, itemColumns, mobColumns,
       isSavedView, isBrowserView: !isSavedView,
       serverPanelTitle: isSavedView ? 'Multiplayer Servers' : 'Server Browser',
       serverToggleLabel: isSavedView ? 'Browse Servers' : 'My Servers',
@@ -596,8 +1066,8 @@ class Component extends DCLogic {
       closeAddServer: () => this.closeAddServer(),
       doRefresh: () => this.doRefresh(),
       stopClick: (e) => this.stopClick(e),
-      centerBg: active ? 'oklch(21% 0.015 95 / 0.55)' : 'transparent',
-      centerBlur: active ? 'blur(6px)' : 'none',
+      centerBg: active ? panelBg1 : 'transparent',
+      centerBlur: active ? (glass ? 'blur(6px)' : 'none') : 'none',
       centerPadding: active ? '36px 32px' : '0px',
       expandedFlag,
       expanded: expandedFlag ? '320px' : '84px',
