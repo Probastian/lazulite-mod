@@ -24,10 +24,13 @@ import java.util.stream.Collectors;
  * resolved {@code steamworks4j} fork jar only wraps
  * {@code getNumAchievements}/{@code getAchievementName}/{@code isAchieved} --
  * no display-attribute (localized name/description), icon, unlock-time, or
- * progress-limits binding exists. Rows therefore show Valve's raw API name
- * (not a display name) plus a locked/unlocked indicator only -- no
- * description, no icon, no progress bar (the v1 scope reduction FR-F1.2
- * explicitly allows when progress data isn't available).
+ * progress-limits binding exists. Rows for unmapped achievements therefore
+ * still show Valve's raw API name plus a locked/unlocked indicator only; rows
+ * for achievements in {@code SpacewarAchievementMapping} additionally show a
+ * display name/description/icon, and -- for the subset with a
+ * {@code ProgressInfo} -- a progress bar sourced from the jar's
+ * {@code getStatI}/{@code getStatF} bindings against a hardcoded threshold
+ * (the threshold itself isn't queryable from Steam).
  */
 public final class AchievementsPanel {
 
@@ -91,22 +94,26 @@ public final class AchievementsPanel {
             if (rowY + ROW_HEIGHT > y + height) {
                 break;
             }
-            boolean hovered = mouseX >= x && mouseX <= x + width && mouseY >= rowY && mouseY <= rowY + ROW_HEIGHT;
-            context.fill(x, rowY, x + width, rowY + ROW_HEIGHT, hovered ? 0xFF2A2820 : 0xFF201E17);
+            boolean hovered = mouseX >= leftX && mouseX <= x + width - CONTENT_LEFT_PAD && mouseY >= rowY && mouseY <= rowY + ROW_HEIGHT;
+            context.fill(leftX, rowY, x + width - CONTENT_LEFT_PAD, rowY + ROW_HEIGHT, hovered ? 0xFF2A2820 : 0xFF201E17);
             // BF5: mapped achievements show a friendlier display name +
             // description; unmapped ones keep the existing raw-apiName-only
             // rendering, byte-for-byte.
             SpacewarAchievementMapping.AchievementMetadata meta = SpacewarAchievementMapping.MAPPING.get(a.apiName());
-            int textX = leftX + 8;
+            // post-launch-fixes-4 FR3.1/FR3.4: flush against the row's own
+            // left edge whether or not an icon actually renders, so
+            // icon-present and icon-absent rows share one consistent left
+            // position (icon-present rows override this below once the icon
+            // width is known).
+            int textX = leftX;
             if (meta != null && meta.iconAssetPath() != null) {
                 Identifier iconId = resolveIconId(meta.iconAssetPath());
                 if (iconId != null
                         && net.minecraft.client.MinecraftClient.getInstance().getResourceManager().getResource(iconId).isPresent()) {
-                    int iconSize = ROW_HEIGHT - 8;
-                    int iconY = rowY + (ROW_HEIGHT - iconSize) / 2;
-                    context.drawTexture(RenderPipelines.GUI_TEXTURED, iconId, textX, iconY, 0f, 0f,
+                    int iconSize = ROW_HEIGHT;
+                    context.drawTexture(RenderPipelines.GUI_TEXTURED, iconId, leftX, rowY, 0f, 0f,
                             iconSize, iconSize, iconSize, iconSize);
-                    textX += iconSize + 6;
+                    textX = leftX + iconSize + 6;
                 }
             }
             if (meta != null) {
@@ -115,12 +122,44 @@ public final class AchievementsPanel {
             } else {
                 context.drawText(font, Text.literal(a.apiName()), textX, rowY + 4, 0xFFEAE8E1, false);
             }
-            String status = a.unlocked() ? "✓ Unlocked" : "🔒 Locked";
-            int statusColor = a.unlocked() ? 0xFF528A54 : 0xFF908C7F;
-            int statusWidth = font.getWidth(status);
-            context.drawText(font, Text.literal(status), x + width - statusWidth - 8, rowY + 4, statusColor, false);
+            if (!a.unlocked() && meta != null && meta.progress() != null) {
+                renderProgress(context, font, meta.progress(), x + width - 8, rowY + 4);
+            } else {
+                String status = a.unlocked() ? "✓ Unlocked" : "🔒 Locked";
+                int statusColor = a.unlocked() ? 0xFF528A54 : 0xFF908C7F;
+                int statusWidth = font.getWidth(status);
+                context.drawText(font, Text.literal(status), x + width - statusWidth - 8, rowY + 4, statusColor, false);
+            }
             rowY += ROW_HEIGHT + 2;
         }
+    }
+
+    /**
+     * BF-6: draws a progress bar + "current / max unit" label for a
+     * stat-backed achievement (e.g. "42,318 / 100,000 ft") in place of the
+     * "Locked" status text, sourcing the current value from {@link #gateway}
+     * -- the threshold itself comes from {@code progress} since Steam
+     * doesn't expose it (see {@code SteamworksSteamAchievementsGateway}'s
+     * Javadoc). {@code rightEdge} is the x-coordinate the bar+label are
+     * right-aligned against.
+     */
+    private void renderProgress(DrawContext context, TextRenderer font, SpacewarAchievementMapping.ProgressInfo progress, int rightEdge, int lineY) {
+        int current = progress.floatStat()
+                ? Math.round(gateway.statValueFloat(progress.statApiName()))
+                : gateway.statValueInt(progress.statApiName());
+        current = Math.max(0, Math.min(current, progress.maxValue()));
+        int barWidth = 64;
+        int barHeight = 6;
+        String label = String.format("%,d / %,d %s", current, progress.maxValue(), progress.unit());
+        int labelWidth = font.getWidth(label);
+        int barX = rightEdge - labelWidth - 6 - barWidth;
+        int barY = lineY + 2;
+        context.fill(barX, barY, barX + barWidth, barY + barHeight, 0xFF141210);
+        int filledWidth = progress.maxValue() > 0 ? (int) ((long) barWidth * current / progress.maxValue()) : 0;
+        if (filledWidth > 0) {
+            context.fill(barX, barY, barX + filledWidth, barY + barHeight, 0xFF528A54);
+        }
+        context.drawText(font, Text.literal(label), rightEdge - labelWidth, lineY, 0xFF908C7F, false);
     }
 
     /** @return true if this click was consumed by a filter pill in this panel. */

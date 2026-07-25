@@ -33,19 +33,45 @@ public final class SpacewarAchievementMapping {
      * @param description   human-readable achievement description
      * @param iconAssetPath an {@code assets/lazuli/textures/achievements/<apiName>.png}-shaped
      *                      relative path, or {@code null} if no icon is bundled
+     * @param progress      the backing Steam stat and threshold to render a
+     *                      progress bar for, or {@code null} for a plain
+     *                      boolean (locked/unlocked) achievement. The
+     *                      threshold isn't queryable from Steam (no
+     *                      progress-limits accessor in the resolved
+     *                      {@code steamworks4j} fork jar -- see
+     *                      {@code SteamworksSteamAchievementsGateway}'s
+     *                      Javadoc) so it's Valve's own publicly documented
+     *                      Spacewar sample value, hardcoded here alongside
+     *                      the rest of this static mapping.
      */
-    public record AchievementMetadata(String displayName, String description, String iconAssetPath) { }
+    public record AchievementMetadata(String displayName, String description, String iconAssetPath, ProgressInfo progress) { }
+
+    /**
+     * @param statApiName Valve's raw, integer- or float-valued stat API name
+     *                    backing this achievement's progress (e.g.
+     *                    {@code "FeetTraveled"})
+     * @param floatStat   whether the stat is float-valued (read via
+     *                    {@code statValueFloat}) rather than integer-valued
+     *                    (read via {@code statValueInt})
+     * @param maxValue    the threshold value at which the achievement unlocks
+     * @param unit        short unit suffix for display (e.g. {@code "ft"}),
+     *                    may be empty
+     */
+    public record ProgressInfo(String statApiName, boolean floatStat, int maxValue, String unit) { }
 
     public static final Map<String, AchievementMetadata> MAPPING = Map.of(
             "ACH_WIN_ONE_GAME", new AchievementMetadata(
-                    "Winner", "Win one game of Spacewar", "lazuli:textures/achievements/ach_win_one_game.png"),
+                    "Winner", "Win one game of Spacewar", "lazuli:textures/achievements/ach_win_one_game.png", null),
             "ACH_WIN_100_GAMES", new AchievementMetadata(
-                    "Champion", "Win 100 games of Spacewar", "lazuli:textures/achievements/ach_win_100_games.png"),
+                    "Champion", "Win 100 games of Spacewar", "lazuli:textures/achievements/ach_win_100_games.png",
+                    new ProgressInfo("NumWins", false, 100, "wins")),
             "ACH_TRAVEL_FAR_ACCUM", new AchievementMetadata(
-                    "Interstellar", "Travel 100,000 feet", "lazuli:textures/achievements/ach_travel_far_accum.png"),
+                    "Interstellar", "Travel 100,000 feet", "lazuli:textures/achievements/ach_travel_far_accum.png",
+                    new ProgressInfo("FeetTraveled", true, 100000, "ft")),
             "ACH_TRAVEL_FAR_SINGLE", new AchievementMetadata(
-                    "Rocket Man", "Travel 5,000 feet in a single game", "lazuli:textures/achievements/ach_travel_far_single.png"),
+                    "Rocket Man", "Travel 5,000 feet in a single game", "lazuli:textures/achievements/ach_travel_far_single.png",
+                    new ProgressInfo("MaxFeetTraveled", true, 5000, "ft")),
             "ACH_SPECIAL_ACHIEVEMENT", new AchievementMetadata(
-                    "Sunburned", "Land on the sun", "lazuli:textures/achievements/ach_special_achievement.png")
+                    "Sunburned", "Land on the sun", "lazuli:textures/achievements/ach_special_achievement.png", null)
     );
 }

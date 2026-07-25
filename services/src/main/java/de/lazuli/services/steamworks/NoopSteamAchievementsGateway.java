@@ -15,4 +15,14 @@ public final class NoopSteamAchievementsGateway implements SteamAchievementsGate
     public List<AchievementSummary> achievements() {
         return List.of();
     }
+
+    @Override
+    public int statValueInt(String statApiName) {
+        return 0;
+    }
+
+    @Override
+    public float statValueFloat(String statApiName) {
+        return 0f;
+    }
 }

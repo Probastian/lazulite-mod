@@ -26,4 +26,20 @@ public interface SteamAchievementsGateway {
      *         order; empty if unavailable. Never throws.
      */
     List<AchievementSummary> achievements();
+
+    /**
+     * @param statApiName Valve's raw, integer-valued stat API name (e.g.
+     *                    {@code "NumWins"})
+     * @return the local player's current value for that stat, or {@code 0} if
+     *         unavailable. Never throws.
+     */
+    int statValueInt(String statApiName);
+
+    /**
+     * @param statApiName Valve's raw, float-valued stat API name (e.g.
+     *                    {@code "FeetTraveled"})
+     * @return the local player's current value for that stat, or {@code 0} if
+     *         unavailable. Never throws.
+     */
+    float statValueFloat(String statApiName);
 }

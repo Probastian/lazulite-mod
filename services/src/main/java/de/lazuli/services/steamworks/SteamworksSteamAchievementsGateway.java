@@ -27,6 +27,14 @@ import java.util.function.Consumer;
  * {@link #achievements()} therefore returns Valve's raw achievement API names
  * and real unlocked/locked status only -- see {@link AchievementSummary}'s own
  * Javadoc for the full data-availability note.
+ *
+ * <p>The jar does bind {@code getStatI}/{@code getStatF}, so per-achievement
+ * progress toward a threshold (e.g. Spacewar's {@code ACH_TRAVEL_FAR_ACCUM})
+ * is sourced by reading the backing stat's current value via
+ * {@link #statValueInt(String)}/{@link #statValueFloat(String)}; the
+ * threshold itself isn't queryable (no progress-limits accessor) and is
+ * supplied by the caller (see {@code SpacewarAchievementMapping}'s
+ * {@code ProgressInfo}).
  */
 public final class SteamworksSteamAchievementsGateway implements SteamAchievementsGateway {
 
@@ -65,6 +73,26 @@ public final class SteamworksSteamAchievementsGateway implements SteamAchievemen
         } catch (RuntimeException e) {
             warn("Failed to read Steam achievements: " + e.getMessage());
             return List.of();
+        }
+    }
+
+    @Override
+    public int statValueInt(String statApiName) {
+        try {
+            return steamUserStats.getStatI(statApiName, 0);
+        } catch (RuntimeException e) {
+            warn("Failed to read Steam stat " + statApiName + ": " + e.getMessage());
+            return 0;
+        }
+    }
+
+    @Override
+    public float statValueFloat(String statApiName) {
+        try {
+            return steamUserStats.getStatF(statApiName, 0f);
+        } catch (RuntimeException e) {
+            warn("Failed to read Steam stat " + statApiName + ": " + e.getMessage());
+            return 0f;
         }
     }
 
