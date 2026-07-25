@@ -138,7 +138,17 @@ public final class MainMenuStoreOwnershipChecker implements OwnershipChecker {
                     warn("SteamInventory result not OK: " + status);
                     return;
                 }
+                // The fork's native getResultItems (SteamInventoryNative.java's
+                // jnigen glue) writes into each array slot via GetObjectArrayElement
+                // + Set*Field on an existing object -- it does not construct new
+                // SteamItemDetails instances itself. A plain `new SteamItemDetails[256]`
+                // array of nulls therefore causes the native code to dereference a
+                // null jobject, crashing the JVM (EXCEPTION_ACCESS_VIOLATION). Every
+                // slot must be pre-populated with a live instance before the call.
                 SteamItemDetails[] buffer = new SteamItemDetails[256];
+                for (int i = 0; i < buffer.length; i++) {
+                    buffer[i] = new SteamItemDetails();
+                }
                 int count = steamInventory.getResultItems(result, buffer);
                 Set<Integer> owned = new HashSet<>();
                 for (int i = 0; i < count; i++) {
