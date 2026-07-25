@@ -56,7 +56,7 @@ public final class StatisticsPanel {
 
     private record ItemRow(Item item, String name, long mined, long broken, long crafted, long used, long pickedUp, long dropped) { }
 
-    private record MobRow(String name, long killedBy, long killed) { }
+    private record MobRow(String name, Item spawnEggItem, long killedBy, long killed) { }
 
     private Category category = Category.GENERAL;
     private SortColumn sortColumn = SortColumn.A;
@@ -75,6 +75,49 @@ public final class StatisticsPanel {
     private long lastFailureLogTimeMs;
     private static final long FAILURE_LOG_THROTTLE_MS = 1000L;
 
+    /** Guards {@link #ensureItemComponentsBound()} so it only ever runs once per client lifetime. */
+    private static boolean itemComponentsBootstrapAttempted;
+
+    /**
+     * Item icon rendering (via {@code guiGraphics.item(ItemStack, ...)}) needs
+     * every {@code Item}'s {@code Holder.Reference} components bound, which
+     * vanilla normally only does once a world is joined (even singleplayer
+     * spins up a real integrated server, whose registry-sync path is what
+     * actually calls {@code Holder.Reference.bindComponents(...)}) --
+     * unreachable from a bare main menu, causing a
+     * {@code NullPointerException: Components not bound yet} the first time
+     * this panel tries to render an item icon before any world has loaded
+     * this session.
+     *
+     * <p>Rather than replicate that registry-sync machinery, this uses the
+     * same official, world-independent path Mojang's own data generators use
+     * to compute default item components -- {@link
+     * net.minecraft.data.registries.VanillaRegistries#createLookup()} builds
+     * a pure in-memory vanilla registry snapshot, and {@code
+     * BuiltInRegistries.DATA_COMPONENT_INITIALIZERS.build(...)} bakes and
+     * (via each {@code PendingComponents.apply()}) binds every item's default
+     * component map from it. {@code Holder.Reference.bindComponents(...)} is
+     * a plain, unconditional field write (confirmed via decompilation) with
+     * no "already bound" guard, so calling this early is always safe: if a
+     * world is joined later, vanilla's own real (possibly datapack-influenced)
+     * bind simply overwrites these vanilla-only defaults, exactly as if this
+     * had never run.
+     */
+    private static void ensureItemComponentsBound() {
+        if (itemComponentsBootstrapAttempted) {
+            return;
+        }
+        itemComponentsBootstrapAttempted = true;
+        try {
+            var provider = net.minecraft.data.registries.VanillaRegistries.createLookup();
+            for (var pending : BuiltInRegistries.DATA_COMPONENT_INITIALIZERS.build(provider)) {
+                pending.apply();
+            }
+        } catch (RuntimeException e) {
+            LazuliMod.LOGGER.warn("Failed to pre-bind item components for early icon rendering: " + e);
+        }
+    }
+
     /**
      * Called when the Statistics tab becomes active; cheap to call repeatedly
      * (idempotent after first successful load). If any save's stats could not
@@ -84,6 +127,7 @@ public final class StatisticsPanel {
      * on every subsequent render call until a load genuinely succeeds.
      */
     public void reload() {
+        ensureItemComponentsBound();
         Set<String> saveFolderNames = CrossWorldStatsBridgeHandoff.require().localWorldIdsForCurrentAccount();
 
         // category -> stat key -> summed value, across every resolved local save.
@@ -172,7 +216,10 @@ public final class StatisticsPanel {
             if (killedByV == 0 && killedV == 0) {
                 continue; // FR-F5.6: omit all-zero rows.
             }
-            mobs.add(new MobRow(entityType.getDescription().getString(), killedByV, killedV));
+            Item spawnEggItem = net.minecraft.world.item.SpawnEggItem.byId(entityType)
+                    .map(holder -> holder.value())
+                    .orElse(null);
+            mobs.add(new MobRow(entityType.getDescription().getString(), spawnEggItem, killedByV, killedV));
         }
         this.mobRows = mobs;
 
@@ -302,8 +349,7 @@ public final class StatisticsPanel {
             if (rowY + ROW_HEIGHT > y + height) {
                 break;
             }
-            guiGraphics.fill(x + CONTENT_LEFT_PAD, rowY + 3, x + CONTENT_LEFT_PAD + 8, rowY + 15, 0xFF528A54);
-            guiGraphics.text(font, Component.literal(row.label()), x + CONTENT_LEFT_PAD + 14, rowY + 4, 0xFFEAE8E1);
+            guiGraphics.text(font, Component.literal(row.label()), x + CONTENT_LEFT_PAD, rowY + 4, 0xFFEAE8E1);
             int valueWidth = font.width(row.value());
             guiGraphics.text(font, Component.literal(row.value()), x + width - valueWidth - 4, rowY + 4, 0xFF908C7F);
             rowY += ROW_HEIGHT;
@@ -339,10 +385,11 @@ public final class StatisticsPanel {
                 guiGraphics.fill(x, rowY, x + width, rowY + ROW_HEIGHT, hovered ? 0xFF2A2820 : 0xFF201E17);
                 try {
                     guiGraphics.item(new ItemStack(row.item()), x + CONTENT_LEFT_PAD, rowY + 2);
-                } catch (RuntimeException ignored) {
+                } catch (RuntimeException e) {
                     // Some registered items' components can be unbound at render time
                     // (e.g. certain placeholder/template entries) -- skip the icon
                     // rather than crashing the whole screen over cosmetic art.
+                    logFailureThrottled("icon for " + row.name(), e);
                 }
                 guiGraphics.text(font, Component.literal(row.name()), x + CONTENT_LEFT_PAD + 16, rowY + 6, 0xFFEAE8E1);
                 drawColValue(guiGraphics, font, x, width, rowY, 6, 0, row.mined());
@@ -371,7 +418,15 @@ public final class StatisticsPanel {
             if (rowY + ROW_HEIGHT > viewportTop && rowY < viewportBottom) {
                 boolean hovered = mouseX >= x && mouseX <= x + width && mouseY >= rowY && mouseY <= rowY + ROW_HEIGHT;
                 guiGraphics.fill(x, rowY, x + width, rowY + ROW_HEIGHT, hovered ? 0xFF2A2820 : 0xFF201E17);
-                guiGraphics.fill(x + CONTENT_LEFT_PAD + 2, rowY + 3, x + CONTENT_LEFT_PAD + 10, rowY + 15, 0xFFB54848);
+                if (row.spawnEggItem() != null) {
+                    try {
+                        guiGraphics.item(new ItemStack(row.spawnEggItem()), x + CONTENT_LEFT_PAD, rowY + 2);
+                    } catch (RuntimeException e) {
+                        // See renderItems() -- same defensive skip for icons whose
+                        // components aren't bound at render time.
+                        logFailureThrottled("spawn egg icon for " + row.name(), e);
+                    }
+                }
                 guiGraphics.text(font, Component.literal(row.name()), x + CONTENT_LEFT_PAD + 16, rowY + 6, 0xFFEAE8E1);
                 drawColValue(guiGraphics, font, x, width, rowY, 2, 0, row.killedBy());
                 drawColValue(guiGraphics, font, x, width, rowY, 2, 1, row.killed());

@@ -61,7 +61,7 @@ public final class StatisticsPanel {
 
     private record ItemRow(Item item, String name, long mined, long broken, long crafted, long used, long pickedUp, long dropped) { }
 
-    private record MobRow(String name, long killedBy, long killed) { }
+    private record MobRow(String name, Item spawnEggItem, long killedBy, long killed) { }
 
     private Category category = Category.GENERAL;
     private SortColumn sortColumn = SortColumn.A;
@@ -177,7 +177,7 @@ public final class StatisticsPanel {
             if (killedByV == 0 && killedV == 0) {
                 continue; // FR-F5.6: omit all-zero rows.
             }
-            mobs.add(new MobRow(entityType.getName().getString(), killedByV, killedV));
+            mobs.add(new MobRow(entityType.getName().getString(), net.minecraft.item.SpawnEggItem.forEntity(entityType), killedByV, killedV));
         }
         this.mobRows = mobs;
 
@@ -310,8 +310,7 @@ public final class StatisticsPanel {
             if (rowY + ROW_HEIGHT > y + height) {
                 break;
             }
-            context.fill(x + CONTENT_LEFT_PAD, rowY + 3, x + CONTENT_LEFT_PAD + 8, rowY + 15, 0xFF528A54);
-            context.drawText(font, Text.literal(row.label()), x + CONTENT_LEFT_PAD + 14, rowY + 4, 0xFFEAE8E1, false);
+            context.drawText(font, Text.literal(row.label()), x + CONTENT_LEFT_PAD, rowY + 4, 0xFFEAE8E1, false);
             int valueWidth = font.getWidth(row.value());
             context.drawText(font, Text.literal(row.value()), x + width - valueWidth - 4, rowY + 4, 0xFF908C7F, false);
             rowY += ROW_HEIGHT;
@@ -347,10 +346,11 @@ public final class StatisticsPanel {
                 context.fill(x, rowY, x + width, rowY + ROW_HEIGHT, hovered ? 0xFF2A2820 : 0xFF201E17);
                 try {
                     context.drawItem(new ItemStack(row.item()), x + CONTENT_LEFT_PAD, rowY + 2);
-                } catch (RuntimeException ignored) {
+                } catch (RuntimeException e) {
                     // Some registered items' components can be unbound at render time
                     // (e.g. certain placeholder/template entries) -- skip the icon
                     // rather than crashing the whole screen over cosmetic art.
+                    logFailureThrottled("icon for " + row.name(), e);
                 }
                 context.drawText(font, Text.literal(row.name()), x + CONTENT_LEFT_PAD + 16, rowY + 6, 0xFFEAE8E1, false);
                 drawColValue(context, font, x, width, rowY, 6, 0, row.mined());
@@ -379,7 +379,15 @@ public final class StatisticsPanel {
             if (rowY + ROW_HEIGHT > viewportTop && rowY < viewportBottom) {
                 boolean hovered = mouseX >= x && mouseX <= x + width && mouseY >= rowY && mouseY <= rowY + ROW_HEIGHT;
                 context.fill(x, rowY, x + width, rowY + ROW_HEIGHT, hovered ? 0xFF2A2820 : 0xFF201E17);
-                context.fill(x + CONTENT_LEFT_PAD + 2, rowY + 3, x + CONTENT_LEFT_PAD + 10, rowY + 15, 0xFFB54848);
+                if (row.spawnEggItem() != null) {
+                    try {
+                        context.drawItem(new ItemStack(row.spawnEggItem()), x + CONTENT_LEFT_PAD, rowY + 2);
+                    } catch (RuntimeException e) {
+                        // See renderItems() -- same defensive skip for icons whose
+                        // components aren't bound at render time.
+                        logFailureThrottled("spawn egg icon for " + row.name(), e);
+                    }
+                }
                 context.drawText(font, Text.literal(row.name()), x + CONTENT_LEFT_PAD + 16, rowY + 6, 0xFFEAE8E1, false);
                 drawColValue(context, font, x, width, rowY, 2, 0, row.killedBy());
                 drawColValue(context, font, x, width, rowY, 2, 1, row.killed());
