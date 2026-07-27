@@ -1,0 +1,188 @@
+# Computes the next semantic version (MAJOR.MINOR.PATCH.HOTFIX) from the
+# HEAD commit's Conventional Commits type, builds all platform mod jars, and
+# — only if a version bump was actually detected — tags the commit and
+# publishes a GitHub Release with each platform's jar attached.
+#
+# Version logic (see the "compute version" step below for the full script):
+#   - MAJOR is a hardcoded constant in this file (currently 1). Bump it by
+#     hand here when you want to start a new major line.
+#   - MINOR/PATCH/HOTFIX are read from the latest git tag matching
+#     v<major>.<minor>.<patch>.<hotfix> (default v1.0.0.0 if none exists).
+#   - The HEAD commit subject is classified (case-insensitive) as one of
+#     feat / fix / hotfix / none via a Conventional Commits prefix regex.
+#       feat:   minor += 1, patch = 0, hotfix = 0
+#       fix:    patch += 1, hotfix = 0
+#       hotfix: hotfix += 1
+#       none:   no bump — release job is skipped entirely.
+#   - If the hardcoded MAJOR differs from the latest tag's major segment,
+#     the base version resets to <MAJOR>.0.0.0 before the classification
+#     bump above is applied. A bare major bump with a HEAD commit that
+#     doesn't match feat/fix/hotfix still does NOT trigger a release,
+#     since no segment actually incremented past the new baseline.
+
+name: release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      bump_detected: ${{ steps.version.outputs.bump_detected }}
+    steps:
+      - name: checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: compute version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # --- Hardcoded constant: bump by hand for a new major line. ---
+          MAJOR=1
+
+          # Latest tag matching v<major>.<minor>.<patch>.<hotfix>, default v1.0.0.0.
+          LATEST_TAG="$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n1)"
+          if [ -z "$LATEST_TAG" ]; then
+            LATEST_TAG="v1.0.0.0"
+          fi
+          echo "Latest tag: $LATEST_TAG"
+
+          VERSION_PART="${LATEST_TAG#v}"
+          IFS='.' read -r TAG_MAJOR TAG_MINOR TAG_PATCH TAG_HOTFIX <<< "$VERSION_PART"
+
+          if [ "$MAJOR" != "$TAG_MAJOR" ]; then
+            echo "Hardcoded MAJOR ($MAJOR) differs from latest tag major ($TAG_MAJOR) - starting new major line."
+            MINOR=0
+            PATCH=0
+            HOTFIX=0
+          else
+            MINOR="$TAG_MINOR"
+            PATCH="$TAG_PATCH"
+            HOTFIX="$TAG_HOTFIX"
+          fi
+
+          # HEAD commit subject (first line). %B (full body) is available too
+          # if you want to broaden the classification beyond the subject.
+          SUBJECT="$(git log -1 --pretty=%s)"
+          echo "HEAD subject: $SUBJECT"
+
+          BUMP_DETECTED=false
+
+          if echo "$SUBJECT" | grep -qiE '^feat(\(.+\))?!?:'; then
+            MINOR=$((MINOR + 1))
+            PATCH=0
+            HOTFIX=0
+            BUMP_DETECTED=true
+            echo "Classified as: feat"
+          elif echo "$SUBJECT" | grep -qiE '^fix(\(.+\))?!?:'; then
+            PATCH=$((PATCH + 1))
+            HOTFIX=0
+            BUMP_DETECTED=true
+            echo "Classified as: fix"
+          elif echo "$SUBJECT" | grep -qiE '^hotfix(\(.+\))?!?:'; then
+            HOTFIX=$((HOTFIX + 1))
+            BUMP_DETECTED=true
+            echo "Classified as: hotfix"
+          else
+            echo "Classified as: none (no recognized conventional-commit prefix) - skipping release."
+          fi
+
+          VERSION="${MAJOR}.${MINOR}.${PATCH}.${HOTFIX}"
+          TAG="v${VERSION}"
+
+          echo "Computed version: $VERSION (bump_detected=$BUMP_DETECTED)"
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "bump_detected=$BUMP_DETECTED" >> "$GITHUB_OUTPUT"
+
+      # Only JDK 21 is installed directly here (the root build.gradle sets
+      # sourceCompatibility/toolchain 21 for api/common/services/features/*,
+      # and platform/fabric-1.21.11 uses that same default). The
+      # platform/fabric-26.1 and platform/fabric-26.2 modules override their
+      # own toolchain to JDK 25, but settings.gradle applies the
+      # org.gradle.toolchains.foojay-resolver-convention plugin, so Gradle
+      # auto-downloads that JDK 25 toolchain itself during the build below —
+      # no need to install/matrix a second JDK here.
+      - name: setup jdk
+        if: steps.version.outputs.bump_detected == 'true'
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: make gradle wrapper executable
+        if: steps.version.outputs.bump_detected == 'true'
+        run: chmod +x ./gradlew
+
+      - name: setup gradle
+        if: steps.version.outputs.bump_detected == 'true'
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: build
+        if: steps.version.outputs.bump_detected == 'true'
+        run: ./gradlew build
+
+      - name: stage release jars
+        if: steps.version.outputs.bump_detected == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-staging
+
+          # One platform module per supported Minecraft version. Each ships its
+          # own remapped jar (Loom's `build` task runs `remapJar` under the hood)
+          # under <module>/build/libs/*.jar, alongside a -sources.jar (and
+          # sometimes a -dev.jar) that we don't want to publish as a release asset.
+          for module in fabric-26.2 fabric-26.1 fabric-1.21.11; do
+            libs_dir="platform/${module}/build/libs"
+            if [ ! -d "$libs_dir" ]; then
+              echo "::warning::No build/libs directory for $module, skipping."
+              continue
+            fi
+            for jar in "$libs_dir"/*.jar; do
+              [ -e "$jar" ] || continue
+              base="$(basename "$jar")"
+              case "$base" in
+                *-sources.jar|*-dev.jar)
+                  continue
+                  ;;
+              esac
+              cp "$jar" "release-staging/${module}-${base}"
+            done
+          done
+
+          echo "Staged release assets:"
+          ls -la release-staging
+
+      - name: tag release
+        if: steps.version.outputs.bump_detected == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "${{ steps.version.outputs.tag }}"
+          git push origin "${{ steps.version.outputs.tag }}"
+
+      - name: create github release
+        if: steps.version.outputs.bump_detected == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ steps.version.outputs.tag }}" \
+            --title "${{ steps.version.outputs.tag }}" \
+            --generate-notes \
+            release-staging/*.jar
