@@ -1,6 +1,9 @@
 package de.lazuli.mainmenu;
 
 import de.lazuli.api.mainmenu.CharacterPose;
+import de.lazuli.common.mainmenu.MainMenuMeshDefinitions;
+import de.lazuli.common.mainmenu.MainMenuPartNames;
+import de.lazuli.common.mainmenu.MeshCubeSpec;
 import de.lazuli.features.mainmenu.services.IdleCharacterAnimator;
 
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -75,7 +78,21 @@ import net.minecraft.resources.Identifier;
  * character on top) rather than one single unified 3D scene graph sharing one
  * camera -- visually equivalent for this feature's fixed-camera, non-
  * interactive background, but worth knowing if a future change wants the
- * character to e.g. cast a shadow onto the ground plane.
+ * character to e.g. cast a shadow onto the ground plane. This split, plus its
+ * own two-call parameter set, is an explicit spec Non-goal to unify further.
+ *
+ * <h2>Unified mesh module (unified-mainmenu-background)</h2>
+ * The cube geometry for both the scene and the character bones is no longer
+ * hand-encoded in this class -- it is read from {@code :common}'s
+ * {@link MainMenuMeshDefinitions#SCENERY_PARTS}/{@code CHARACTER_PARTS}, the
+ * single canonical geometry source shared by all three platform modules (see
+ * that module's own Javadoc). This class's only remaining per-platform
+ * responsibility is translating each plain-data {@link MeshCubeSpec} into a
+ * real {@link CubeListBuilder}/{@link PartPose} call -- the two-{@code skin()}
+ * -call structure itself, and this platform's own cube geometry, are
+ * unchanged from before this refactor (character bones renamed
+ * {@code torso}/{@code hair} -> {@code body}/{@code hat} to match the shared
+ * naming, not user-visible).
  *
  * <p>Zero I/O/network/Steamworks dependency (FR8.8) -- this class only reads
  * an in-memory {@link IdleCharacterAnimator} and issues draw calls.
@@ -83,14 +100,13 @@ import net.minecraft.resources.Identifier;
 public final class MainMenuBackgroundRenderer {
 
     private static final Identifier PALETTE = Identifier.fromNamespaceAndPath("lazuli", "textures/mainmenu/palette.png");
-    private static final int TEX_SIZE = 384;
-    private static final int CELL = 96;
+    private static final int TEX_SIZE = MainMenuMeshDefinitions.TEX_SIZE;
 
     private final IdleCharacterAnimator animator = new IdleCharacterAnimator();
     private final ModelPart sceneRoot;
     private final ModelPart characterRoot;
     private final ModelPart head;
-    private final ModelPart torso;
+    private final ModelPart body;
     private final ModelPart rightArm;
     private final ModelPart leftArm;
     private final ModelPart rightLeg;
@@ -108,79 +124,22 @@ public final class MainMenuBackgroundRenderer {
         MeshDefinition characterMesh = buildCharacterMesh();
         ModelPart root = LayerDefinition.create(characterMesh, TEX_SIZE, TEX_SIZE).bakeRoot();
         this.characterRoot = root;
-        this.head = root.getChild("head");
-        this.torso = root.getChild("torso");
-        this.rightArm = root.getChild("right_arm");
-        this.leftArm = root.getChild("left_arm");
-        this.rightLeg = root.getChild("right_leg");
-        this.leftLeg = root.getChild("left_leg");
+        this.head = root.getChild(MainMenuPartNames.HEAD);
+        this.body = root.getChild(MainMenuPartNames.BODY);
+        this.rightArm = root.getChild(MainMenuPartNames.RIGHT_ARM);
+        this.leftArm = root.getChild(MainMenuPartNames.LEFT_ARM);
+        this.rightLeg = root.getChild(MainMenuPartNames.RIGHT_LEG);
+        this.leftLeg = root.getChild(MainMenuPartNames.LEFT_LEG);
         this.characterModel = new Model.Simple(root, RenderTypes::entityTranslucent);
-    }
-
-    private static int cellU(int col) {
-        return col * CELL;
-    }
-
-    private static int cellV(int row) {
-        return row * CELL;
     }
 
     /** Builds the static (built-once, per Performance) sky/sun/mountains/ground geometry (FR8.2-FR8.5). */
     private static ModelPart buildScene() {
         MeshDefinition mesh = new MeshDefinition();
         PartDefinition root = mesh.getRoot();
-
-        // Sky: four stacked flat bands approximating the dusk gradient's
-        // stops (Design Tokens), from top (deep violet) to bottom (pale gold).
-        int[][] skyCells = { { 0, 0 }, { 1, 0 }, { 2, 0 }, { 3, 0 } };
-        float skyBandHeight = 18f;
-        for (int i = 0; i < skyCells.length; i++) {
-            root.addOrReplaceChild("sky_" + i,
-                    CubeListBuilder.create().texOffs(cellU(skyCells[i][0]), cellV(skyCells[i][1]))
-                            .addBox(-40f, 0f, -1f, 80f, skyBandHeight, 1f, CubeDeformation.NONE, TEX_SIZE, TEX_SIZE),
-                    PartPose.offset(0f, -40f + i * skyBandHeight, 0f));
+        for (MeshCubeSpec spec : MainMenuMeshDefinitions.SCENERY_PARTS) {
+            addTopLevelPart(root, spec);
         }
-
-        // Sun glow (behind) + core, upper-right per design doc placement.
-        root.addOrReplaceChild("sun_glow",
-                CubeListBuilder.create().texOffs(cellU(1), cellV(1))
-                        .addBox(-10f, -10f, -0.5f, 20f, 20f, 1f, CubeDeformation.NONE, TEX_SIZE, TEX_SIZE),
-                PartPose.offset(24f, -18f, -1.5f));
-        root.addOrReplaceChild("sun_core",
-                CubeListBuilder.create().texOffs(cellU(0), cellV(1))
-                        .addBox(-6f, -6f, -0.5f, 12f, 12f, 1f, CubeDeformation.NONE, TEX_SIZE, TEX_SIZE),
-                PartPose.offset(24f, -18f, -1f));
-
-        // Mountains: two semi-transparent jagged silhouette layers along the bottom.
-        int[][] farPeaks = { { -36, 10 }, { -18, 16 }, { 0, 12 }, { 18, 18 }, { 36, 11 } };
-        for (int i = 0; i < farPeaks.length; i++) {
-            root.addOrReplaceChild("mountain_far_" + i,
-                    CubeListBuilder.create().texOffs(cellU(2), cellV(1))
-                            .addBox(-6f, -farPeaks[i][1], -0.5f, 12f, farPeaks[i][1], 1f, CubeDeformation.NONE, TEX_SIZE, TEX_SIZE),
-                    PartPose.offset(farPeaks[i][0], 14f, -0.8f));
-        }
-        int[][] nearPeaks = { { -30, 8 }, { -8, 13 }, { 14, 9 }, { 32, 14 } };
-        for (int i = 0; i < nearPeaks.length; i++) {
-            root.addOrReplaceChild("mountain_near_" + i,
-                    CubeListBuilder.create().texOffs(cellU(3), cellV(1))
-                            .addBox(-7f, -nearPeaks[i][1], -0.5f, 14f, nearPeaks[i][1], 1f, CubeDeformation.NONE, TEX_SIZE, TEX_SIZE),
-                    PartPose.offset(nearPeaks[i][0], 14f, -0.5f));
-        }
-
-        // Ground: flat plane, darker base + lighter top strip highlight.
-        root.addOrReplaceChild("ground_base",
-                CubeListBuilder.create().texOffs(cellU(0), cellV(2))
-                        .addBox(-40f, 0f, -0.5f, 80f, 12f, 1f, CubeDeformation.NONE, TEX_SIZE, TEX_SIZE),
-                PartPose.offset(0f, 14f, 0f));
-        root.addOrReplaceChild("ground_top",
-                CubeListBuilder.create().texOffs(cellU(1), cellV(2))
-                        .addBox(-40f, 0f, -0.4f, 80f, 3f, 1f, CubeDeformation.NONE, TEX_SIZE, TEX_SIZE),
-                PartPose.offset(0f, 14f, 0f));
-        root.addOrReplaceChild("ground_highlight",
-                CubeListBuilder.create().texOffs(cellU(2), cellV(2))
-                        .addBox(-40f, 0f, -0.3f, 80f, 1f, 1f, CubeDeformation.NONE, TEX_SIZE, TEX_SIZE),
-                PartPose.offset(0f, 14f, 0f));
-
         return LayerDefinition.create(mesh, TEX_SIZE, TEX_SIZE).bakeRoot();
     }
 
@@ -188,36 +147,29 @@ public final class MainMenuBackgroundRenderer {
     private static MeshDefinition buildCharacterMesh() {
         MeshDefinition mesh = new MeshDefinition();
         PartDefinition root = mesh.getRoot();
-
-        root.addOrReplaceChild("head",
-                CubeListBuilder.create().texOffs(cellU(3), cellV(2))
-                        .addBox(-4f, -8f, -4f, 8f, 8f, 8f, CubeDeformation.NONE, TEX_SIZE, TEX_SIZE),
-                PartPose.offset(0f, 0f, 0f));
-        root.addOrReplaceChild("hair",
-                CubeListBuilder.create().texOffs(cellU(0), cellV(3))
-                        .addBox(-4.3f, -8.3f, -4.3f, 8.6f, 3.6f, 8.6f, CubeDeformation.NONE, TEX_SIZE, TEX_SIZE),
-                PartPose.offset(0f, 0f, 0f));
-        root.addOrReplaceChild("torso",
-                CubeListBuilder.create().texOffs(cellU(1), cellV(3))
-                        .addBox(-4f, 0f, -2f, 8f, 12f, 4f, CubeDeformation.NONE, TEX_SIZE, TEX_SIZE),
-                PartPose.offset(0f, 0f, 0f));
-        root.addOrReplaceChild("right_arm",
-                CubeListBuilder.create().texOffs(cellU(3), cellV(2))
-                        .addBox(-2f, -2f, -2f, 4f, 12f, 4f, CubeDeformation.NONE, TEX_SIZE, TEX_SIZE),
-                PartPose.offset(-6f, 2f, 0f));
-        root.addOrReplaceChild("left_arm",
-                CubeListBuilder.create().texOffs(cellU(3), cellV(2))
-                        .addBox(-2f, -2f, -2f, 4f, 12f, 4f, CubeDeformation.NONE, TEX_SIZE, TEX_SIZE),
-                PartPose.offset(6f, 2f, 0f));
-        root.addOrReplaceChild("right_leg",
-                CubeListBuilder.create().texOffs(cellU(2), cellV(3))
-                        .addBox(-2f, 0f, -2f, 4f, 12f, 4f, CubeDeformation.NONE, TEX_SIZE, TEX_SIZE),
-                PartPose.offset(-2f, 12f, 0f));
-        root.addOrReplaceChild("left_leg",
-                CubeListBuilder.create().texOffs(cellU(2), cellV(3))
-                        .addBox(-2f, 0f, -2f, 4f, 12f, 4f, CubeDeformation.NONE, TEX_SIZE, TEX_SIZE),
-                PartPose.offset(2f, 12f, 0f));
+        java.util.Map<String, PartDefinition> byName = new java.util.HashMap<>();
+        for (MeshCubeSpec spec : MainMenuMeshDefinitions.CHARACTER_PARTS) {
+            PartDefinition parent = spec.parentName() == null ? root : byName.get(spec.parentName());
+            PartDefinition added = parent.addOrReplaceChild(spec.name(), toCubeListBuilder(spec), toPartPose(spec));
+            byName.put(spec.name(), added);
+        }
         return mesh;
+    }
+
+    private static void addTopLevelPart(PartDefinition root, MeshCubeSpec spec) {
+        root.addOrReplaceChild(spec.name(), toCubeListBuilder(spec), toPartPose(spec));
+    }
+
+    private static CubeListBuilder toCubeListBuilder(MeshCubeSpec spec) {
+        return CubeListBuilder.create()
+                .texOffs(MainMenuMeshDefinitions.cellU(spec.uvCol()), MainMenuMeshDefinitions.cellV(spec.uvRow()))
+                .addBox(spec.originX(), spec.originY(), spec.originZ(),
+                        spec.sizeX(), spec.sizeY(), spec.sizeZ(),
+                        CubeDeformation.NONE, TEX_SIZE, TEX_SIZE);
+    }
+
+    private static PartPose toPartPose(MeshCubeSpec spec) {
+        return PartPose.offset(spec.pivotX(), spec.pivotY(), spec.pivotZ());
     }
 
     /**

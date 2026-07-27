@@ -12,7 +12,9 @@ repositories {
 
 dependencies {
 	api project(':api')
+	implementation project(':common')
 	implementation project(':features:main-menu')
+	implementation project(':features:tweaks')
 	implementation project(':features:steam-cloud-sync')
 	implementation project(':features:friends-sidebar')
 	implementation project(':features:rich-presence')
@@ -29,6 +31,18 @@ dependencies {
 
 	// Fabric API. This is technically optional, but you probably want it anyway.
 	modImplementation "net.fabricmc.fabric-api:fabric-api:${fabric_api_version}"
+
+	// fabric-key-binding-api-v1 (Tweaks feature, spec F3): the umbrella
+	// fabric-api artifact resolved above turned out NOT to place this
+	// submodule's classes on the compile classpath by itself (confirmed via
+	// a real compile failure on fabric-26.2, not assumed). Pinned directly
+	// (matches this artifact's version as declared in this module's own
+	// fabric-api POM) rather than via fabricApi.module(...), for consistency
+	// with fabric-26.1/fabric-26.2's equivalent dependency (see those
+	// modules' build.gradle for the fabric-key-mapping-api-v1 rename this
+	// version predates -- .claude/context/minecraft.md's Known Cross-Version
+	// API Differences table, "Hotkey registration Fabric API submodule" row).
+	modImplementation "net.fabricmc.fabric-api:fabric-key-binding-api-v1:1.1.7+4fc5413f3e"
 
 	// Cardinal Components API: data attachment/sync/persistence for Fabric mods.
 	modImplementation "org.ladysnake.cardinal-components-api:cardinal-components-base:${cardinal_components_version}"

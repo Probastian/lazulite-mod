@@ -1,5 +1,7 @@
 package de.lazuli.features.mainmenu.config;
 
+import de.lazuli.common.config.MainMenuJson;
+
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;

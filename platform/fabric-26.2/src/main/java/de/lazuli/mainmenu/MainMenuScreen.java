@@ -1,5 +1,6 @@
 package de.lazuli.mainmenu;
 
+import de.lazuli.api.mainmenu.MainMenuContext;
 import de.lazuli.api.mainmenu.MainMenuTab;
 import de.lazuli.api.richpresence.RichPresenceFacade;
 import de.lazuli.api.serverbrowser.ServerBrowserSessionFactory;
@@ -13,6 +14,7 @@ import de.lazuli.friends.AvatarTextureCache;
 import de.lazuli.friends.FriendContextMenuWidget;
 import de.lazuli.friends.FriendSidebarWidget;
 import de.lazuli.services.steamworks.SteamAchievementsGateway;
+import de.lazuli.tweaks.TweaksBundle;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -56,9 +58,21 @@ import java.util.function.Consumer;
 public final class MainMenuScreen extends Screen {
 
     private static final int TAB_BAR_WIDTH = 108;
-    private static final MainMenuTab[] TABS = MainMenuTab.values();
+    // main-menu-pause-integration plan #4: the tab bar's positional slot
+    // currently occupied by HOME is not a property of the enum itself -- it's
+    // this per-context, order-preserving array's iteration order. HOME is
+    // replaced by PAUSE at the same index in pause context.
+    private static final MainMenuTab[] MAIN_MENU_TABS = {
+            MainMenuTab.HOME, MainMenuTab.WORLDS, MainMenuTab.SERVERS, MainMenuTab.STORE,
+            MainMenuTab.WARDROBE, MainMenuTab.ACHIEVEMENTS, MainMenuTab.STATISTICS, MainMenuTab.TWEAKS
+    };
+    private static final MainMenuTab[] PAUSE_TABS = {
+            MainMenuTab.PAUSE, MainMenuTab.WORLDS, MainMenuTab.SERVERS, MainMenuTab.STORE,
+            MainMenuTab.WARDROBE, MainMenuTab.ACHIEVEMENTS, MainMenuTab.STATISTICS, MainMenuTab.TWEAKS
+    };
 
-    private final MainMenuStateMachine state = new MainMenuStateMachine(MainMenuTab.HOME);
+    private final MainMenuContext context;
+    private final MainMenuStateMachine state;
     private final MainMenuBackgroundRenderer background;
     private final WorldsPanel worldsPanel;
     private final ServersPanel serversPanel;
@@ -67,9 +81,15 @@ public final class MainMenuScreen extends Screen {
     private final HomePanel homePanel;
     private final AchievementsPanel achievementsPanel;
     private final StatisticsPanel statisticsPanel;
+    private final TweaksPanel tweaksPanel;
+    private final PausePanel pausePanel;
     private final FriendSidebarWidget sidebar;
     private final FriendsSidebarFacade friendsSidebarFacade;
     private FriendContextMenuWidget openMenu;
+
+    private MainMenuTab[] visibleTabs() {
+        return context == MainMenuContext.PAUSE ? PAUSE_TABS : MAIN_MENU_TABS;
+    }
 
     /**
      * Full constructor (Sequencing steps 9-11): wires the Servers/Store/
@@ -79,15 +99,18 @@ public final class MainMenuScreen extends Screen {
      *                               FR6.3), invoked with the full equip-map
      *                               snapshot every time an item is equipped
      */
-    public MainMenuScreen(MainMenuBackgroundRenderer background, FriendsSidebarFacade friendsSidebarFacade,
+    public MainMenuScreen(MainMenuContext context, MainMenuBackgroundRenderer background, FriendsSidebarFacade friendsSidebarFacade,
                            ServerBrowserSessionFactory serverBrowserSessionFactory, boolean steamAvailable,
                            StoreCatalog storeCatalog, MainMenuStoreOwnershipChecker ownershipChecker,
                            WardrobeConfig initialWardrobeConfig, RichPresenceFacade richPresenceFacade,
                            FriendServerPresenceReader friendServerPresenceReader,
                            SteamAchievementsGateway steamAchievementsGateway,
                            de.lazuli.features.mainmenu.config.MainMenuJoinHistoryConfig joinHistoryConfig,
-                           Consumer<java.util.Map<de.lazuli.api.mainmenu.WardrobeSlot, String>> onWardrobeEquipChanged) {
+                           Consumer<java.util.Map<de.lazuli.api.mainmenu.WardrobeSlot, String>> onWardrobeEquipChanged,
+                           TweaksBundle tweaksBundle) {
         super(Component.literal("Stonebound"));
+        this.context = context;
+        this.state = new MainMenuStateMachine(context == MainMenuContext.PAUSE ? MainMenuTab.PAUSE : MainMenuTab.HOME);
         this.friendsSidebarFacade = friendsSidebarFacade;
         this.background = background;
         this.worldsPanel = new WorldsPanel(state, this);
@@ -110,6 +133,10 @@ public final class MainMenuScreen extends Screen {
         this.achievementsPanel = new AchievementsPanel(steamAchievementsGateway);
         // Batch-2-fixes Item F5: vanilla Minecraft stats, no Steamworks involvement.
         this.statisticsPanel = new StatisticsPanel();
+        this.tweaksPanel = new TweaksPanel(tweaksBundle);
+        // main-menu-pause-integration FR5.3/FR3.3.1: both Esc and this
+        // button must go through the exact same resume path.
+        this.pausePanel = new PausePanel(this::onClose);
     }
 
     /**
@@ -147,18 +174,27 @@ public final class MainMenuScreen extends Screen {
         addRenderableWidget(sidebar);
         worldsPanel.init(this::addRenderableWidget, panelX(), panelY(), panelWidth());
         serversPanel.init(this::addRenderableWidget, panelX(), panelY(), panelWidth());
+        tweaksPanel.init(this::addRenderableWidget, this::removeWidget, panelX(), panelY(), panelWidth());
         worldsPanel.setTabActive(state.activeTab() == MainMenuTab.WORLDS);
         serversPanel.setTabActive(state.activeTab() == MainMenuTab.SERVERS);
     }
 
     @Override
     public boolean shouldCloseOnEsc() {
-        return false;
+        // main-menu-pause-integration FR5.3: main-menu context keeps today's
+        // false unchanged (AC6); pause context restores vanilla Screen's own
+        // default (true), so Esc falls through to onClose() -- the identical
+        // resume path the Pause tab's button also calls.
+        return context == MainMenuContext.PAUSE;
     }
 
     @Override
     public boolean isPauseScreen() {
-        return false;
+        // main-menu-pause-integration FR6: mirrors vanilla PauseScreen's own
+        // unconditional override -- the singleplayer-vs-multiplayer/LAN
+        // world-tick-pause gating already lives entirely outside this screen
+        // (Gui/Minecraft's own per-tick check), not reimplemented here.
+        return context == MainMenuContext.PAUSE;
     }
 
     // FX6.2/R5: the reserved left-third background+character region has
@@ -213,11 +249,25 @@ public final class MainMenuScreen extends Screen {
 
     @Override
     public void extractRenderState(GuiGraphicsExtractor guiGraphics, int mouseX, int mouseY, float delta) {
-        // The 3D background renders continuously regardless of tab state
-        // (FR1.4/FR8.1) -- drawn first so every 2D element below layers on
-        // top of it. See MainMenuBackgroundRenderer's own Javadoc for why no
-        // manual matrix push/pop is needed around this call.
-        background.render(guiGraphics, width, height, sidebarCollapsedWidth() + LEFT_MARGIN, reservedWidth());
+        // main-menu-pause-integration FR2: pause context does NOT render the
+        // continuous 3D scene -- it relies on vanilla's own automatic
+        // background pass instead. Confirmed via javap of Screen.class:
+        // extractRenderStateWithTooltipAndSubtitles() ALWAYS calls
+        // extractBackground(...) itself before invoking this
+        // extractRenderState(...) override, so nothing needs to be (or may
+        // be) called manually here -- doing so double-invokes
+        // GuiRenderState.blurBeforeThisStratum() in the same frame and
+        // crashes with "Can only blur once per frame" (confirmed by an
+        // actual in-game crash on 26.2). When a level is running that
+        // automatic pass already draws the exact blurred/darkened
+        // frozen-world overlay vanilla PauseScreen itself relies on.
+        if (context != MainMenuContext.PAUSE) {
+            // The 3D background renders continuously regardless of tab state
+            // (FR1.4/FR8.1) -- drawn first so every 2D element below layers on
+            // top of it. See MainMenuBackgroundRenderer's own Javadoc for why no
+            // manual matrix push/pop is needed around this call.
+            background.render(guiGraphics, width, height, sidebarCollapsedWidth() + LEFT_MARGIN, reservedWidth());
+        }
 
         renderTabBar(guiGraphics, mouseX, mouseY);
 
@@ -238,6 +288,8 @@ public final class MainMenuScreen extends Screen {
                 case HOME -> homePanel.render(guiGraphics, font, x, y, w, h, mouseX, mouseY);
                 case ACHIEVEMENTS -> achievementsPanel.render(guiGraphics, font, x, y, w, h, mouseX, mouseY);
                 case STATISTICS -> statisticsPanel.render(guiGraphics, font, x, y, w, h, mouseX, mouseY);
+                case TWEAKS -> tweaksPanel.render(guiGraphics, font, x, y, w, h, mouseX, mouseY);
+                case PAUSE -> pausePanel.render(guiGraphics, font, x, y, w, h, mouseX, mouseY);
             }
         }
 
@@ -268,11 +320,12 @@ public final class MainMenuScreen extends Screen {
         int barHeight = height;
         guiGraphics.fill(barX, barY, barX + TAB_BAR_WIDTH, barY + barHeight, 0xB31D1B12);
 
+        MainMenuTab[] tabs = visibleTabs();
         int buttonHeight = 56;
         int spacing = 8;
-        int startY = height / 2 - (TABS.length * (buttonHeight + spacing)) / 2;
-        for (int i = 0; i < TABS.length; i++) {
-            MainMenuTab tab = TABS[i];
+        int startY = height / 2 - (tabs.length * (buttonHeight + spacing)) / 2;
+        for (int i = 0; i < tabs.length; i++) {
+            MainMenuTab tab = tabs[i];
             int y = startY + i * (buttonHeight + spacing);
             boolean active = tab == state.activeTab();
             boolean hovered = mouseX >= barX && mouseX <= barX + TAB_BAR_WIDTH && mouseY >= y && mouseY <= y + buttonHeight;
@@ -294,6 +347,8 @@ public final class MainMenuScreen extends Screen {
             case HOME -> "Home";
             case ACHIEVEMENTS -> "Achievements";
             case STATISTICS -> "Statistics";
+            case TWEAKS -> "Tweaks";
+            case PAUSE -> "Pause";
         };
     }
 
@@ -316,16 +371,20 @@ public final class MainMenuScreen extends Screen {
 
         // Batch-2 FR-BB1.2: same right-edge-only dock as renderTabBar().
         int barX = width - TAB_BAR_WIDTH;
+        MainMenuTab[] tabs = visibleTabs();
         int buttonHeight = 56;
         int spacing = 8;
-        int startY = height / 2 - (TABS.length * (buttonHeight + spacing)) / 2;
-        for (int i = 0; i < TABS.length; i++) {
+        int startY = height / 2 - (tabs.length * (buttonHeight + spacing)) / 2;
+        for (int i = 0; i < tabs.length; i++) {
             int y = startY + i * (buttonHeight + spacing);
             if (event.x() >= barX && event.x() <= barX + TAB_BAR_WIDTH && event.y() >= y && event.y() <= y + buttonHeight) {
                 playClickSound();
-                state.selectTab(TABS[i]);
+                state.selectTab(tabs[i]);
                 worldsPanel.setTabActive(state.activeTab() == MainMenuTab.WORLDS);
                 serversPanel.setTabActive(state.activeTab() == MainMenuTab.SERVERS);
+                if (state.activeTab() != MainMenuTab.TWEAKS) {
+                    tweaksPanel.leaveConfigScreen();
+                }
                 return true;
             }
         }
@@ -360,12 +419,23 @@ public final class MainMenuScreen extends Screen {
             if (statisticsPanel.mouseClicked(panelX(), panelY(), panelWidth(), h, event.x(), event.y())) {
                 return true;
             }
+        } else if (active == MainMenuTab.TWEAKS) {
+            if (tweaksPanel.mouseClicked(panelX(), panelY(), panelWidth(), h, event.x(), event.y())) {
+                return true;
+            }
+        } else if (active == MainMenuTab.PAUSE) {
+            if (pausePanel.mouseClicked(panelX(), panelY(), panelWidth(), h, event.x(), event.y())) {
+                return true;
+            }
         }
         return false;
     }
 
     @Override
     public boolean keyPressed(KeyEvent event) {
+        if (state.activeTab() == MainMenuTab.TWEAKS && tweaksPanel.keyPressed(event)) {
+            return true;
+        }
         if (openMenu != null && event.key() == GLFW.GLFW_KEY_ESCAPE) {
             closeContextMenu();
             return true;
@@ -386,6 +456,8 @@ public final class MainMenuScreen extends Screen {
             return serversPanel.mouseScrolled(panelX(), panelY(), panelWidth(), h, mouseX, mouseY, verticalAmount);
         } else if (state.activeTab() == MainMenuTab.STATISTICS) {
             return statisticsPanel.mouseScrolled(panelX(), panelY(), panelWidth(), h, mouseX, mouseY, verticalAmount);
+        } else if (state.activeTab() == MainMenuTab.TWEAKS) {
+            return tweaksPanel.mouseScrolled(panelX(), panelY(), panelWidth(), h, mouseX, mouseY, verticalAmount);
         }
         return false;
     }
@@ -393,12 +465,14 @@ public final class MainMenuScreen extends Screen {
     @Override
     public void onClose() {
         serversPanel.deactivateBrowser();
+        tweaksPanel.leaveConfigScreen();
         super.onClose();
     }
 
     @Override
     public void removed() {
         serversPanel.deactivateBrowser();
+        tweaksPanel.leaveConfigScreen();
         super.removed();
     }
 }

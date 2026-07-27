@@ -11,7 +11,18 @@
 		"ClientHandshakeStubDigestMixin",
 		"ServerLoginStubDigestMixin",
 		"ServerKeyPacketMixin",
-		"ClientTitleScreenRedirectMixin"
+		"ClientTitleScreenRedirectMixin",
+		"GameRendererZoomFovMixin",
+		"ClientPlayerEntityAntiDropMixin",
+		"LightmapForceBrightnessMixin",
+		"ClientWorldDisableParticlesMixin",
+		"EntityRendererHidePlayerNamesMixin",
+		"SpriteContentsCaptureAnimatorMixin",
+		"SpriteContentsAnimatorDisableAnimationsMixin",
+		"InGameHudClearWaterMixin",
+		"BossBarHudDisableBossBarsMixin",
+		"InGameHudCustomCrosshairMixin",
+		"ChatHudChatFilterMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1

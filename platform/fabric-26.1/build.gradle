@@ -12,7 +12,9 @@ repositories {
 
 dependencies {
 	api project(':api')
+	implementation project(':common')
 	implementation project(':features:main-menu')
+	implementation project(':features:tweaks')
 	implementation project(':features:steam-cloud-sync')
 	implementation project(':features:friends-sidebar')
 	implementation project(':features:rich-presence')
@@ -28,6 +30,15 @@ dependencies {
 
 	// Fabric API. This is technically optional, but you probably want it anyway.
 	implementation "net.fabricmc.fabric-api:fabric-api:${fabric_api_version}"
+
+	// fabric-key-mapping-api-v1 (Tweaks feature, spec F3): see
+	// platform/fabric-26.2/build.gradle's identical comment -- this
+	// fabric-api version's key-registration submodule is named
+	// fabric-key-mapping-api-v1 (KeyMappingHelper), not
+	// fabric-key-binding-api-v1 (1.21.11's name for it); version pinned
+	// directly since fabricApi.module(...) has no registry entry for this
+	// fabric_api_version.
+	implementation "net.fabricmc.fabric-api:fabric-key-mapping-api-v1:2.0.4+e2bdee7847"
 
 	// Cardinal Components API: data attachment/sync/persistence for Fabric mods.
 	implementation "org.ladysnake.cardinal-components-api:cardinal-components-base:${cardinal_components_version}"

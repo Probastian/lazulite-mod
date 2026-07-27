@@ -7,6 +7,13 @@ dependencies {
 	// features/server-browser/build.gradle).
 	api project(':api')
 
+	// MainMenuJson (hand-rolled JSON value model/parser/writer) was relocated
+	// here from this feature's own config package so features/tweaks can
+	// reuse it without a features/tweaks -> features/main-menu edge (see
+	// features/tweaks' own build.gradle comment). Consumed internally only
+	// (never re-exposed on this feature's own public surface) -- `implementation`.
+	implementation project(':common')
+
 	// SteamAvailability plus any steamworks4j surface used by this feature's
 	// platform-side OwnershipChecker implementation is only ever consulted
 	// internally -- this feature never re-exposes a steamworks4j type in its

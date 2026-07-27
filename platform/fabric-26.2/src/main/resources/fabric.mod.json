@@ -27,6 +27,7 @@
 			"de.lazuli.RichPresenceClientInitializer",
 			"de.lazuli.FriendsSidebarClientInitializer",
 			"de.lazuli.ServerBrowserClientInitializer",
+			"de.lazuli.TweaksClientInitializer",
 			"de.lazuli.MainMenuClientInitializer"
 		]
 	},

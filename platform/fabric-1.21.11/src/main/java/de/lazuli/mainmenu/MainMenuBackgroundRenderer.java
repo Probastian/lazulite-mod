@@ -1,6 +1,9 @@
 package de.lazuli.mainmenu;
 
 import de.lazuli.api.mainmenu.CharacterPose;
+import de.lazuli.common.mainmenu.MainMenuMeshDefinitions;
+import de.lazuli.common.mainmenu.MainMenuPartNames;
+import de.lazuli.common.mainmenu.MeshCubeSpec;
 import de.lazuli.features.mainmenu.services.IdleCharacterAnimator;
 
 import net.minecraft.client.gui.DrawContext;
@@ -40,22 +43,24 @@ import net.minecraft.util.Identifier;
  * table) -- confirmed here to also apply identically on 1.21.11, just under
  * this version's own Yarn-mapped class/method names.
  *
- * <p>Accepted, documented compromise (identical shape to {@code fabric-26.1}):
- * <ul>
- *   <li>The idle character (FR8.6) still renders as a genuine 3D
- *       picture-in-picture model -- its {@link ModelPart} hierarchy is shaped
- *       to satisfy {@link PlayerEntityModel}'s required named parts, wrapped
- *       in a real {@link PlayerEntityModel} instance and submitted via
- *       {@code DrawContext.addPlayerSkin(...)}.</li>
- *   <li>The sky/sun/mountains/ground scene (FR8.2-FR8.5), which has no biped
- *       shape to conform to, is rendered as flat 2D {@link DrawContext#fill}/
- *       {@code fillGradient}-equivalent screen-space bands instead of 3D
- *       geometry on this version only -- still fully matching the design
- *       doc's described placement/colors, just not "real 3D-space geometry"
- *       for the backdrop specifically (FR8.1's own "genuine 3D scene" bar is
- *       still met by the character, the single most load-bearing visual
- *       element per the design doc's own description).</li>
- * </ul>
+ * <h2>Unified mesh module (unified-mainmenu-background)</h2>
+ * {@code PlayerEntityModel}'s constructor (via {@code BipedEntityModel}) only
+ * checks that its required named children (see {@link MainMenuPartNames})
+ * <em>exist</em> -- it does not restrict what else may be attached to the
+ * same {@code ModelPart} root (confirmed via {@code javap} bytecode trace of
+ * {@code ModelPart.render}'s generic children-map traversal, see
+ * {@code docs/specs/unified-mainmenu-background.md}'s "Critical assumption
+ * under test" section). This class therefore now builds <strong>one</strong>
+ * shared {@link ModelData} combining {@code :common}'s
+ * {@link MainMenuMeshDefinitions#SCENERY_PARTS} (attached as extra top-level
+ * children, rendered generically alongside the character) and
+ * {@code CHARACTER_PARTS} (satisfying {@link PlayerEntityModel}'s required
+ * names), wraps it in one real {@link PlayerEntityModel}, and submits it via
+ * a single {@code addPlayerSkin(...)} call per frame -- replacing the
+ * previous split of a real 3D character plus flat 2D {@code fill}/
+ * {@code fillGradient} scenery ({@code renderSceneAsFlat2D}, now removed).
+ * Scenery bones are static (no per-frame pose, FR8.7); only the character's
+ * named parts are mutated each frame via {@link #applyPose}.
  *
  * <p>Zero I/O/network/Steamworks dependency (FR8.8) -- this class only reads
  * an in-memory {@link IdleCharacterAnimator} and issues draw calls.
@@ -63,13 +68,12 @@ import net.minecraft.util.Identifier;
 public final class MainMenuBackgroundRenderer {
 
     private static final Identifier PALETTE = Identifier.of("lazuli", "textures/mainmenu/palette.png");
-    private static final int TEX_SIZE = 384;
-    private static final int CELL = 96;
+    private static final int TEX_SIZE = MainMenuMeshDefinitions.TEX_SIZE;
 
     private final IdleCharacterAnimator animator = new IdleCharacterAnimator();
     private final ModelPart characterRoot;
     private final ModelPart head;
-    private final ModelPart torso;
+    private final ModelPart body;
     private final ModelPart rightArm;
     private final ModelPart leftArm;
     private final ModelPart rightLeg;
@@ -80,79 +84,52 @@ public final class MainMenuBackgroundRenderer {
     private final long startNanos = System.nanoTime();
 
     public MainMenuBackgroundRenderer() {
-        ModelData modelData = buildCharacterModelData();
+        ModelData modelData = buildModelData();
         ModelPart root = TexturedModelData.of(modelData, TEX_SIZE, TEX_SIZE).createModel();
         this.characterRoot = root;
-        this.head = root.getChild("head");
-        this.torso = root.getChild("body");
-        this.rightArm = root.getChild("right_arm");
-        this.leftArm = root.getChild("left_arm");
-        this.rightLeg = root.getChild("right_leg");
-        this.leftLeg = root.getChild("left_leg");
+        this.head = root.getChild(MainMenuPartNames.HEAD);
+        this.body = root.getChild(MainMenuPartNames.BODY);
+        this.rightArm = root.getChild(MainMenuPartNames.RIGHT_ARM);
+        this.leftArm = root.getChild(MainMenuPartNames.LEFT_ARM);
+        this.rightLeg = root.getChild(MainMenuPartNames.RIGHT_LEG);
+        this.leftLeg = root.getChild(MainMenuPartNames.LEFT_LEG);
         this.characterModel = new PlayerEntityModel(root, false);
     }
 
-    private static int cellU(int col) {
-        return col * CELL;
-    }
-
-    private static int cellV(int row) {
-        return row * CELL;
-    }
-
     /**
-     * Hand-authored idle-character {@link ModelPart} hierarchy (FR8.6,
-     * vanilla-player-blockiness proportions), shaped to satisfy
-     * {@link PlayerEntityModel}'s exact required part names (see this class's
-     * own Javadoc) so it can be wrapped in a real {@link PlayerEntityModel}
-     * and submitted through this version's only generic-camera
-     * picture-in-picture {@code addPlayerSkin(...)} overload.
+     * Builds one shared {@link ModelData} combining the character bones
+     * (satisfying {@link PlayerEntityModel}'s required names) and the scenery
+     * bones (extra top-level children, rendered generically) from
+     * {@code :common}'s canonical geometry.
      */
-    private static ModelData buildCharacterModelData() {
+    private static ModelData buildModelData() {
         ModelData modelData = new ModelData();
         ModelPartData root = modelData.getRoot();
 
-        ModelPartData headPart = root.addChild("head",
-                ModelPartBuilder.create().uv(cellU(3), cellV(2))
-                        .cuboid(-4f, -8f, -4f, 8f, 8f, 8f, Dilation.NONE),
-                ModelTransform.NONE);
-        // "hat" is a required BipedEntityModel part name -- doubles as the hair layer here.
-        headPart.addChild("hat",
-                ModelPartBuilder.create().uv(cellU(0), cellV(3))
-                        .cuboid(-4.3f, -8.3f, -4.3f, 8.6f, 3.6f, 8.6f, Dilation.NONE),
-                ModelTransform.NONE);
-
-        ModelPartData body = root.addChild("body",
-                ModelPartBuilder.create().uv(cellU(1), cellV(3))
-                        .cuboid(-4f, 0f, -2f, 8f, 12f, 4f, Dilation.NONE),
-                ModelTransform.NONE);
-        body.addChild("jacket", ModelPartBuilder.create(), ModelTransform.NONE);
-
-        ModelPartData rightArmPart = root.addChild("right_arm",
-                ModelPartBuilder.create().uv(cellU(3), cellV(2))
-                        .cuboid(-2f, -2f, -2f, 4f, 12f, 4f, Dilation.NONE),
-                ModelTransform.origin(-6f, 2f, 0f));
-        rightArmPart.addChild("right_sleeve", ModelPartBuilder.create(), ModelTransform.NONE);
-
-        ModelPartData leftArmPart = root.addChild("left_arm",
-                ModelPartBuilder.create().uv(cellU(3), cellV(2))
-                        .cuboid(-2f, -2f, -2f, 4f, 12f, 4f, Dilation.NONE),
-                ModelTransform.origin(6f, 2f, 0f));
-        leftArmPart.addChild("left_sleeve", ModelPartBuilder.create(), ModelTransform.NONE);
-
-        ModelPartData rightLegPart = root.addChild("right_leg",
-                ModelPartBuilder.create().uv(cellU(2), cellV(3))
-                        .cuboid(-2f, 0f, -2f, 4f, 12f, 4f, Dilation.NONE),
-                ModelTransform.origin(-2f, 12f, 0f));
-        rightLegPart.addChild("right_pants", ModelPartBuilder.create(), ModelTransform.NONE);
-
-        ModelPartData leftLegPart = root.addChild("left_leg",
-                ModelPartBuilder.create().uv(cellU(2), cellV(3))
-                        .cuboid(-2f, 0f, -2f, 4f, 12f, 4f, Dilation.NONE),
-                ModelTransform.origin(2f, 12f, 0f));
-        leftLegPart.addChild("left_pants", ModelPartBuilder.create(), ModelTransform.NONE);
-
+        java.util.Map<String, ModelPartData> byName = new java.util.HashMap<>();
+        for (MeshCubeSpec spec : MainMenuMeshDefinitions.CHARACTER_PARTS) {
+            ModelPartData parent = spec.parentName() == null ? root : byName.get(spec.parentName());
+            ModelPartData added = parent.addChild(spec.name(), toModelPartBuilder(spec), toModelTransform(spec));
+            byName.put(spec.name(), added);
+        }
+        for (MeshCubeSpec spec : MainMenuMeshDefinitions.SCENERY_PARTS) {
+            root.addChild(spec.name(), toModelPartBuilder(spec), toModelTransform(spec));
+        }
         return modelData;
+    }
+
+    private static ModelPartBuilder toModelPartBuilder(MeshCubeSpec spec) {
+        return ModelPartBuilder.create()
+                .uv(MainMenuMeshDefinitions.cellU(spec.uvCol()), MainMenuMeshDefinitions.cellV(spec.uvRow()))
+                .cuboid(spec.originX(), spec.originY(), spec.originZ(),
+                        spec.sizeX(), spec.sizeY(), spec.sizeZ(), Dilation.NONE);
+    }
+
+    private static ModelTransform toModelTransform(MeshCubeSpec spec) {
+        if (spec.pivotX() == 0f && spec.pivotY() == 0f && spec.pivotZ() == 0f) {
+            return ModelTransform.NONE;
+        }
+        return ModelTransform.origin(spec.pivotX(), spec.pivotY(), spec.pivotZ());
     }
 
     /**
@@ -160,14 +137,21 @@ public final class MainMenuBackgroundRenderer {
      * every frame from {@link MainMenuScreen#render}, regardless of tab
      * state.
      *
-     * <p>FX8 note: this version's own scene is already the flat-2D,
-     * full-screen stand-in described in this class's own Javadoc (not the 3D
-     * {@code addPlayerSkin()}-submitted geometry) -- it already fills the
-     * destination rect edge-to-edge, so FX8's "small/centered/stuck to the
-     * bottom" defect (a 3D-camera scale/pivot framing issue) does not apply
-     * to it structurally; per FX8.3/R4 this is the documented placeholder-
-     * model-limitation framing for this platform specifically, not a skipped
-     * fix. FX7 (character sizing/position) still applies below.
+     * <h2>Camera re-tuning for the merged scene+character single call</h2>
+     * Previously this version's character-only {@code addPlayerSkin(...)}
+     * call used {@code scale=22f, rotationY=20f, pivotY=0f}. Now that the same
+     * call also carries the scenery bones (model-space vertical extent
+     * roughly {@code y=-40..32}, identical to 26.2's own scene geometry since
+     * both read from the same {@code :common} data), a single camera has to
+     * frame both without clipping the sky/ground or shrinking the character
+     * to a speck. Starting point per the plan's Risk 1 mitigation: widen the
+     * field of view (lower {@code scale}, matching 26.2's own scene-call
+     * tuning of {@code 18f}) and re-aim {@code pivotY} toward the combined
+     * mesh's vertical center (roughly {@code -4}, splitting the difference
+     * between the scene's own {@code -6} pivot and the character's own
+     * {@code 0} pivot) so the horizon reads mid-region rather than
+     * clipped/pinned to an edge -- exact fine-tuning is left as a follow-up
+     * in-game pass per the plan's Test Strategy/Acceptance Criteria.
      *
      * @param leftOffset    Batch-2 FR-BB1.2: the left-docked sidebar's own
      *                      collapsed width + margin -- the reserved region
@@ -179,15 +163,14 @@ public final class MainMenuBackgroundRenderer {
     public void render(DrawContext context, int screenWidth, int screenHeight, int leftOffset, int reservedWidth) {
         double elapsedSeconds = (System.nanoTime() - startNanos) / 1_000_000_000.0;
 
-        renderSceneAsFlat2D(context, screenWidth, screenHeight);
-
-        // Character: still a genuine 3D picture-in-picture model, posed per-frame
-        // from the pure animation math (FR8.6). FX7: sized/positioned from the
-        // reserved left-third region's own actual pixel bounds, not
-        // screenWidth*0.08, grounded at the bottom and inset from the
-        // region's edges so it reads as "bottom-left of the region."
         CharacterPose pose = animator.poseAt(elapsedSeconds);
         applyPose(pose);
+
+        // FX7: sized/positioned from the reserved left-third region's own
+        // actual pixel bounds, not screenWidth*0.08, grounded at the bottom
+        // and inset from the region's edges so it reads as "bottom-left of
+        // the region." Now the destination rect also covers the scenery,
+        // since scene + character share one camera/call.
         int region = Math.max(1, reservedWidth);
         // Bug fix: at small logical GUI widths (high GUI scale / narrow window)
         // reservedWidth() can clamp down to a few pixels or 0, and the old fixed
@@ -203,34 +186,7 @@ public final class MainMenuBackgroundRenderer {
         int charX1 = Math.max(charX0 + 1, leftOffset + region - inset);
         int charY0 = Math.max(0, (int) (screenHeight * 0.04));
         int charY1 = Math.max(charY0 + 1, screenHeight);
-        context.addPlayerSkin(characterModel, PALETTE, 22f, 0f, 20f, 0f, charX0, charY0, charX1, charY1);
-    }
-
-    /**
-     * 2D screen-space stand-in for the sky/sun/mountains/ground scene (this
-     * class's own Javadoc) -- 1.21.11 has no generic-camera picture-in-picture
-     * call this feature can submit non-biped geometry through.
-     */
-    private void renderSceneAsFlat2D(DrawContext context, int screenWidth, int screenHeight) {
-        // Dusk sky gradient (top: deep violet, bottom: pale gold).
-        context.fillGradient(0, 0, screenWidth, screenHeight, 0xFF2E2A44, 0xFFC9A15A);
-
-        // Sun glow + core, upper-right per design doc placement.
-        int sunCx = (int) (screenWidth * 0.78);
-        int sunCy = (int) (screenHeight * 0.22);
-        int glowR = Math.max(60, screenHeight / 6);
-        context.fill(sunCx - glowR, sunCy - glowR, sunCx + glowR, sunCy + glowR, 0x662EE8C9);
-        int coreR = glowR / 3;
-        context.fill(sunCx - coreR, sunCy - coreR, sunCx + coreR, sunCy + coreR, 0xFFF5E6A8);
-
-        // Mountains: two semi-transparent silhouette bands along the bottom.
-        int groundTop = (int) (screenHeight * 0.72);
-        context.fill(0, groundTop - 40, screenWidth, groundTop, 0x552B2A3A);
-        context.fill(0, groundTop - 20, screenWidth, groundTop, 0x77201F2C);
-
-        // Ground: flat base + lighter top-edge highlight strip.
-        context.fill(0, groundTop, screenWidth, screenHeight, 0xFF2E4A2E);
-        context.fill(0, groundTop, screenWidth, groundTop + 3, 0xFF6F9A5A);
+        context.addPlayerSkin(characterModel, PALETTE, 18f, 0f, 20f, -4f, charX0, charY0, charX1, charY1);
     }
 
     private void applyPose(CharacterPose pose) {

@@ -19,5 +19,15 @@ public enum MainMenuTab {
     /** Batch-2 FR-BB3.4: read-only Steam achievement list. */
     ACHIEVEMENTS,
     /** Batch-2-fixes FR-F5.1: read-only vanilla Minecraft per-player statistics. */
-    STATISTICS
+    STATISTICS,
+    /** Tweaks feature: toggleable client-side mini-features (spec F2), appended last per spec UI ordering. */
+    TWEAKS,
+    /**
+     * main-menu-pause-integration spec FR3.1: pause-context-only tab that
+     * occupies {@link #HOME}'s tab-bar slot when {@code MainMenuScreen} is
+     * opened in {@code MainMenuContext.PAUSE} -- never shown in main-menu
+     * context, and {@link #HOME} is never shown in pause context (mutually
+     * exclusive, same slot).
+     */
+    PAUSE
 }

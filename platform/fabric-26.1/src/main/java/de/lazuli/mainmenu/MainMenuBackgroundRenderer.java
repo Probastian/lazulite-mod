@@ -1,6 +1,9 @@
 package de.lazuli.mainmenu;
 
 import de.lazuli.api.mainmenu.CharacterPose;
+import de.lazuli.common.mainmenu.MainMenuMeshDefinitions;
+import de.lazuli.common.mainmenu.MainMenuPartNames;
+import de.lazuli.common.mainmenu.MeshCubeSpec;
 import de.lazuli.features.mainmenu.services.IdleCharacterAnimator;
 
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -48,30 +51,23 @@ import net.minecraft.resources.Identifier;
  * an arbitrary {@code Identifier}, so it cannot host this feature's own
  * palette texture either).
  *
- * <p><strong>This is flagged, not silently degraded</strong> (implementation
- * batch instruction) and logged in {@code .claude/context/minecraft.md}'s
- * cross-version divergence table. The accepted, documented compromise for
- * 26.1 only:
- * <ul>
- *   <li>The idle character (FR8.6) still renders as a genuine 3D
- *       picture-in-picture model, exactly as on 26.2 -- its {@code ModelPart}
- *       hierarchy is reshaped to satisfy {@link PlayerModel}'s required named
- *       parts (head/hat/body/left_arm/right_arm/left_leg/right_leg, plus
- *       empty zero-cube {@code left_sleeve}/{@code right_sleeve}/
- *       {@code left_pants}/{@code right_pants}/{@code jacket} placeholders
- *       {@link PlayerModel}'s own constructor requires to exist), wrapped in
- *       a real {@link PlayerModel} instance and submitted via
- *       {@code skin(PlayerModel, ...)}.</li>
- *   <li>The sky/sun/mountains/ground scene (FR8.2-FR8.5), which has no
- *       biped shape to conform to, is rendered as flat 2D
- *       {@code GuiGraphicsExtractor.fill}/{@code fillGradient} screen-space
- *       bands instead of 3D geometry on this version only -- still fully
- *       matching the design doc's described placement/colors, just not
- *       "real 3D-space geometry" for the backdrop specifically (FR8.1's own
- *       "genuine 3D scene" bar is still met by the character, the single
- *       most load-bearing visual element per the design doc's own
- *       description).</li>
- * </ul>
+ * <h2>Unified mesh module (unified-mainmenu-background)</h2>
+ * {@code PlayerModel}'s constructor only checks that its required named
+ * children (see {@link MainMenuPartNames}) <em>exist</em> -- it does not
+ * restrict what else may be attached to the same {@code ModelPart} root
+ * (confirmed via {@code javap} bytecode trace of {@code ModelPart.render}'s
+ * generic {@code children.values()} traversal, see
+ * {@code docs/specs/unified-mainmenu-background.md}'s "Critical assumption
+ * under test" section). This class therefore now builds <strong>one</strong>
+ * shared {@link MeshDefinition} combining {@code :common}'s
+ * {@link MainMenuMeshDefinitions#SCENERY_PARTS} (attached as extra top-level
+ * children, rendered generically alongside the character) and
+ * {@code CHARACTER_PARTS} (satisfying {@link PlayerModel}'s required names),
+ * wraps it in one real {@link PlayerModel}, and submits it via a single
+ * {@code skin(PlayerModel, ...)} call per frame -- replacing the previous
+ * split of a real 3D character plus flat 2D {@code fill}/{@code fillGradient}
+ * scenery. Scenery bones are static (no per-frame pose, FR8.7); only the
+ * character's named parts are mutated each frame via {@link #applyPose}.
  *
  * <p>Zero I/O/network/Steamworks dependency (FR8.8) -- this class only reads
  * an in-memory {@link IdleCharacterAnimator} and issues draw calls.
@@ -79,13 +75,12 @@ import net.minecraft.resources.Identifier;
 public final class MainMenuBackgroundRenderer {
 
     private static final Identifier PALETTE = Identifier.fromNamespaceAndPath("lazuli", "textures/mainmenu/palette.png");
-    private static final int TEX_SIZE = 384;
-    private static final int CELL = 96;
+    private static final int TEX_SIZE = MainMenuMeshDefinitions.TEX_SIZE;
 
     private final IdleCharacterAnimator animator = new IdleCharacterAnimator();
     private final ModelPart characterRoot;
     private final ModelPart head;
-    private final ModelPart torso;
+    private final ModelPart body;
     private final ModelPart rightArm;
     private final ModelPart leftArm;
     private final ModelPart rightLeg;
@@ -96,79 +91,50 @@ public final class MainMenuBackgroundRenderer {
     private final long startNanos = System.nanoTime();
 
     public MainMenuBackgroundRenderer() {
-        MeshDefinition characterMesh = buildCharacterMesh();
-        ModelPart root = LayerDefinition.create(characterMesh, TEX_SIZE, TEX_SIZE).bakeRoot();
+        MeshDefinition mesh = buildMesh();
+        ModelPart root = LayerDefinition.create(mesh, TEX_SIZE, TEX_SIZE).bakeRoot();
         this.characterRoot = root;
-        this.head = root.getChild("head");
-        this.torso = root.getChild("body");
-        this.rightArm = root.getChild("right_arm");
-        this.leftArm = root.getChild("left_arm");
-        this.rightLeg = root.getChild("right_leg");
-        this.leftLeg = root.getChild("left_leg");
+        this.head = root.getChild(MainMenuPartNames.HEAD);
+        this.body = root.getChild(MainMenuPartNames.BODY);
+        this.rightArm = root.getChild(MainMenuPartNames.RIGHT_ARM);
+        this.leftArm = root.getChild(MainMenuPartNames.LEFT_ARM);
+        this.rightLeg = root.getChild(MainMenuPartNames.RIGHT_LEG);
+        this.leftLeg = root.getChild(MainMenuPartNames.LEFT_LEG);
         this.characterModel = new PlayerModel(root, false);
     }
 
-    private static int cellU(int col) {
-        return col * CELL;
-    }
-
-    private static int cellV(int row) {
-        return row * CELL;
-    }
-
     /**
-     * Hand-authored idle-character {@link ModelPart} hierarchy (FR8.6,
-     * vanilla-player-blockiness proportions), reshaped from the 26.2 version
-     * to use {@link PlayerModel}'s exact required part names (see this
-     * class's own Javadoc) so it can be wrapped in a real {@link PlayerModel}
-     * and submitted through this version's only generic-camera
-     * picture-in-picture {@code skin(...)} overload.
+     * Builds one shared {@link MeshDefinition} combining the character bones
+     * (satisfying {@link PlayerModel}'s required names) and the scenery bones
+     * (extra top-level children, rendered generically) from {@code :common}'s
+     * canonical geometry.
      */
-    private static MeshDefinition buildCharacterMesh() {
+    private static MeshDefinition buildMesh() {
         MeshDefinition mesh = new MeshDefinition();
         PartDefinition root = mesh.getRoot();
 
-        PartDefinition headPart = root.addOrReplaceChild("head",
-                CubeListBuilder.create().texOffs(cellU(3), cellV(2))
-                        .addBox(-4f, -8f, -4f, 8f, 8f, 8f, CubeDeformation.NONE, TEX_SIZE, TEX_SIZE),
-                PartPose.offset(0f, 0f, 0f));
-        // "hat" is a required HumanoidModel part name -- doubles as the hair layer here.
-        headPart.addOrReplaceChild("hat",
-                CubeListBuilder.create().texOffs(cellU(0), cellV(3))
-                        .addBox(-4.3f, -8.3f, -4.3f, 8.6f, 3.6f, 8.6f, CubeDeformation.NONE, TEX_SIZE, TEX_SIZE),
-                PartPose.offset(0f, 0f, 0f));
-
-        PartDefinition body = root.addOrReplaceChild("body",
-                CubeListBuilder.create().texOffs(cellU(1), cellV(3))
-                        .addBox(-4f, 0f, -2f, 8f, 12f, 4f, CubeDeformation.NONE, TEX_SIZE, TEX_SIZE),
-                PartPose.offset(0f, 0f, 0f));
-        body.addOrReplaceChild("jacket", CubeListBuilder.create(), PartPose.ZERO);
-
-        PartDefinition rightArmPart = root.addOrReplaceChild("right_arm",
-                CubeListBuilder.create().texOffs(cellU(3), cellV(2))
-                        .addBox(-2f, -2f, -2f, 4f, 12f, 4f, CubeDeformation.NONE, TEX_SIZE, TEX_SIZE),
-                PartPose.offset(-6f, 2f, 0f));
-        rightArmPart.addOrReplaceChild("right_sleeve", CubeListBuilder.create(), PartPose.ZERO);
-
-        PartDefinition leftArmPart = root.addOrReplaceChild("left_arm",
-                CubeListBuilder.create().texOffs(cellU(3), cellV(2))
-                        .addBox(-2f, -2f, -2f, 4f, 12f, 4f, CubeDeformation.NONE, TEX_SIZE, TEX_SIZE),
-                PartPose.offset(6f, 2f, 0f));
-        leftArmPart.addOrReplaceChild("left_sleeve", CubeListBuilder.create(), PartPose.ZERO);
-
-        PartDefinition rightLegPart = root.addOrReplaceChild("right_leg",
-                CubeListBuilder.create().texOffs(cellU(2), cellV(3))
-                        .addBox(-2f, 0f, -2f, 4f, 12f, 4f, CubeDeformation.NONE, TEX_SIZE, TEX_SIZE),
-                PartPose.offset(-2f, 12f, 0f));
-        rightLegPart.addOrReplaceChild("right_pants", CubeListBuilder.create(), PartPose.ZERO);
-
-        PartDefinition leftLegPart = root.addOrReplaceChild("left_leg",
-                CubeListBuilder.create().texOffs(cellU(2), cellV(3))
-                        .addBox(-2f, 0f, -2f, 4f, 12f, 4f, CubeDeformation.NONE, TEX_SIZE, TEX_SIZE),
-                PartPose.offset(2f, 12f, 0f));
-        leftLegPart.addOrReplaceChild("left_pants", CubeListBuilder.create(), PartPose.ZERO);
-
+        java.util.Map<String, PartDefinition> byName = new java.util.HashMap<>();
+        for (MeshCubeSpec spec : MainMenuMeshDefinitions.CHARACTER_PARTS) {
+            PartDefinition parent = spec.parentName() == null ? root : byName.get(spec.parentName());
+            PartDefinition added = parent.addOrReplaceChild(spec.name(), toCubeListBuilder(spec), toPartPose(spec));
+            byName.put(spec.name(), added);
+        }
+        for (MeshCubeSpec spec : MainMenuMeshDefinitions.SCENERY_PARTS) {
+            root.addOrReplaceChild(spec.name(), toCubeListBuilder(spec), toPartPose(spec));
+        }
         return mesh;
+    }
+
+    private static CubeListBuilder toCubeListBuilder(MeshCubeSpec spec) {
+        return CubeListBuilder.create()
+                .texOffs(MainMenuMeshDefinitions.cellU(spec.uvCol()), MainMenuMeshDefinitions.cellV(spec.uvRow()))
+                .addBox(spec.originX(), spec.originY(), spec.originZ(),
+                        spec.sizeX(), spec.sizeY(), spec.sizeZ(),
+                        CubeDeformation.NONE, TEX_SIZE, TEX_SIZE);
+    }
+
+    private static PartPose toPartPose(MeshCubeSpec spec) {
+        return PartPose.offset(spec.pivotX(), spec.pivotY(), spec.pivotZ());
     }
 
     /**
@@ -176,14 +142,21 @@ public final class MainMenuBackgroundRenderer {
      * every frame from {@link MainMenuScreen#extractRenderState}, regardless
      * of tab state.
      *
-     * <p>FX8 note: this version's own scene is already the flat-2D,
-     * full-screen stand-in described in this class's own Javadoc (not the
-     * 3D {@code skin()}-submitted geometry 26.2 uses) -- it already fills the
-     * destination rect edge-to-edge, so FX8's "small/centered/stuck to the
-     * bottom" defect (a 3D-camera scale/pivot framing issue) does not apply
-     * to it structurally; per FX8.3/R4 this is the documented placeholder-
-     * model-limitation framing for this platform specifically, not a skipped
-     * fix. FX7 (character sizing/position) still applies below.
+     * <h2>Camera re-tuning for the merged scene+character single call</h2>
+     * Previously this version's character-only {@code skin(...)} call used
+     * {@code scale=22f, rotationY=20f, pivotY=0f}. Now that the same call also
+     * carries the scenery bones (model-space vertical extent roughly
+     * {@code y=-40..32}, identical to 26.2's own scene geometry since both
+     * read from the same {@code :common} data), a single camera has to frame
+     * both without clipping the sky/ground or shrinking the character to a
+     * speck. Starting point per the plan's Risk 1 mitigation: widen the field
+     * of view (lower {@code scale}, matching 26.2's own scene-call tuning of
+     * {@code 18f}) and re-aim {@code pivotY} toward the combined mesh's
+     * vertical center (roughly {@code -4}, splitting the difference between
+     * the scene's own {@code -6} pivot and the character's own {@code 0}
+     * pivot) so the horizon reads mid-region rather than clipped/pinned to an
+     * edge -- exact fine-tuning is left as a follow-up in-game pass per the
+     * plan's Test Strategy/Acceptance Criteria.
      *
      * @param leftOffset    Batch-2 FR-BB1.2: the left-docked sidebar's own
      *                      collapsed width + margin -- the reserved region
@@ -195,15 +168,14 @@ public final class MainMenuBackgroundRenderer {
     public void render(GuiGraphicsExtractor guiGraphics, int screenWidth, int screenHeight, int leftOffset, int reservedWidth) {
         double elapsedSeconds = (System.nanoTime() - startNanos) / 1_000_000_000.0;
 
-        renderSceneAsFlat2D(guiGraphics, screenWidth, screenHeight);
-
-        // Character: still a genuine 3D picture-in-picture model, posed per-frame
-        // from the pure animation math (FR8.6). FX7: sized/positioned from the
-        // reserved left-third region's own actual pixel bounds, not
-        // screenWidth*0.08, grounded at the bottom and inset from the
-        // region's edges so it reads as "bottom-left of the region."
         CharacterPose pose = animator.poseAt(elapsedSeconds);
         applyPose(pose);
+
+        // FX7: sized/positioned from the reserved left-third region's own
+        // actual pixel bounds, not screenWidth*0.08, grounded at the bottom
+        // and inset from the region's edges so it reads as "bottom-left of
+        // the region." Now the destination rect also covers the scenery,
+        // since scene + character share one camera/call.
         int region = Math.max(1, reservedWidth);
         // Bug fix: at small logical GUI widths (high GUI scale / narrow window)
         // reservedWidth() can clamp down to a few pixels or 0, and the old fixed
@@ -219,35 +191,7 @@ public final class MainMenuBackgroundRenderer {
         int charX1 = Math.max(charX0 + 1, leftOffset + region - inset);
         int charY0 = Math.max(0, (int) (screenHeight * 0.04));
         int charY1 = Math.max(charY0 + 1, screenHeight);
-        guiGraphics.skin(characterModel, PALETTE, 22f, 0f, 20f, 0f, charX0, charY0, charX1, charY1);
-    }
-
-    /**
-     * 2D screen-space stand-in for the sky/sun/mountains/ground scene (this
-     * class's own Javadoc) -- 26.1 has no generic-camera picture-in-picture
-     * call this feature can submit non-biped geometry through.
-     */
-    private void renderSceneAsFlat2D(GuiGraphicsExtractor guiGraphics, int screenWidth, int screenHeight) {
-        // Dusk sky gradient (top: deep violet, bottom: pale gold), roughly the
-        // same stops the 26.2 version bakes into stacked 3D bands.
-        guiGraphics.fillGradient(0, 0, screenWidth, screenHeight, 0xFF2E2A44, 0xFFC9A15A);
-
-        // Sun glow + core, upper-right per design doc placement.
-        int sunCx = (int) (screenWidth * 0.78);
-        int sunCy = (int) (screenHeight * 0.22);
-        int glowR = Math.max(60, screenHeight / 6);
-        guiGraphics.fill(sunCx - glowR, sunCy - glowR, sunCx + glowR, sunCy + glowR, 0x662EE8C9);
-        int coreR = glowR / 3;
-        guiGraphics.fill(sunCx - coreR, sunCy - coreR, sunCx + coreR, sunCy + coreR, 0xFFF5E6A8);
-
-        // Mountains: two semi-transparent silhouette bands along the bottom.
-        int groundTop = (int) (screenHeight * 0.72);
-        guiGraphics.fill(0, groundTop - 40, screenWidth, groundTop, 0x552B2A3A);
-        guiGraphics.fill(0, groundTop - 20, screenWidth, groundTop, 0x77201F2C);
-
-        // Ground: flat base + lighter top-edge highlight strip.
-        guiGraphics.fill(0, groundTop, screenWidth, screenHeight, 0xFF2E4A2E);
-        guiGraphics.fill(0, groundTop, screenWidth, groundTop + 3, 0xFF6F9A5A);
+        guiGraphics.skin(characterModel, PALETTE, 18f, 0f, 20f, -4f, charX0, charY0, charX1, charY1);
     }
 
     private void applyPose(CharacterPose pose) {

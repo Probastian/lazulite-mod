@@ -1,4 +1,4 @@
-package de.lazuli.features.mainmenu.config;
+package de.lazuli.common.config;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;

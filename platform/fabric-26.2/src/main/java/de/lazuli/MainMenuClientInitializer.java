@@ -1,5 +1,6 @@
 package de.lazuli;
 
+import de.lazuli.api.mainmenu.MainMenuContext;
 import de.lazuli.api.richpresence.RichPresenceFacade;
 import de.lazuli.api.serverbrowser.ServerBrowserSessionFactory;
 import de.lazuli.api.serverjoinpresence.FriendServerPresenceReader;
@@ -14,6 +15,7 @@ import de.lazuli.mainmenu.MainMenuScreen;
 import de.lazuli.mainmenu.MainMenuStoreOwnershipChecker;
 import de.lazuli.services.steamworks.SteamAchievementsGateway;
 import de.lazuli.services.steamworks.SteamworksService;
+import de.lazuli.tweaks.TweaksBundle;
 
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
@@ -66,6 +68,9 @@ public final class MainMenuClientInitializer implements ClientModInitializer {
         // runs before this one, so the gateway (or Noop fallback) is already
         // published by the time this line runs.
         SteamAchievementsGateway steamAchievementsGateway = SteamAchievementsGatewayHandoff.require();
+        // Tweaks feature: TweaksClientInitializer runs before this one
+        // (fabric.mod.json entrypoint order), so the bundle is already published.
+        TweaksBundle tweaksBundle = TweakRegistryHandoff.require();
         boolean steamAvailable = steamworksService.isSteamAvailable();
 
         Path configDir = FabricLoader.getInstance().getConfigDir();
@@ -125,24 +130,25 @@ public final class MainMenuClientInitializer implements ClientModInitializer {
 
         MainMenuBackgroundRenderer background = new MainMenuBackgroundRenderer();
 
-        java.util.function.Supplier<Screen> screenFactory = () -> buildScreen(background, friendsSidebarFacade,
+        java.util.function.Function<MainMenuContext, Screen> screenFactory = ctx -> buildScreen(ctx, background, friendsSidebarFacade,
                 serverBrowserSessionFactory, steamAvailable, storeCatalog, ownershipChecker, wardrobeResult,
                 wardrobeConfigIO, wardrobeConfigPath, richPresenceFacade, friendServerPresenceReader,
-                steamAchievementsGateway, joinHistoryResult.config());
+                steamAchievementsGateway, joinHistoryResult.config(), tweaksBundle);
         MainMenuScreenFactoryHandoff.publish(screenFactory);
 
-        ClientLifecycleEvents.CLIENT_STARTED.register(client -> Minecraft.getInstance().setScreenAndShow(screenFactory.get()));
+        ClientLifecycleEvents.CLIENT_STARTED.register(client ->
+                Minecraft.getInstance().setScreenAndShow(screenFactory.apply(MainMenuContext.MAIN_MENU)));
     }
 
-    private static Screen buildScreen(MainMenuBackgroundRenderer background, FriendsSidebarFacade friendsSidebarFacade,
+    private static Screen buildScreen(MainMenuContext context, MainMenuBackgroundRenderer background, FriendsSidebarFacade friendsSidebarFacade,
                                        ServerBrowserSessionFactory serverBrowserSessionFactory, boolean steamAvailable,
                                        StoreCatalog storeCatalog, MainMenuStoreOwnershipChecker ownershipChecker,
                                        WardrobeConfigIO.ParseResult wardrobeResult, WardrobeConfigIO wardrobeConfigIO,
                                        Path wardrobeConfigPath, RichPresenceFacade richPresenceFacade,
                                        FriendServerPresenceReader friendServerPresenceReader,
                                        SteamAchievementsGateway steamAchievementsGateway,
-                                       MainMenuJoinHistoryConfig joinHistoryConfig) {
-        return new MainMenuScreen(background, friendsSidebarFacade, serverBrowserSessionFactory,
+                                       MainMenuJoinHistoryConfig joinHistoryConfig, TweaksBundle tweaksBundle) {
+        return new MainMenuScreen(context, background, friendsSidebarFacade, serverBrowserSessionFactory,
                 steamAvailable, storeCatalog, ownershipChecker, wardrobeResult.config(), richPresenceFacade,
                 friendServerPresenceReader, steamAchievementsGateway, joinHistoryConfig,
                 equipSnapshot -> {
@@ -153,6 +159,6 @@ public final class MainMenuClientInitializer implements ClientModInitializer {
                     } catch (java.io.IOException e) {
                         LazuliMod.LOGGER.warn("Failed to persist main-menu-wardrobe config: " + e);
                     }
-                });
+                }, tweaksBundle);
     }
 }

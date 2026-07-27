@@ -1,0 +1,17 @@
+dependencies {
+	// TweakId/TweakState/TweakDefinition (api-module types) appear in this
+	// feature's own public service signatures (TweakRegistry), so it must
+	// leak to consumers -- hence `api`, not `implementation`.
+	api project(':api')
+
+	// MainMenuJson (hand-rolled JSON value model/parser/writer, relocated
+	// here from features/main-menu) is consumed internally by
+	// TweaksConfigIO only, never re-exposed on this feature's own public
+	// surface -- `implementation`. This is the dependency edge the spec's
+	// Architecture section calls out explicitly: features/tweaks -> common,
+	// deliberately not features/tweaks -> features/main-menu (sibling
+	// feature modules stay decoupled).
+	implementation project(':common')
+
+	// JUnit 5/AssertJ/Mockito are provided to every subproject by the root build.gradle.
+}
