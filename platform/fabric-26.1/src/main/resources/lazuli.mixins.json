@@ -13,6 +13,7 @@
 		"ServerKeyPacketMixin",
 		"GuiTitleScreenRedirectMixin",
 		"CameraZoomFovMixin",
+		"MouseHandlerScrollZoomMixin",
 		"LocalPlayerAntiDropMixin",
 		"LightmapRenderStateExtractorForceBrightnessMixin",
 		"ClientLevelDisableParticlesMixin",

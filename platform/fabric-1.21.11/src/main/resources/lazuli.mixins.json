@@ -13,6 +13,7 @@
 		"ServerKeyPacketMixin",
 		"ClientTitleScreenRedirectMixin",
 		"GameRendererZoomFovMixin",
+		"MouseScrollZoomMixin",
 		"ClientPlayerEntityAntiDropMixin",
 		"LightmapForceBrightnessMixin",
 		"ClientWorldDisableParticlesMixin",
