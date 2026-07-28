@@ -94,7 +94,13 @@ public final class TweaksConfigIO {
                 }
                 boolean enabled = tweakObject.getBoolean("enabled");
                 MainMenuJson.JsonObject configurablesObject = tweakObject.getObject("configurables");
-                Map<String, Object> configurables = new LinkedHashMap<>();
+                // Start from this tweak's *default* configurables and overlay whatever the
+                // saved file has, rather than replacing the map outright -- otherwise a
+                // configurable key added after this file was first written (e.g. Zoom's
+                // "scrollToAdjust") silently reads as missing/null forever for any save that
+                // predates it, even though TweakDefinitions declares a real default for it.
+                Map<String, Object> configurables =
+                        new LinkedHashMap<>(TweaksConfig.DEFAULT.stateOf(id).configurables());
                 for (Map.Entry<String, MainMenuJson.JsonValue> confEntry : configurablesObject.members().entrySet()) {
                     configurables.put(confEntry.getKey(), toJavaValue(confEntry.getValue()));
                 }

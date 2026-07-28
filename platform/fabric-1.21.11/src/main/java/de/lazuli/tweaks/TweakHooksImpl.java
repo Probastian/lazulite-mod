@@ -48,6 +48,9 @@ public final class TweakHooksImpl implements AntiDropHook, ForceBrightnessHook, 
 
     private final TweakRegistry registry;
     private boolean zoomActive;
+    private float zoomFactor = 1.0f;
+    private long zoomTransitionStartNanos;
+    private float zoomTransitionStartFactor = 1.0f;
 
     public TweakHooksImpl(TweakRegistry registry) {
         this.registry = registry;
@@ -87,7 +90,7 @@ public final class TweakHooksImpl implements AntiDropHook, ForceBrightnessHook, 
     @Override
     public float minBrightness() {
         Object raw = state(TweakId.FORCE_BRIGHTNESS).configurable("minBrightness");
-        return raw instanceof Number n ? n.floatValue() : 1.0f;
+        return raw instanceof Number n ? n.floatValue() : 4.0f;
     }
 
     @Override
@@ -219,6 +222,10 @@ public final class TweakHooksImpl implements AntiDropHook, ForceBrightnessHook, 
     }
 
     void setZoomActive(boolean active) {
+        if (this.zoomActive != active) {
+            this.zoomTransitionStartFactor = zoomFactor;
+            this.zoomTransitionStartNanos = System.nanoTime();
+        }
         this.zoomActive = active;
     }
 
@@ -233,12 +240,50 @@ public final class TweakHooksImpl implements AntiDropHook, ForceBrightnessHook, 
 
     @Override
     public float applyFov(float baseFov) {
-        if (!isZoomActive()) {
+        TweakState s = state(TweakId.ZOOM);
+        if (!s.enabled()) {
+            zoomFactor = 1.0f;
             return baseFov;
         }
-        Object raw = state(TweakId.ZOOM).configurable("magnification");
-        float magnification = raw instanceof Number n ? n.floatValue() : 4.0f;
-        return baseFov / Math.max(1.0f, magnification);
+        Object rawMagnification = s.configurable("magnification");
+        float magnification = rawMagnification instanceof Number n ? n.floatValue() : 4.0f;
+        float targetFactor = zoomActive ? 1.0f / Math.max(2.0f, magnification) : 1.0f;
+
+        boolean transition = Boolean.TRUE.equals(s.configurable("transition"));
+        if (!transition) {
+            zoomFactor = targetFactor;
+        } else {
+            Object rawDuration = s.configurable("transitionDurationMs");
+            float durationMs = rawDuration instanceof Number n ? n.floatValue() : 150.0f;
+            if (durationMs <= 0.0f) {
+                zoomFactor = targetFactor;
+            } else {
+                float elapsedMs = (System.nanoTime() - zoomTransitionStartNanos) / 1_000_000.0f;
+                float progress = Math.min(1.0f, Math.max(0.0f, elapsedMs / durationMs));
+                zoomFactor = zoomTransitionStartFactor + (targetFactor - zoomTransitionStartFactor) * progress;
+            }
+        }
+        return baseFov * zoomFactor;
+    }
+
+    @Override
+    public boolean adjustZoomByScroll(double verticalAmount) {
+        TweakState s = state(TweakId.ZOOM);
+        if (!s.enabled() || !zoomActive || verticalAmount == 0.0) {
+            return false;
+        }
+        if (!Boolean.TRUE.equals(s.configurable("scrollToAdjust"))) {
+            return false;
+        }
+        Object rawMagnification = s.configurable("magnification");
+        double magnification = rawMagnification instanceof Number n ? n.doubleValue() : 4.0;
+        magnification = Math.min(20.0, Math.max(2.0, magnification + verticalAmount));
+        if (Boolean.TRUE.equals(s.configurable("transition"))) {
+            this.zoomTransitionStartFactor = zoomFactor;
+            this.zoomTransitionStartNanos = System.nanoTime();
+        }
+        registry.setConfigurable(TweakId.ZOOM, "magnification", magnification);
+        return true;
     }
 
     @Override

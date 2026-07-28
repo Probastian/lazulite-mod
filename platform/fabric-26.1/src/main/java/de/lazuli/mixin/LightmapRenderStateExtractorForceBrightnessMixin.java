@@ -31,7 +31,14 @@ abstract class LightmapRenderStateExtractorForceBrightnessMixin {
     private void lazuli$forceBrightness(LightmapRenderState state, float tickDelta, CallbackInfo ci) {
         var hooks = TweakEngineHandoff.require();
         if (hooks.isForceBrightnessActive()) {
-            state.brightness = Math.max(state.brightness, hooks.minBrightness());
+            float boosted = Math.max(state.brightness, hooks.minBrightness());
+            if (boosted != state.brightness) {
+                state.brightness = boosted;
+                // Lightmap.render(state) no-ops unless needsUpdate is set, so
+                // without this the boosted value is silently dropped on every
+                // frame where vanilla itself didn't already flag a change.
+                state.needsUpdate = true;
+            }
         }
     }
 }

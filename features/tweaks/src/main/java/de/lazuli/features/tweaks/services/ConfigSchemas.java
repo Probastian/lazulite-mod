@@ -27,7 +27,19 @@ public final class ConfigSchemas {
         ));
 
         ALL.put(TweakId.FORCE_BRIGHTNESS, List.of(
-                ConfigFieldSpec.numeric("minBrightness", "Min Brightness", 0.0, 1.0, 0.05)
+                // Range intentionally exceeds vanilla's gamma-slider ceiling of 1.0.
+                // Confirmed via decompiled game code (LightmapRenderStateExtractor.extract /
+                // LightmapTextureManager.update on all 3 platforms) that state.brightness /
+                // GameOptions.getGamma() IS already a 0.0-1.0 domain identical to the vanilla
+                // "Brightness" option -- NOT a 0-16 lightmap coordinate. But that same 0.0-1.0
+                // domain, read from the shipped lightmap.fsh/lightmap shader, feeds a
+                // `mix(color, notGamma(color), BrightnessFactor)` curve; at BrightnessFactor
+                // capped to vanilla's own max (1.0) this only reaches vanilla's normal
+                // "Bright" setting, which still leaves dim/shadowed areas visibly darkened.
+                // Allowing values above 1.0 pushes the mix() extrapolation harder toward the
+                // notGamma-brightened color (hardware-clamped to opaque white on output),
+                // which is the same "gamma > 1" trick fullbright resource packs rely on.
+                ConfigFieldSpec.numeric("minBrightness", "Min Brightness", 0.0, 4.0, 0.25)
         ));
 
         ALL.put(TweakId.CHAT_FILTER, List.of(
@@ -85,7 +97,7 @@ public final class ConfigSchemas {
                 ConfigFieldSpec.bool("holdToZoom", "Hold To Zoom"),
                 ConfigFieldSpec.bool("transition", "Transition"),
                 ConfigFieldSpec.numeric("transitionDurationMs", "Transition Duration (ms)", 0.0, 1000.0, 50.0),
-                ConfigFieldSpec.numeric("magnification", "Magnification", 1.0, 10.0, 0.5),
+                ConfigFieldSpec.numeric("magnification", "Magnification", 2.0, 10.0, 0.5),
                 ConfigFieldSpec.bool("scrollToAdjust", "Scroll To Adjust")
         ));
 

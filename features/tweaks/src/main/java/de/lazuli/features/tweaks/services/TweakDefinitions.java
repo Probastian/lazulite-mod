@@ -63,7 +63,7 @@ public final class TweakDefinitions {
 
     public static final TweakDefinition FORCE_BRIGHTNESS = of(TweakId.FORCE_BRIGHTNESS,
             "Forces a minimum screen brightness so dark areas never go fully black.",
-            map("minBrightness", 1.0), false);
+            map("minBrightness", 4.0), false);
 
     public static final TweakDefinition CHAT_FILTER = of(TweakId.CHAT_FILTER,
             "Hides chat messages containing filtered or custom blacklisted terms.",
