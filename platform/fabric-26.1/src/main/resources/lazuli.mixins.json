@@ -20,7 +20,7 @@
 		"EntityRendererHidePlayerNamesMixin",
 		"SpriteContentsCaptureAnimationStateMixin",
 		"AnimationStateDisableAnimationsMixin",
-		"GuiClearWaterMixin",
+		"WaterFogEnvironmentClearWaterMixin",
 		"BossHealthOverlayDisableBossBarsMixin",
 		"GuiCustomCrosshairMixin",
 		"ChatComponentChatFilterMixin"
