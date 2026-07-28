@@ -5,6 +5,8 @@ import com.codedisaster.steamworks.SteamException;
 
 import de.lazuli.api.steamworks.SteamAvailability;
 
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.function.Consumer;
 
@@ -86,6 +88,8 @@ public final class SteamworksService implements SteamAvailability {
      */
     public static SteamworksService create(long appId, Path nativeLibraryDirectory, Consumer<String> warningLogger) {
         try {
+            writeSteamAppIdFile(appId, warningLogger);
+
             ClasspathSteamLibraryLoader loader = new ClasspathSteamLibraryLoader(nativeLibraryDirectory, warningLogger);
             boolean librariesLoaded = SteamAPI.loadLibraries(loader);
             if (!librariesLoaded) {
@@ -150,6 +154,27 @@ public final class SteamworksService implements SteamAvailability {
     @Override
     public long steamAppId() {
         return appId;
+    }
+
+    /**
+     * Writes {@code steam_appid.txt} into the process's working directory
+     * (the only place {@code SteamAPI_Init} looks for it) so that a release
+     * jar launched directly - not through the Steam client, and without the
+     * dev-only {@code generateSteamAppId} Gradle task - can still initialize.
+     * Never overwrites a file already there (e.g. one Steam itself wrote, or
+     * one a player placed deliberately), and never throws: a failure here
+     * just means {@code SteamAPI.initEx()} goes on to fail the same way it
+     * always did without this file.
+     */
+    private static void writeSteamAppIdFile(long appId, Consumer<String> warningLogger) {
+        try {
+            Path appIdFile = Path.of("steam_appid.txt");
+            if (Files.notExists(appIdFile)) {
+                Files.writeString(appIdFile, Long.toString(appId) + System.lineSeparator());
+            }
+        } catch (IOException | RuntimeException e) {
+            warn(warningLogger, "Failed to write steam_appid.txt for App ID " + appId + ": " + e);
+        }
     }
 
     private static void warn(Consumer<String> warningLogger, String message) {
