@@ -8,7 +8,6 @@ package de.lazuli.features.richpresence.services;
  * Keeps {@link LocalPresenceTrackerImpl} itself free of
  * {@code net.minecraft.*} import.
  */
-@FunctionalInterface
 public interface TierTextFormatter {
 
     /**
@@ -18,4 +17,17 @@ public interface TierTextFormatter {
      * @return the fully localized plain status string
      */
     String format(PresenceTier tier);
+
+    /**
+     * Addendum FR-RPD2: exposes just the tier's localized biome display name
+     * (e.g. {@code "Plains"}), via the same {@code Text}/{@code Component}
+     * translation seam {@link #format(PresenceTier)} already uses internally
+     * -- needed so {@code LocalPresenceTrackerImpl} can populate
+     * {@link LocalPresenceTierSnapshot#localizedBiome()} without duplicating
+     * the whole formatted sentence.
+     *
+     * @return the localized biome display name, or {@code ""} if this tier
+     *         carries no biome argument
+     */
+    String localizeBiome(PresenceTier tier);
 }

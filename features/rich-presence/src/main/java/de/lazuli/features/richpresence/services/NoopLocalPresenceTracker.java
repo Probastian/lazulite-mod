@@ -9,4 +9,9 @@ public final class NoopLocalPresenceTracker implements LocalPresenceTracker {
     public Optional<String> currentStatus() {
         return Optional.empty();
     }
+
+    @Override
+    public Optional<LocalPresenceTierSnapshot> currentTier() {
+        return Optional.empty();
+    }
 }

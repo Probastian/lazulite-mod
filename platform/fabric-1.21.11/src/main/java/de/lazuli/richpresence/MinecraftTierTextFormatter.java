@@ -41,4 +41,9 @@ public final class MinecraftTierTextFormatter implements TierTextFormatter {
     private static Text biomeArg(PresenceTier tier) {
         return tier.biomeTranslationKey().map(Text::translatable).orElseGet(() -> Text.literal(""));
     }
+
+    @Override
+    public String localizeBiome(PresenceTier tier) {
+        return tier.biomeTranslationKey().map(key -> Text.translatable(key).getString()).orElse("");
+    }
 }

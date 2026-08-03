@@ -1,0 +1,49 @@
+// steamworks-localization-tokens.vdf
+//
+// NOT loaded or parsed by this mod at runtime. This file exists solely as
+// data to be manually copy-pasted into the Steamworks partner site:
+// App Admin -> Rich Presence Localization, App ID 5052800.
+//
+// KEEP IN SYNC: every TierKind in
+// features/rich-presence/src/main/java/de/lazuli/features/richpresence/services/TierKind.java
+// must have exactly one corresponding token here (mapping defined in
+// RichPresenceTokenMap / features/rich-presence/specification.md's
+// "Addendum: steam_display Localization Token Support", FR-RPD3). Adding a
+// new tier without adding + uploading its token here means steam_display
+// will render as a raw, unresolved token name to friends viewing it.
+//
+// CRITICAL RULE (lesson learned from a confirmed live bug): Steam's Rich
+// Presence %variable% interpolation ONLY substitutes a variable if that
+// exact key was set via SetRichPresence in the SAME call/session. If a
+// token's text below references a %variable%, the game code MUST set that
+// key every single time this token is the active steam_display value --
+// never for some tiers/cases and not others. A previous version of this
+// file referenced both %biome% and %dimensionSuffix% separately; the
+// dimensionSuffix key was (correctly, per the "never send empty string"
+// rule) omitted entirely for Overworld tiers, but the token text still said
+// "...%biome%%dimensionSuffix%", so Steam had nothing to substitute for
+// %dimensionSuffix% and showed the literal text "Staying in
+// Forest%dimensionSuffix%" to real friends. The fix: every biome-bearing
+// token below now references a single %location% variable (biome name +
+// dimension suffix, fully composed in code, e.g. "Forest in the Nether")
+// that is always present whenever its token is active -- never reference a
+// variable in a token that could be absent for that tier.
+"lang"
+{
+    "english"
+    {
+        "tokens"
+        {
+            "#Status_Paused"          "Paused"
+            "#Status_Spectating"      "Spectating"
+            "#Status_RidingMinecart"  "Driving through %location%"
+            "#Status_RidingBoat"      "Sailing through %location%"
+            "#Status_NearVillage"     "Near a Village in %location%"
+            "#Status_Exploring"       "Exploring %location%"
+            "#Status_Staying"         "Staying in %location%"
+            "#Status_Building"        "Building in %location%"
+            "#Status_DiggingAround"   "Digging around"
+            "#Status_MainMenu"        "In main menu"
+        }
+    }
+}

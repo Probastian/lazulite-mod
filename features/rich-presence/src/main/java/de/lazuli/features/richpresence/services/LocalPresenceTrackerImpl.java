@@ -35,4 +35,15 @@ public final class LocalPresenceTrackerImpl implements LocalPresenceTracker {
         }
         return Optional.of(formatter.format(tier));
     }
+
+    @Override
+    public Optional<LocalPresenceTierSnapshot> currentTier() {
+        PresenceSignals signals = signalsSupplier.get();
+        PresenceTier tier = resolver.resolve(signals);
+        if (tier.kind() == TierKind.MAIN_MENU) {
+            return Optional.empty(); // FR-RP7: no session active, nothing to publish.
+        }
+        return Optional.of(new LocalPresenceTierSnapshot(
+                tier.kind(), formatter.localizeBiome(tier), tier.nether(), tier.end()));
+    }
 }

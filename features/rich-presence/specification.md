@@ -73,9 +73,11 @@ shared home for the two features' specs/code.
 - No population of Steam's `"connect"` Rich Presence key by this feature —
   that remains exclusively `HostingLifecycle`'s responsibility
   (`features/steam-world-hosting/services/HostingLifecycle.java:61,80`,
-  `CONNECT_KEY`), unchanged. This feature publishes a **different** key
-  (`"status"`) and must not overwrite or clear `"connect"` when it calls
-  `setLocalRichPresence` — see Requirements (FR-RP5)/Compatibility.
+  `CONNECT_KEY`), unchanged. This feature publishes different keys
+  (`"status"`, and — per the Addendum below — `"steam_display"` plus a small
+  set of interpolation-variable keys) and must not overwrite or clear
+  `"connect"` when it calls `setLocalRichPresence` — see Requirements
+  (FR-RP5)/Compatibility.
 - No in-mod settings UI to disable/customize Rich Presence publishing in v1
   (see Future Extensions) — always-on whenever Steam is available, matching
   every other always-on Steamworks read/write in this codebase.
@@ -107,10 +109,16 @@ shared home for the two features' specs/code.
   reasoning class as Fighting/Sleeping: the death/respawn window is a few
   seconds, and it would flicker rapidly against whatever tier follows it with
   essentially no value as a friends-list status string.
-- No `"steam_display"` Valve-side localization token is set in v1 (Steam's
-  cross-locale re-localization mechanism) — the published string is already
-  fully localized client-side via Minecraft's own `Text`/`Component` system
-  before being handed to Steam; see Future Extensions.
+- ~~No `"steam_display"` Valve-side localization token is set in v1~~ —
+  **superseded by the Addendum below.** The original v1 decision to omit
+  `steam_display` is reversed: per Valve's own Enhanced Rich Presence
+  documentation, a custom key like `"status"` is inert data the Friends List
+  UI never displays on its own — only the value pointed to by the special
+  `steam_display` key is rendered, and it must reference a **localization
+  token name** (e.g. `"#Status_Exploring"`), not free text. Without also
+  setting `steam_display`, this feature's `"status"` writes are invisible in
+  the actual Steam Friends List UI. See "Addendum: `steam_display`
+  Localization Token Support" below for the full requirement.
 
 ## Requirements
 
@@ -131,11 +139,15 @@ shared home for the two features' specs/code.
   existing `"connect"` write, and does not need to change
   `SteamFriendsGateway`'s public surface — the generic
   `setLocalRichPresence(key, value)` method already suffices; this is a new
-  caller, `key = "status"`.
-- **v1 decision (recommended): set only the `"status"` key to a plain,
-  already-fully-formed client-locale string**, computed via Minecraft's own
-  `Text`/`Component` + lang-file system — do **not** additionally set
-  `"steam_display"` in v1 (Non-goals, Future Extensions).
+  caller, `key = "status"` (and, per the Addendum below, `"steam_display"`
+  plus a small number of interpolation-variable keys).
+- **v1 decision (superseded — see Addendum): set only the `"status"` key to
+  a plain, already-fully-formed client-locale string**, computed via
+  Minecraft's own `Text`/`Component` + lang-file system. This is retained as
+  the historical v1 decision for context, but is no longer the final design
+  — `RichPresencePublisher` must additionally set `"steam_display"` (and its
+  supporting interpolation keys) per the Addendum, because a plain `"status"`
+  string alone is never surfaced by Steam's Friends List UI.
 
 **Core requirements:**
 
@@ -167,10 +179,12 @@ shared home for the two features' specs/code.
   previous write (debounce, exact granularity a planning-phase decision) —
   not necessarily every tick.
 - FR-RP5. **Must not clobber `HostingLifecycle`'s `"connect"` key.** Writing
-  `"status"` does not, by itself, clear or overwrite `"connect"` (independent
-  keys in Steam's per-local-player Rich Presence store). This feature's
-  caller must **only ever call `setLocalRichPresence` with `key =
-  "status"`**, never re-deriving or touching `"connect"`.
+  `"status"`/`"steam_display"`/interpolation keys does not, by itself, clear
+  or overwrite `"connect"` (independent keys in Steam's per-local-player Rich
+  Presence store). This feature's caller must **only ever call
+  `setLocalRichPresence` with the key set defined by this feature** (`
+  "status"`, `"steam_display"`, `"location"` — see Addendum), never
+  re-deriving or touching `"connect"`.
 - FR-RP6. The friends-sidebar own-profile row
   (`features/friends-sidebar/specification-own-profile-ingame-status.md`
   FR-OP2) may, once this feature ships, optionally consume the **same**
@@ -183,7 +197,8 @@ shared home for the two features' specs/code.
   **only** coupling point between this feature and friends-sidebar; nothing
   else in this feature depends on friends-sidebar existing.
 - FR-RP7. Session-inactive states (main menu, world not loaded) do not
-  attempt to write Rich Presence `"status"` at all — clear it
+  attempt to write Rich Presence `"status"` (or `"steam_display"`/
+  interpolation keys) at all — clear it
   (`SteamFriends.clearRichPresence()`, confirmed present in the pinned
   steamworks4j 1.10.0 jar per `.claude/context/minecraft.md`'s surface
   table, not yet called anywhere in this codebase) so a friend viewing the
@@ -510,6 +525,10 @@ Illustrative shapes only; final names are a planning-phase decision.
    signature change; this feature is a new caller (`key = "status"`), not a
    new method.
 
+See "Addendum: `steam_display` Localization Token Support" below for the
+additional `LocalPresenceTracker` surface (`currentTier()`) and new
+`RichPresenceTokenMap` component this feature also requires.
+
 ## Architecture
 ```
 features/rich-presence/services/LocalPresenceTracker  (new)
@@ -558,7 +577,9 @@ tracker's recompute is a per-tick/per-sweep poll, not push-driven.
   `SteamFriends.setRichPresence("status", value)` — already confirmed
   present and already in use (for a different key) by
   `SteamworksSteamFriendsGateway.java:211`/`HostingLifecycle.java:61,80`; no
-  new steamworks4j surface to verify for that call.
+  new steamworks4j surface to verify for that call. Per the Addendum below,
+  the same call is also used, unchanged in signature, for `"steam_display"`
+  and the interpolation-variable keys.
 - Local, low-latency Steam-client IPC only — no raw network I/O, no new
   per-frame cost beyond the existing debounced write (FR-RP4).
 - `SteamFriends.clearRichPresence()` (FR-RP7) is confirmed present in the
@@ -630,9 +651,8 @@ written to any config/save file.
 - Using composter/lectern counts as an additional or alternative
   Near-a-Village signal, if the bell/villager-count check ever proves
   insufficiently accurate in practice (see Requirements, "Near a Village").
-- A `"steam_display"` Valve-side localization token (rather than a
-  pre-localized plain `"status"` string) if cross-locale friend-viewing
-  fidelity is ever requested — not attempted in v1.
+- ~~A `"steam_display"` Valve-side localization token~~ — **implemented, see
+  Addendum below** (no longer a Future Extension).
 - A settings toggle to disable Rich Presence publishing entirely.
 - Extending the "Near a Village" style of proximity-based detection to other
   notable player-visible structure types (e.g. a nether fortress, an ocean
@@ -669,4 +689,487 @@ visible rather than silently finalized)
    own-row consumption (FR-RP6), or independently as a Steam-only Rich
    Presence write with no sidebar-label change yet** — both are valid
    phasing choices; flagging for planning-phase sequencing.
+
+---
+
+# Addendum: `steam_display` Localization Token Support
+
+> **STATUS: New addendum, ready for approval.** This section supersedes the
+> base spec's original v1 decision to omit `steam_display` (Overview,
+> Requirements "Current state", Future Extensions) — that decision is struck
+> through above and replaced by the requirements below. Everything else in
+> the base spec (tier set, precedence, detection design, non-goals) is
+> unchanged and still governs.
+
+## Overview
+Steam's Friends List UI does not display arbitrary custom Rich Presence keys
+— per Valve's [Enhanced Rich Presence](https://partner.steamgames.com/doc/features/enhancedrichpresence)
+documentation, custom keys (like this feature's existing `"status"`) are
+just data. The UI only ever renders whatever the special `steam_display` key
+points to, and `steam_display`'s value must be a **localization token name**
+(e.g. `"#Status_Exploring"`), never free text — Steam looks that token name
+up in per-app localization data configured on the Steamworks partner site
+(App Admin → Rich Presence Localization, for this app's App ID `5052800`)
+and performs `%variable%` substitution against the game's other currently-set
+custom keys at render time, in the *viewer's* own Steam client language.
+
+`RichPresencePublisher` currently sets only `"status"` (a plain,
+already-Minecraft-localized string) and never sets `steam_display` — so
+today, nothing this feature writes is ever actually visible in a friend's
+real Steam Friends List. This addendum closes that gap: `steam_display` is
+set to the token name matching the current tier, alongside a small,
+fixed set of interpolation-variable custom keys the token's localized text
+references. `"status"` itself is retained, unchanged, for FR-RP6's
+own-profile-row consumption and any other machine-readable consumer.
+
+## Goals
+- Make Rich Presence tiers actually render in the real Steam Friends List UI
+  by setting `steam_display` to a valid, partner-site-configured
+  localization token name whenever `"status"` is set.
+- Reuse the existing `SteamFriendsGateway.setLocalRichPresence(String,
+  String)` method for every new key — no gateway interface change.
+- Route every new key through the same length-guard mechanism `"status"`
+  already goes through, if one exists (see "Requirements", `RichPresenceLimits`).
+- Ship a companion `.vdf` localization data file
+  (`features/rich-presence/steamworks-localization-tokens.vdf`) enumerating
+  one token per tier, to be pasted into the Steamworks partner site.
+
+## Non-goals
+- No change to `ConnectStringCodec`, the join/invite flow, friends-sidebar,
+  or `features/steam-world-hosting` code — strictly scoped to
+  `RichPresencePublisher`, the Steam friends gateway's
+  `setLocalRichPresence` calls, `RichPresenceLimits` (if present), and the
+  new `.vdf` localization file.
+- No new Steamworks gateway method — `steam_display` and the interpolation
+  keys are written via the same `setLocalRichPresence(key, value)` call
+  `"status"` already uses.
+- No attempt to have Steam re-localize the biome name or dimension suffix
+  per-viewer-language — those substrings are still produced by *this mod's*
+  own Minecraft `Text`/`Component` localization (in the local player's own
+  client language) and handed to Steam as plain interpolation-variable
+  values (see "Design" below); only the token's surrounding sentence
+  structure (e.g. "Exploring %biome%%dimensionSuffix%") is Valve-localized
+  per viewer. Full per-viewer re-localization of the biome/dimension text
+  itself is a Future Extension, not attempted here.
+- Does not change the existing tier set, precedence, or detection logic
+  defined in the base specification above — purely an additional publish
+  step layered on the already-resolved tier.
+
+## Requirements
+
+**FR-RPD1 — `steam_display` is set alongside `"status"`.** Every time
+`RichPresencePublisher` writes (or would write) the `"status"` key (FR-RP4's
+existing debounce/change-detection), it must also write `"steam_display"` =
+the token name for the current tier (see "Tier-to-token mapping" below),
+plus that token's supporting interpolation-variable keys (`"biome"`,
+`"dimensionSuffix"`). All keys for a given tick are written together, using
+the same debounce trigger as `"status"` — not evaluated/debounced
+independently per key, to avoid Steam ever showing a mismatched
+`steam_display`/interpolation-variable combination mid-transition.
+
+**FR-RPD2 — `LocalPresenceTracker` must expose the raw tier, not just the
+formatted string.** `RichPresencePublisher` cannot select the correct token
+or format the interpolation variables from a pre-baked `String` alone (the
+current `currentStatus(): Optional<String>` contract). `LocalPresenceTracker`
+gains a second accessor exposing the currently-resolved tier's kind
+(`TierKind`) plus its already-localized biome name and dimension flags, e.g.:
+
+```java
+public interface LocalPresenceTracker {
+    Optional<String> currentStatus();
+    Optional<LocalPresenceTierSnapshot> currentTier(); // new
+}
+
+public record LocalPresenceTierSnapshot(
+        TierKind kind,
+        String localizedBiome,   // "" if this tier carries no biome argument
+        boolean nether,
+        boolean end) { }
+```
+
+Exact type/method naming is a planning-phase decision (e.g. folding this
+into a single richer return type from `currentStatus()` instead of a second
+method is an equally valid shape) — the requirement is only that
+`RichPresencePublisher` (or an equivalent caller) has access to, at minimum,
+the resolved `TierKind`, a pre-localized biome string, and the nether/end
+flags for the currently-active tier, every tick it also has
+`currentStatus()`'s formatted string. `LocalPresenceTrackerImpl` must
+compute `localizedBiome` via the same `TierTextFormatter`/biome-translation
+seam it already uses internally to build the full formatted string (no new
+`net.minecraft.*`-importing code in `RichPresencePublisher` itself — it
+stays platform-agnostic, per the base spec's Architecture section).
+
+**FR-RPD3 — Tier-to-token mapping (pure, testable).** A small, pure
+function/class (e.g. `RichPresenceTokenMap`, living alongside
+`RichPresencePublisher` in `features/rich-presence/services/`) maps each
+non-`MAIN_MENU` `TierKind` to its fixed Steamworks localization token name.
+This mapping (final, one entry per `TierKind` enumerated in
+`TierKind.java:11-20`) is:
+
+| `TierKind` | `steam_display` token | Interpolation keys used by the token's localized text |
+|---|---|---|
+| `PAUSED` | `#Status_Paused` | none |
+| `SPECTATING` | `#Status_Spectating` | none |
+| `RIDING_MINECART` | `#Status_RidingMinecart` | `%location%` |
+| `RIDING_BOAT` | `#Status_RidingBoat` | `%location%` |
+| `NEAR_VILLAGE` | `#Status_NearVillage` | `%location%` |
+| `EXPLORING` | `#Status_Exploring` | `%location%` |
+| `STAYING` | `#Status_Staying` | `%location%` |
+| `BUILDING` | `#Status_Building` | `%location%` |
+| `DIGGING_AROUND` | `#Status_DiggingAround` | none (Overworld-only tier — no dimension suffix is ever needed, and this tier carries no biome argument in `PresenceTier`/`TierTextFormatter` today) |
+| `MAIN_MENU` | `#Status_MainMenu` | none (literal text "In main menu" — no interpolation variables; see below) |
+
+**Combined `%location%` key (revised from an earlier two-key `%biome%` +
+`%dimensionSuffix%` design — see FR-RPD4 for the full "lesson learned"
+writeup):** every biome-bearing tier's token references exactly one
+interpolation variable, `%location%`, computed fully in code as the
+localized biome name plus the dimension suffix (e.g. `"Forest"`, `"Forest in
+the Nether"`, `"Forest in the End"`). This key is always present whenever a
+tier's token references it — never split into two keys where one could be
+omitted while the token still references it.
+
+**`MAIN_MENU` is a real tier with its own token, not "n/a" (resolved per user
+feedback — supersedes the table row and FR-RPD3 note above in the base
+spec/earlier addendum draft that treated `MAIN_MENU` as having no token).**
+`RichPresenceTokenMap.tokenFor(TierKind.MAIN_MENU)` returns
+`Optional.of("#Status_MainMenu")`, whose partner-site-configured text is the
+literal string `"In main menu"` (no `%biome%`/`%dimensionSuffix%`
+interpolation — this tier never carries either). This does **not** change
+FR-RP7's clearing behavior: session-inactive/main-menu state still calls
+`SteamFriends.clearRichPresence()` and never calls `setLocalRichPresence` at
+all (no session is active, so there is nothing to publish a tier for in the
+first place) — `#Status_MainMenu` exists in the token map and the `.vdf` file
+for completeness/future use (e.g. if a future revision chooses to publish a
+"main menu" status instead of clearing), but is not wired to an actual
+`setLocalRichPresence("steam_display", "#Status_MainMenu")` call by this
+addendum's `RichPresencePublisher` changes, since FR-RP7's clear-on-main-menu
+behavior is unchanged and takes precedence.
+
+`RichPresenceTokenMap` must throw/fail closed (return `Optional.empty()` or
+equivalent, logged, non-throwing per this codebase's `SteamFriendsGateway`
+non-throwing convention) rather than write a malformed `steam_display` value
+if it is ever asked to map `MAIN_MENU` or an unrecognized `TierKind` — this
+should not happen given `LocalPresenceTrackerImpl`'s existing FR-RP7
+short-circuit, but the mapper itself must not assume that invariant silently.
+
+**FR-RPD4 — Interpolation-variable key (revised — single `location` key,
+superseding the original two-key `"biome"`/`"dimensionSuffix"` design below).**
+One new custom Rich Presence key is written, only for tiers whose token
+references it (`RIDING_MINECART`, `RIDING_BOAT`, `NEAR_VILLAGE`, `EXPLORING`,
+`STAYING`, `BUILDING` — every biome-bearing tier per
+`PresenceTier.biomeBearing`):
+- `"location"` — the tier's already-localized biome display name combined
+  with the dimension suffix into a single string, fully composed in code:
+  `"Plains"` (Overworld), `"Plains in the Nether"`, `"Plains in the End"`.
+  Sourced from `LocalPresenceTierSnapshot.localizedBiome()` (FR-RPD2) plus
+  the existing dimension-suffix logic (`" in the Nether"` for `nether`,
+  `" in the End"` for `end`, `""` otherwise) — the dimension-suffix logic
+  itself is unchanged, it is simply concatenated into `location` in code
+  rather than emitted as its own separate key. This composition belongs in
+  `RichPresencePublisher` (plain string formatting, no `net.minecraft.*`
+  dependency) — not in `LocalPresenceTrackerImpl`, which only needs to
+  expose the raw `nether`/`end` booleans and the localized biome name
+  (FR-RPD2, unchanged).
+
+~~The original design used two separate keys, `"biome"` and
+`"dimensionSuffix"`, with token text referencing both `%biome%` and
+`%dimensionSuffix%` (e.g. `"Staying in %biome%%dimensionSuffix%"`).~~ **This
+was a confirmed live bug and is superseded.** Root cause: Steam's Rich
+Presence `%variable%` interpolation only substitutes a variable if that
+exact key was set via `SetRichPresence` in the *same* call/session. The
+"never send empty string" rule below correctly omitted `"dimensionSuffix"`
+entirely for Overworld tiers — but the token text still referenced
+`%dimensionSuffix%` unconditionally, so Steam had no value to substitute and
+rendered the literal, un-substituted text to real friends (e.g. "Staying in
+Forest%dimensionSuffix%" instead of "Staying in Forest"). **Lesson learned:**
+never design a Rich Presence token referencing a `%variable%` that could be
+absent for the tier that token is active for — a single combined `location`
+key, always present whenever its token is active, closes this class of bug
+structurally rather than requiring every future tier addition to remember to
+keep two keys in lockstep.
+
+**Empty/absent-value keys are never written as `""` — resolved, no longer
+open (supersedes addendum Open Question 2 below, which is now closed).** For
+any tier and any of the three keys this feature ever writes
+(`"status"`, `"steam_display"`, `"location"`), if the value that would be
+written is empty or logically absent — a non-biome-bearing tier's
+`"location"` (`PAUSED`, `SPECTATING`, `DIGGING_AROUND`, `MAIN_MENU`) — that
+key is **omitted from the `setLocalRichPresence` call(s) for that tick
+entirely**, never sent as `setLocalRichPresence(key, "")`. This applies
+uniformly across every tier, not case-by-case: `RichPresencePublisher` must
+check for empty/absent before each individual key write and skip the call
+rather than passing through an empty string. `RichPresenceTokenMap`'s
+tier-to-token table and FR-RPD6's test coverage are both written against
+this single rule — there is no separate "clear with empty string" path for
+these keys; a tier transition that drops a previously-populated key (e.g.
+`EXPLORING` in the Nether transitioning to `PAUSED`) is handled the same way
+every other absent value is: the key is simply not part of that tick's write
+set. Critically, this omission rule is now safe precisely because no
+non-biome-bearing tier's token ever references `%location%` in the first
+place (see the `.vdf` file) — the earlier bug was the combination of "omit
+when absent" plus "token references it anyway"; this revision removes the
+second half of that combination for every tier, not just some.
+
+**FR-RPD5 — Length-guard reuse, if present.** `RichPresenceLimits`
+(`services/src/main/java/de/lazuli/services/steamworks/RichPresenceLimits.java`)
+does **not currently exist** in this codebase as of this writing (confirmed
+via repo search; it appears only as a *planned* class in
+`docs/plans/steam-rich-presence.md`/`docs/specs/steam-rich-presence.md`, a
+separate, not-yet-implemented plan for `steam-world-hosting`'s
+`steam_player_group`/`steam_player_group_size` keys). Two cases:
+  - **If `RichPresenceLimits` (or an equivalent guard) has landed by the
+    time this addendum is implemented**, every new key this addendum
+    introduces (`steam_display`, `location`) must go through
+    the identical guard `"status"` uses — whether that guard lives inside
+    `SteamworksSteamFriendsGateway.setLocalRichPresence` itself (in which
+    case it already applies transparently to every key, including these new
+    ones, with no extra call site needed) or is invoked explicitly by
+    `RichPresencePublisher` before calling `setLocalRichPresence`. No new
+    key introduced by this addendum may bypass that guard.
+  - **If no such guard exists yet**, this addendum does not introduce one
+    (out of scope — the guard is a separate, already-planned piece of work
+    tracked in `docs/plans/steam-rich-presence.md`); it only requires that
+    *if and when* that guard lands, these new keys are wired through it
+    identically to `"status"`, per the bullet above. Either way, token names
+    (max ~20 chars) and interpolation values (biome names, dimension
+    suffixes — all well under 256 chars) are comfortably within Valve's
+    documented `SetRichPresence` limits (64-char key / 256-char value / 20
+    keys total) even without an explicit runtime guard.
+
+**FR-RPD6 — Unit test coverage.** `RichPresencePublisherTest.java` (or a new
+sibling test file for `RichPresenceTokenMap` if split out) must assert, per
+tier, using the existing fake/mocked `SteamFriendsGateway` pattern already
+established in that file (`Mockito.mock(SteamFriendsGateway.class)`,
+`verify(gateway, times(1)).setLocalRichPresence(eq(key), eq(value))`):
+- For each biome-bearing tier (`RIDING_MINECART`, `RIDING_BOAT`,
+  `NEAR_VILLAGE`, `EXPLORING`, `STAYING`, `BUILDING`): `steam_display` is set
+  to that tier's token name, and `"location"` is set to the expected
+  combined biome+suffix string (e.g. `"Plains"`, `"Plains in the Nether"`,
+  `"Plains in the End"`) for at least one Overworld and one Nether-or-End
+  case.
+- For non-biome-bearing tiers (`PAUSED`, `SPECTATING`, `DIGGING_AROUND`):
+  `steam_display` is set to that tier's token name; `"location"` is never
+  written (omitted entirely, per FR-RPD4).
+- `MAIN_MENU`/no-session-active: no `steam_display`/`location` write occurs,
+  and the existing `clearLocalRichPresence()` behavior (FR-RP7) is
+  unaffected/unchanged.
+- The existing debounce tests (`writesOnlyOnActualChange`,
+  `logsExactlyOnceOnActualChange`, `logsExactlyOnceOnClear`,
+  `clearsOnlyOncePerPresentToEmptyTransition`,
+  `neverCallsSetLocalRichPresenceWithConnectKey`,
+  `logsWarningAndDoesNotThrowWhenSteamRejectsWrite`,
+  `doesNotClearOnFirstTickWhenAlreadyEmpty`) must continue to pass essentially
+  unchanged in spirit — they may need updating for the `ScriptedTracker` fake
+  to also supply `currentTier()` values, but their debounce/logging/clearing
+  assertions are not weakened by this addendum.
+- `neverCallsSetLocalRichPresenceWithConnectKey` is extended in spirit: the
+  publisher must never call `setLocalRichPresence` with `key = "connect"`
+  regardless of how many keys it now writes per tick (FR-RP5 unchanged).
+
+## Public API
+1. **`LocalPresenceTracker#currentTier(): Optional<LocalPresenceTierSnapshot>`**
+   (new) — see FR-RPD2. Illustrative shape only; final naming/whether this
+   is folded into `currentStatus()`'s return type instead is a
+   planning-phase decision.
+2. **`RichPresenceTokenMap`** (new, `features/rich-presence/services/`) —
+   pure function, illustrative shape:
+   ```java
+   public final class RichPresenceTokenMap {
+       /** @return the steam_display token name for the given tier, or empty for MAIN_MENU/unrecognized. */
+       public Optional<String> tokenFor(TierKind kind) { ... }
+   }
+   ```
+3. **`SteamFriendsGateway#setLocalRichPresence(String, String)`** — no
+   signature change; this addendum is additional callers (`key =
+   "steam_display"`, `"biome"`, `"dimensionSuffix"`), exactly as the base
+   spec's `"status"` key already is.
+4. **`RichPresenceLimits`** (if/when it exists) — no signature change
+   assumed; this addendum's new keys are expected to satisfy its existing
+   guard shape (`keyWithinLimit(String)`/`valueWithinLimit(String)` per
+   `docs/specs/steam-rich-presence.md:226-229`) without modification.
+
+## Architecture
+```
+features/rich-presence/services/RichPresencePublisher
+  |-- reads: LocalPresenceTracker.currentStatus()      (existing, "status" key)
+  |-- reads: LocalPresenceTracker.currentTier()         (new, FR-RPD2)
+  |-- uses:  RichPresenceTokenMap.tokenFor(TierKind)     (new, FR-RPD3)
+  |-- formats: "" / " in the Nether" / " in the End"    (dimensionSuffix, FR-RPD4)
+  |-- writes (same debounce trigger as "status"):
+  |     SteamFriendsGateway.setLocalRichPresence("status", ...)          (unchanged)
+  |     SteamFriendsGateway.setLocalRichPresence("steam_display", ...)   (new)
+  |     SteamFriendsGateway.setLocalRichPresence("biome", ...)           (new, biome-bearing tiers only)
+  |     SteamFriendsGateway.setLocalRichPresence("dimensionSuffix", ...) (new, biome-bearing tiers only)
+  |-- (if present) each write passes through RichPresenceLimits, same as "status" today
+
+features/rich-presence/steamworks-localization-tokens.vdf  (new, data file, not code)
+  |-- pasted manually into Steamworks partner site, App Admin > Rich Presence
+      Localization, App ID 5052800
+```
+No new dependency edges beyond the base spec's existing
+`services/SteamFriendsGateway` usage — `RichPresenceTokenMap` is a new,
+plain-JVM pure-function class living in the same package as
+`RichPresencePublisher`, with zero `net.minecraft.*`/`com.codedisaster.*`
+import, matching this feature's existing layering.
+
+## UI
+No UI change. The rendering surface this addendum actually fixes is Steam's
+own client-native Friends List UI (out of process, not this mod's own UI) —
+this is the entire point of the addendum: without it, nothing this feature
+writes is visible there at all.
+
+## Configuration
+None. `steam_display`/interpolation-key publishing is not separately
+configurable — it is written whenever `"status"` is written, per FR-RPD1,
+matching the base spec's always-on design.
+
+## Events
+No new event-bus entries — folds into the same per-tick `tick()` debounce
+path `RichPresencePublisher` already has.
+
+## Networking
+- Same `SteamFriends.setRichPresence(key, value)` steamworks4j call already
+  confirmed present and in use — no new native surface to verify. This
+  addendum is purely additional key/value pairs through the identical call.
+- No Steam-side network round trip is required to *set* these keys (local
+  IPC to the running Steam client only, per the base spec's Networking
+  section) — Steam's own re-localization/lookup of the `steam_display`
+  token against the Steamworks partner site's configured localization data
+  happens on Valve's backend when a *friend* views the Friends List, not at
+  write time; this mod never calls out to that lookup itself.
+
+## Persistence
+- The new `features/rich-presence/steamworks-localization-tokens.vdf` file
+  is checked into the repo as data (not loaded/parsed by any runtime code —
+  the mod itself never reads this file; it exists solely to be manually
+  copy-pasted into the Steamworks partner site's Rich Presence Localization
+  admin page). No runtime persistence implications.
+- No other change to this feature's "no persistence" stance (base spec's
+  Persistence section) — `steam_display`/interpolation values remain
+  transient, per-tick-recomputed, never written to any save/config file.
+
+## Compatibility
+- Additive only: `"status"` continues to be written exactly as before
+  (FR-RP4 unchanged) — FR-RP6's own-profile-row consumption and any other
+  existing reader of the `"status"` key is unaffected.
+- Must not regress FR-RP5 (never touching `"connect"`) — the new keys this
+  addendum introduces (`steam_display`, `location`) are additional, distinct
+  keys, not a replacement for or interference with `"connect"`.
+- **Manual, one-time, out-of-band setup requirement:** the token text in
+  `steamworks-localization-tokens.vdf` must be pasted into the Steamworks
+  partner site (App Admin → Rich Presence Localization, App ID `5052800`)
+  before `steam_display` will actually render anything for real players —
+  this is not something the mod's own build/release process can automate
+  (no public Steamworks Web API for this data as of Valve's current
+  documentation); this must be tracked as a manual release-checklist step,
+  not assumed to happen automatically alongside a code deploy.
+- **Keep-in-sync requirement:** any future tier added to `TierKind` (and
+  `RichPresenceTokenMap`) needs a matching entry added to
+  `steamworks-localization-tokens.vdf` *and* uploaded to the partner site —
+  the `.vdf` file's header comment (see "Persistence"/file contents below)
+  must say this explicitly, since the two are otherwise silently divergent
+  (a new `TierKind` with no corresponding partner-site token would simply
+  render as a raw, unresolved token name, e.g. `"#Status_NewTier"`, to
+  friends viewing it, rather than failing loudly).
+
+## Performance
+No measurable change — the addendum adds at most 2 additional
+`setRichPresence` IPC calls per debounced status change (same trigger,
+same infrequency as the existing single `"status"` call, FR-RP4); no new
+per-tick computation beyond a `TierKind`-keyed map lookup and a 3-way string
+switch plus a concatenation for the combined `location` value, both O(1).
+
+## Future Extensions
+- Per-viewer re-localization of the biome name itself (rather than only the
+  surrounding sentence structure) — would require either shipping every
+  biome's name as its own token-referenced variable text per language on
+  the partner site (a large, high-maintenance token set), or accepting that
+  friends viewing in a different Steam client language still see the biome
+  name in the *local player's* Minecraft client language. Not attempted in
+  this addendum; the current design already achieves the primary goal
+  (something renders at all) with a bounded, one-time token set.
+- Composter/lectern-based Near-a-Village refinement (base spec, unchanged
+  Future Extension) is orthogonal to this addendum and unaffected by it.
+
+## New file: `features/rich-presence/steamworks-localization-tokens.vdf`
+
+Required contents (illustrative — exact English wording of each token's
+localized text is a planning/implementation-phase wording decision, but the
+file's structure, one token per `TierKind` per FR-RPD3's table, and the
+required header comment, are fixed by this addendum):
+
+```
+// steamworks-localization-tokens.vdf
+//
+// NOT loaded or parsed by this mod at runtime. This file exists solely as
+// data to be manually copy-pasted into the Steamworks partner site:
+// App Admin -> Rich Presence Localization, App ID 5052800.
+//
+// KEEP IN SYNC: every TierKind in
+// features/rich-presence/src/main/java/de/lazuli/features/richpresence/services/TierKind.java
+// must have exactly one corresponding token here (mapping defined in
+// RichPresenceTokenMap / features/rich-presence/specification.md's
+// "Addendum: steam_display Localization Token Support", FR-RPD3). Adding a
+// new tier without adding + uploading its token here means steam_display
+// will render as a raw, unresolved token name to friends viewing it.
+//
+// CRITICAL RULE (lesson learned from a confirmed live bug): Steam's Rich
+// Presence %variable% interpolation ONLY substitutes a variable if that
+// exact key was set via SetRichPresence in the SAME call/session. If a
+// token's text below references a %variable%, the game code MUST set that
+// key every single time this token is the active steam_display value --
+// never for some tiers/cases and not others. A previous version of this
+// file referenced both %biome% and %dimensionSuffix% separately; the
+// dimensionSuffix key was (correctly, per the "never send empty string"
+// rule) omitted entirely for Overworld tiers, but the token text still said
+// "...%biome%%dimensionSuffix%", so Steam had nothing to substitute for
+// %dimensionSuffix% and showed the literal text "Staying in
+// Forest%dimensionSuffix%" to real friends. The fix: every biome-bearing
+// token below now references a single %location% variable (biome name +
+// dimension suffix, fully composed in code, e.g. "Forest in the Nether")
+// that is always present whenever its token is active -- never reference a
+// variable in a token that could be absent for that tier.
+"lang" "english"
+"Tokens"
+{
+    "#Status_Paused"          "Paused"
+    "#Status_Spectating"      "Spectating"
+    "#Status_RidingMinecart"  "Driving through %location%"
+    "#Status_RidingBoat"      "Sailing through %location%"
+    "#Status_NearVillage"     "Near a Village in %location%"
+    "#Status_Exploring"       "Exploring %location%"
+    "#Status_Staying"         "Staying in %location%"
+    "#Status_Building"        "Building in %location%"
+    "#Status_DiggingAround"   "Digging around"
+    "#Status_MainMenu"        "In main menu"
+}
+```
+
+## Open Questions (addendum-specific) — resolved per user approval pass
+
+All four items below have been answered by the user and are no longer open;
+each entry states the resolution and where it is now reflected in this
+addendum.
+
+1. **Where `RichPresenceLimits` guard invocation happens, if/when it lands**
+   — approved as-is (FR-RPD5's existing "either shape is acceptable,
+   whichever is chosen must apply uniformly" language stands unchanged; no
+   guard exists yet, so this is not blocking).
+2. **Whether `"biome"`/`"dimensionSuffix"` are omitted entirely or written as
+   `""` for non-biome-bearing/Overworld tiers** — **resolved: always omit,
+   never write an empty string.** See the "Empty/absent-value keys are never
+   written as `""`" requirement above (under FR-RPD4), which is now the
+   binding rule and supersedes this question.
+3. **Whether `LocalPresenceTracker` gains a second method (`currentTier()`)
+   or folds tier/biome/dimension data into a single richer return type** —
+   approved as-is; FR-RPD2's illustrative two-method shape stands, exact
+   shape remains a planning-phase decision within that constraint.
+4. **Exact English wording of each token's localized text in the `.vdf`
+   file** — approved as-is for the eight pre-existing tiers (the wording
+   already proposed in the "New file" section above is final). The one new
+   addition, `MAIN_MENU` -> `#Status_MainMenu` -> `"In main menu"` (literal
+   text, no interpolation variables), is confirmed final per the user's
+   explicit request that `MAIN_MENU` be a real tier with its own token
+   rather than "n/a" — see the `MAIN_MENU` row/note in the "Tier-to-token
+   mapping" table above (FR-RPD3) and the `.vdf` contents above.
 </content>
