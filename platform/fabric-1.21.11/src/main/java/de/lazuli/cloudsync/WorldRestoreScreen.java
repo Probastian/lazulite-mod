@@ -9,7 +9,6 @@ import de.lazuli.api.cloudsync.WorldRestoreHook;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.client.gui.screen.world.SelectWorldScreen;
 import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.text.Text;
 
@@ -33,20 +32,29 @@ import java.util.concurrent.atomic.AtomicReference;
  * thread ({@code CloudSyncWorker}); this screen only ever reads the latest
  * snapshot from a {@link AtomicReference} field on the render thread, never
  * blocking it.
+ *
+ * <p>Cloud Sync Restoration Decision 1: pushed as a full screen from the
+ * Worlds tab's cloud-only synthetic row, reused verbatim except for the
+ * {@code onReturn} callback below (originally hardcoded to reopen a fresh
+ * {@code SelectWorldScreen}), which now lets the caller (a
+ * {@code features/main-menu} {@code WorldsPanel}) reopen/refresh
+ * {@code MainMenuScreen}'s Worlds tab instead (FR-E.5).
  */
 public final class WorldRestoreScreen extends Screen {
 
     private final CloudOnlyWorldSummary summary;
     private final WorldRestoreHook restoreHook;
+    private final Runnable onReturn;
     private final AtomicReference<RestoreProgress> latestProgress = new AtomicReference<>();
     private final AtomicReference<String> failureReason = new AtomicReference<>();
     private volatile boolean completed;
     private RestoreHandle handle;
 
-    public WorldRestoreScreen(CloudOnlyWorldSummary summary, WorldRestoreHook restoreHook) {
+    public WorldRestoreScreen(CloudOnlyWorldSummary summary, WorldRestoreHook restoreHook, Runnable onReturn) {
         super(Text.literal("Restoring " + summary.displayName()));
         this.summary = summary;
         this.restoreHook = restoreHook;
+        this.onReturn = onReturn;
     }
 
     @Override
@@ -78,7 +86,7 @@ public final class WorldRestoreScreen extends Screen {
         super.render(context, mouseX, mouseY, delta);
 
         if (completed) {
-            MinecraftClient.getInstance().setScreen(new SelectWorldScreen(null));
+            onReturn.run();
             return;
         }
         String failure = failureReason.get();
@@ -110,6 +118,6 @@ public final class WorldRestoreScreen extends Screen {
         if (handle != null) {
             restoreHook.cancelRestore(handle);
         }
-        MinecraftClient.getInstance().setScreen(new SelectWorldScreen(null));
+        onReturn.run();
     }
 }

@@ -50,6 +50,7 @@ public final class WorldRestoreService implements WorldRestoreHook {
     private final CloudSyncWorker worker;
     private final Path savesDirectory;
     private final Consumer<String> warningLogger;
+    private final Consumer<String> infoLogger;
     private final Map<String, RestoreContext> activeRestores = new ConcurrentHashMap<>();
 
     /**
@@ -68,11 +69,34 @@ public final class WorldRestoreService implements WorldRestoreHook {
             CloudSyncWorker worker,
             Path savesDirectory,
             Consumer<String> warningLogger) {
+        this(archiveStore, preferenceService, worker, savesDirectory, warningLogger, message -> { });
+    }
+
+    /**
+     * @param archiveStore      the Group 6 Cloud seam (real or no-op)
+     * @param preferenceService used to mark a successfully-restored world
+     *                          sync-enabled (FR6.10)
+     * @param worker            hops extraction work onto a background thread
+     * @param savesDirectory    this device's local worlds/saves directory
+     * @param warningLogger     receives a human-readable message for any
+     *                          internal failure; never invoked with a thrown
+     *                          exception
+     * @param infoLogger        receives a human-readable message when a world
+     *                          download/restore starts and completes
+     */
+    public WorldRestoreService(
+            WorldArchiveCloudStore archiveStore,
+            WorldSyncPreferenceService preferenceService,
+            CloudSyncWorker worker,
+            Path savesDirectory,
+            Consumer<String> warningLogger,
+            Consumer<String> infoLogger) {
         this.archiveStore = Objects.requireNonNull(archiveStore, "archiveStore");
         this.preferenceService = Objects.requireNonNull(preferenceService, "preferenceService");
         this.worker = Objects.requireNonNull(worker, "worker");
         this.savesDirectory = Objects.requireNonNull(savesDirectory, "savesDirectory");
         this.warningLogger = Objects.requireNonNull(warningLogger, "warningLogger");
+        this.infoLogger = Objects.requireNonNull(infoLogger, "infoLogger");
     }
 
     @Override
@@ -97,6 +121,7 @@ public final class WorldRestoreService implements WorldRestoreHook {
         RestoreContext context = new RestoreContext(worldSlug, listener);
         activeRestores.put(worldSlug, context);
 
+        infoLogger.accept("Downloading world \"" + worldSlug + "\" (" + totalSize + " bytes) from Steam Cloud.");
         archiveStore.beginAsyncRead(archiveFileName, new WorldArchiveCloudStore.AsyncReadListener() {
             @Override
             public void onChunk(byte[] chunk) {
@@ -189,6 +214,7 @@ public final class WorldRestoreService implements WorldRestoreHook {
             Files.move(stagingDirectory, targetWorldFolder);
             preferenceService.markEnabledAfterRestore(context.worldSlug);
             activeRestores.remove(context.worldSlug);
+            infoLogger.accept("Downloaded and restored world \"" + context.worldSlug + "\" from Steam Cloud.");
             context.listener.onComplete(context.worldSlug);
         } catch (IOException | RuntimeException e) {
             deleteRecursively(stagingDirectory);

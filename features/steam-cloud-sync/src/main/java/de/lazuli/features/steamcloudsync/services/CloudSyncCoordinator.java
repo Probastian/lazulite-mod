@@ -59,6 +59,7 @@ public final class CloudSyncCoordinator {
     private final List<CloudSyncable> cloudSyncables;
     private final SteamCloudSyncConfig config;
     private final Consumer<String> warningLogger;
+    private final Consumer<String> playerNotifier;
 
     private final BookmarkedServersService bookmarkedServersService;
     private final NotesService notesService;
@@ -107,7 +108,7 @@ public final class CloudSyncCoordinator {
         Objects.requireNonNull(featureConfigDir, "featureConfigDir");
         Objects.requireNonNull(savesDirectory, "savesDirectory");
         this.warningLogger = Objects.requireNonNull(warningLogger, "warningLogger");
-        Objects.requireNonNull(playerNotifier, "playerNotifier");
+        this.playerNotifier = Objects.requireNonNull(playerNotifier, "playerNotifier");
         Objects.requireNonNull(continuePointerNotifier, "continuePointerNotifier");
 
         boolean available = steamAvailability.isSteamAvailable();
@@ -127,8 +128,8 @@ public final class CloudSyncCoordinator {
                 cloudFileStore, featureConfigDir.resolve("continue-pointer.json"),
                 masterEnabled && config.syncContinuePointer(), warningLogger, continuePointerNotifier);
 
-        this.worldSyncPreferenceService =
-                new WorldSyncPreferenceService(featureConfigDir.resolve("world-sync-preferences.json"), warningLogger);
+        this.worldSyncPreferenceService = new WorldSyncPreferenceService(
+                featureConfigDir.resolve("world-sync-preferences.json"), warningLogger, playerNotifier);
 
         Path fingerprintCachePath = featureConfigDir.resolve("world-fingerprint-cache.json");
         String deviceLabel = DeviceLabelResolver.resolve(System.getProperty("user.name"), resolveHostNameOrNull());
@@ -139,8 +140,8 @@ public final class CloudSyncCoordinator {
                 archiveStore, cloudFileStore, worldSyncPreferenceService, worker, fingerprintCachePath,
                 deviceLabel, config.maxWorldArchiveSizeMb(), config.allowSelectiveFallback(), warningLogger, playerNotifier,
                 worldSyncStatusTracker);
-        this.worldRestoreService =
-                new WorldRestoreService(archiveStore, worldSyncPreferenceService, worker, savesDirectory, warningLogger);
+        this.worldRestoreService = new WorldRestoreService(
+                archiveStore, worldSyncPreferenceService, worker, savesDirectory, warningLogger, playerNotifier);
         this.cloudOnlyWorldsFacade = new CloudOnlyWorldsFacade(fingerprintCachePath, warningLogger);
     }
 
@@ -154,7 +155,7 @@ public final class CloudSyncCoordinator {
         boolean settingsSyncEnabled = config.enabled() && config.syncSettings();
         for (CloudSyncable syncable : cloudSyncables) {
             CloudSyncableReconciler.reconcileAtStartup(
-                    cloudFileStore, cloudSyncableFileName(syncable), syncable, settingsSyncEnabled, warningLogger);
+                    cloudFileStore, cloudSyncableFileName(syncable), syncable, settingsSyncEnabled, warningLogger, playerNotifier);
         }
 
         bookmarkedServersService.reconcileAtStartup();
@@ -172,7 +173,7 @@ public final class CloudSyncCoordinator {
         boolean settingsSyncEnabled = config.enabled() && config.syncSettings();
         for (CloudSyncable syncable : cloudSyncables) {
             CloudSyncableReconciler.pushOnShutdown(
-                    cloudFileStore, cloudSyncableFileName(syncable), syncable, settingsSyncEnabled, warningLogger);
+                    cloudFileStore, cloudSyncableFileName(syncable), syncable, settingsSyncEnabled, warningLogger, playerNotifier);
         }
 
         bookmarkedServersService.syncOnShutdown();

@@ -35,6 +35,7 @@ public final class WorldSyncPreferenceService implements WorldSyncToggleHook {
     private final WorldSyncPreferencesIO io = new WorldSyncPreferencesIO();
     private final Path preferencesFilePath;
     private final Consumer<String> warningLogger;
+    private final Consumer<String> infoLogger;
     private final Map<String, Boolean> preferences = new LinkedHashMap<>();
 
     /**
@@ -44,8 +45,21 @@ public final class WorldSyncPreferenceService implements WorldSyncToggleHook {
      *                            exception
      */
     public WorldSyncPreferenceService(Path preferencesFilePath, Consumer<String> warningLogger) {
+        this(preferencesFilePath, warningLogger, message -> { });
+    }
+
+    /**
+     * @param preferencesFilePath the local-only preferences file's location
+     * @param warningLogger       receives a human-readable message for any
+     *                            I/O failure; never invoked with a thrown
+     *                            exception
+     * @param infoLogger          receives a human-readable message whenever a
+     *                            world's sync preference is toggled/persisted
+     */
+    public WorldSyncPreferenceService(Path preferencesFilePath, Consumer<String> warningLogger, Consumer<String> infoLogger) {
         this.preferencesFilePath = Objects.requireNonNull(preferencesFilePath, "preferencesFilePath");
         this.warningLogger = Objects.requireNonNull(warningLogger, "warningLogger");
+        this.infoLogger = Objects.requireNonNull(infoLogger, "infoLogger");
     }
 
     /**
@@ -72,6 +86,7 @@ public final class WorldSyncPreferenceService implements WorldSyncToggleHook {
     public synchronized void toggleSync(String worldSlug) {
         boolean newValue = !isSyncEnabled(worldSlug);
         preferences.put(worldSlug, newValue);
+        infoLogger.accept("Cloud sync " + (newValue ? "enabled" : "disabled") + " for world \"" + worldSlug + "\".");
         persist();
     }
 

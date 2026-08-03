@@ -53,6 +53,24 @@ final class CloudSyncableReconciler {
             CloudSyncable syncable,
             boolean syncEnabled,
             Consumer<String> warningLogger) {
+        reconcileAtStartup(cloudFileStore, cloudFileName, syncable, syncEnabled, warningLogger, message -> { });
+    }
+
+    /**
+     * Same as {@link #reconcileAtStartup(CloudFileStore, String, CloudSyncable, boolean, Consumer)},
+     * additionally reporting upload/download start and completion.
+     *
+     * @param infoLogger receives a human-readable message when a Cloud
+     *                   upload/download starts and completes; never invoked
+     *                   with a thrown exception
+     */
+    static void reconcileAtStartup(
+            CloudFileStore cloudFileStore,
+            String cloudFileName,
+            CloudSyncable syncable,
+            boolean syncEnabled,
+            Consumer<String> warningLogger,
+            Consumer<String> infoLogger) {
         if (!syncEnabled) {
             return;
         }
@@ -61,9 +79,16 @@ final class CloudSyncableReconciler {
         long localTimestamp = safeLocalTimestamp(syncable, warningLogger);
 
         if (cloudTimestamp.isPresent() && cloudTimestamp.getAsLong() > localTimestamp) {
-            cloudFileStore.read(cloudFileName).ifPresent(bytes -> importSafely(syncable, bytes, warningLogger));
+            infoLogger.accept("Downloading Cloud state for \"" + syncable.cloudSyncId() + "\" from Steam Cloud.");
+            cloudFileStore.read(cloudFileName).ifPresent(bytes -> {
+                importSafely(syncable, bytes, warningLogger);
+                infoLogger.accept("Downloaded Cloud state for \"" + syncable.cloudSyncId()
+                        + "\" from Steam Cloud (" + bytes.length + " bytes).");
+            });
         } else if (localTimestamp >= 0) {
+            infoLogger.accept("Uploading Cloud state for \"" + syncable.cloudSyncId() + "\" to Steam Cloud.");
             exportSafely(cloudFileStore, cloudFileName, syncable, warningLogger);
+            infoLogger.accept("Uploaded Cloud state for \"" + syncable.cloudSyncId() + "\" to Steam Cloud.");
         }
     }
 
@@ -87,10 +112,30 @@ final class CloudSyncableReconciler {
             CloudSyncable syncable,
             boolean syncEnabled,
             Consumer<String> warningLogger) {
+        pushOnShutdown(cloudFileStore, cloudFileName, syncable, syncEnabled, warningLogger, message -> { });
+    }
+
+    /**
+     * Same as {@link #pushOnShutdown(CloudFileStore, String, CloudSyncable, boolean, Consumer)},
+     * additionally reporting upload start and completion.
+     *
+     * @param infoLogger receives a human-readable message when a Cloud
+     *                   upload starts and completes; never invoked with a
+     *                   thrown exception
+     */
+    static void pushOnShutdown(
+            CloudFileStore cloudFileStore,
+            String cloudFileName,
+            CloudSyncable syncable,
+            boolean syncEnabled,
+            Consumer<String> warningLogger,
+            Consumer<String> infoLogger) {
         if (!syncEnabled) {
             return;
         }
+        infoLogger.accept("Uploading Cloud state for \"" + syncable.cloudSyncId() + "\" to Steam Cloud.");
         exportSafely(cloudFileStore, cloudFileName, syncable, warningLogger);
+        infoLogger.accept("Uploaded Cloud state for \"" + syncable.cloudSyncId() + "\" to Steam Cloud.");
     }
 
     private static long safeLocalTimestamp(CloudSyncable syncable, Consumer<String> warningLogger) {

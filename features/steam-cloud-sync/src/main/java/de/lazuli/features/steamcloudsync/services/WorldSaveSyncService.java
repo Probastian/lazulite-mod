@@ -242,11 +242,13 @@ public final class WorldSaveSyncService {
             ensureQuota(archiveBytes.length, worldSlug);
 
             String archiveFileName = archiveFileName(worldSlug);
+            playerNotifier.accept("Uploading world \"" + displayName + "\" (" + archiveBytes.length + " bytes) to Steam Cloud.");
             worker.enqueueTickThreadWork(() -> {
                 boolean written = archiveStore.streamWrite(archiveFileName, archiveBytes);
                 if (written) {
                     updateFingerprint(worldSlug, displayName);
                     statusTracker.markSynced(worldSlug);
+                    playerNotifier.accept("Uploaded world \"" + displayName + "\" to Steam Cloud.");
                 } else {
                     String message = "Failed to sync world \"" + displayName + "\" (" + archiveBytes.length
                             + " bytes) to Steam Cloud; see the preceding Steam Cloud log line for the specific cause.";

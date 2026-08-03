@@ -10,7 +10,6 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
-import net.minecraft.client.gui.screens.worldselection.SelectWorldScreen;
 import net.minecraft.network.chat.Component;
 
 import java.util.concurrent.atomic.AtomicReference;
@@ -33,20 +32,36 @@ import java.util.concurrent.atomic.AtomicReference;
  * thread ({@code CloudSyncWorker}); this screen only ever reads the latest
  * snapshot from a {@code volatile}/{@link AtomicReference} field on the
  * render thread, never blocking it.
+ *
+ * <p>Cloud Sync Restoration Decision 1: pushed as a full screen from the
+ * Worlds tab's cloud-only synthetic row, reused verbatim except for the
+ * {@code onReturn} callback below (originally hardcoded to reopen a fresh
+ * {@code SelectWorldScreen}), which now lets the caller (a
+ * {@code features/main-menu} {@code WorldsPanel}) reopen/refresh
+ * {@code MainMenuScreen}'s Worlds tab instead (FR-E.5).
  */
 public final class WorldRestoreScreen extends Screen {
 
     private final CloudOnlyWorldSummary summary;
     private final WorldRestoreHook restoreHook;
+    private final Runnable onReturn;
     private final AtomicReference<RestoreProgress> latestProgress = new AtomicReference<>();
     private final AtomicReference<String> failureReason = new AtomicReference<>();
     private volatile boolean completed;
     private RestoreHandle handle;
 
-    public WorldRestoreScreen(CloudOnlyWorldSummary summary, WorldRestoreHook restoreHook) {
+    /**
+     * @param summary     the cloud-only world being restored
+     * @param restoreHook drives the restore attempt
+     * @param onReturn    invoked (on the render thread) when this screen is
+     *                    done -- on successful completion or on Cancel -- to
+     *                    navigate back to whatever screen opened this one
+     */
+    public WorldRestoreScreen(CloudOnlyWorldSummary summary, WorldRestoreHook restoreHook, Runnable onReturn) {
         super(Component.literal("Restoring " + summary.displayName()));
         this.summary = summary;
         this.restoreHook = restoreHook;
+        this.onReturn = onReturn;
     }
 
     @Override
@@ -78,7 +93,7 @@ public final class WorldRestoreScreen extends Screen {
         super.extractRenderState(guiGraphics, mouseX, mouseY, delta);
 
         if (completed) {
-            Minecraft.getInstance().setScreenAndShow(new SelectWorldScreen(null));
+            onReturn.run();
             return;
         }
         String failure = failureReason.get();
@@ -111,6 +126,6 @@ public final class WorldRestoreScreen extends Screen {
         if (handle != null) {
             restoreHook.cancelRestore(handle);
         }
-        Minecraft.getInstance().setScreenAndShow(new SelectWorldScreen(null));
+        onReturn.run();
     }
 }

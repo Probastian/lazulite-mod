@@ -18,7 +18,7 @@ package de.lazuli.features.steamcloudsync.api;
  *   "syncBookmarkedServers": true,
  *   "syncContinuePointer": true,
  *   "syncNotes": true,
- *   "maxWorldArchiveSizeMb": 50,
+ *   "maxWorldArchiveSizeMb": 1024,
  *   "allowSelectiveFallback": true
  * }
  * }</pre>
@@ -71,5 +71,5 @@ public record SteamCloudSyncConfig(
      * an existing file fails to parse.
      */
     public static final SteamCloudSyncConfig DEFAULT =
-            new SteamCloudSyncConfig(CURRENT_SCHEMA_VERSION, true, true, true, true, true, true, 50, true);
+            new SteamCloudSyncConfig(CURRENT_SCHEMA_VERSION, true, true, true, true, true, true, 1024, true);
 }

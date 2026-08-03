@@ -1,5 +1,16 @@
 package de.lazuli.mainmenu;
 
+import de.lazuli.CloudOnlyWorldsHookHolder;
+import de.lazuli.WorldRestoreHookHolder;
+import de.lazuli.WorldSyncStatusHookHolder;
+import de.lazuli.WorldSyncToggleHookHolder;
+import de.lazuli.api.cloudsync.CloudOnlyWorldSummary;
+import de.lazuli.api.cloudsync.CloudOnlyWorldsHook;
+import de.lazuli.api.cloudsync.WorldRestoreHook;
+import de.lazuli.api.cloudsync.WorldSyncStatusHook;
+import de.lazuli.api.cloudsync.WorldSyncStatusHook.SyncStatus;
+import de.lazuli.api.cloudsync.WorldSyncToggleHook;
+import de.lazuli.cloudsync.WorldRestoreScreen;
 import de.lazuli.features.mainmenu.services.MainMenuStateMachine;
 
 import net.minecraft.client.Minecraft;
@@ -14,6 +25,9 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.world.level.storage.LevelStorageSource;
 import net.minecraft.world.level.storage.LevelSummary;
 
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -34,6 +48,20 @@ public final class WorldsPanel {
     private static final int IMAGE_MARGIN = 2;
     private static final int PILL_PADDING = 10;
     private static final int PILL_GAP = 10;
+
+    // FR-A.3/UI: ported verbatim from the deleted WorldListEntrySyncIconMixin's
+    // lazuli$drawSyncIcon -- same 8px-square, colored-fill convention.
+    private static final int SYNC_ICON_SIZE = 8;
+    private static final int SYNC_ICON_MARGIN = 4;
+    private static final int COLOR_SYNC_ENABLED = 0xFF3399FF;
+    private static final int COLOR_SYNC_DISABLED = 0xFF808080;
+    private static final int COLOR_SYNC_SYNCED = 0xFF33CC33;
+    private static final int COLOR_SYNC_ERROR = 0xFFCC3333;
+    private static final int COLOR_SYNC_SKIPPED = 0xFFCCAA33;
+
+    // FR-E.3/UI: ported from the deleted CloudOnlyWorldListEntry.
+    private static final DateTimeFormatter SYNCED_AT_FORMAT =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm").withZone(ZoneId.systemDefault());
 
     /**
      * Bug-fix (post-launch-fixes-3, FR-B3.2): "Last played" must read as a
@@ -79,6 +107,7 @@ public final class WorldsPanel {
     private final LevelStorageSource levelSource = Minecraft.getInstance().getLevelSource();
     private final IconTextureCache iconCache = new IconTextureCache(de.lazuli.LazuliMod.LOGGER::warn);
     private volatile List<LevelSummary> summaries = List.of();
+    private volatile List<CloudOnlyWorldSummary> cloudOnlyWorlds = List.of();
     private volatile boolean loading = true;
     private Button createButton;
     private boolean tabActive;
@@ -89,7 +118,8 @@ public final class WorldsPanel {
         reload();
     }
 
-    private void reload() {
+    /** Package-private so a completed/cancelled {@code WorldRestoreScreen} (FR-E.5) can refresh this tab's list on return. */
+    void reload() {
         loading = true;
         iconCache.invalidateAll();
         try {
@@ -100,11 +130,41 @@ public final class WorldsPanel {
                 sorted.sort(null);
                 this.summaries = sorted;
                 this.loading = false;
+                refreshCloudOnlyWorlds();
             }, Minecraft.getInstance());
         } catch (Exception e) {
             summaries = List.of();
             loading = false;
+            refreshCloudOnlyWorlds();
         }
+    }
+
+    /**
+     * FR-E.2/FR-E.7: cheap local set-difference against the already-pulled
+     * fingerprint cache, no Steam I/O -- refreshed alongside every world-list
+     * reload so a just-restored world's synthetic row disappears once it
+     * becomes real (FR-E.5).
+     */
+    private void refreshCloudOnlyWorlds() {
+        CloudOnlyWorldsHook hook = CloudOnlyWorldsHookHolder.getOrNull();
+        if (hook == null) {
+            cloudOnlyWorlds = List.of();
+            return;
+        }
+        List<String> localFolderNames = new ArrayList<>();
+        for (LevelSummary summary : summaries) {
+            localFolderNames.add(summary.getLevelId());
+        }
+        try {
+            cloudOnlyWorlds = hook.listCloudOnlyWorlds(localFolderNames);
+        } catch (Exception e) {
+            de.lazuli.LazuliMod.LOGGER.warn("Failed to list cloud-only worlds: " + e);
+            cloudOnlyWorlds = List.of();
+        }
+    }
+
+    private static String formatSyncedAt(long syncedAtTimestamp) {
+        return SYNCED_AT_FORMAT.format(Instant.ofEpochMilli(syncedAtTimestamp));
     }
 
     /** Called once, when the tab bar/screen constructs the panel's own buttons. */
@@ -179,6 +239,8 @@ public final class WorldsPanel {
                     + " · " + relativeTime(summary.getLastPlayed());
             guiGraphics.text(font, Component.literal(subtitle), textX, rowY + 15, 0xFF908C7F);
 
+            drawSyncIcons(guiGraphics, summary, x, rowY, width, mouseX, mouseY, hovered);
+
             if (expanded) {
                 int buttonY = rowY + rowHeight - 22;
                 int[] bounds = pillBounds(font, x, width);
@@ -192,6 +254,77 @@ public final class WorldsPanel {
             }
             rowY += rowHeight + 4;
         }
+
+        for (CloudOnlyWorldSummary cloudOnly : cloudOnlyWorlds) {
+            int rowHeight = ROW_HEIGHT_COMPACT;
+            if (rowY + rowHeight > y + height) {
+                break;
+            }
+            boolean hovered = mouseX >= x && mouseX <= x + width && mouseY >= rowY && mouseY <= rowY + rowHeight;
+            guiGraphics.fill(x, rowY, x + width, rowY + rowHeight, hovered ? 0xFF2A2820 : 0xFF201E17);
+
+            // FR-E.3: a cloud icon clearly distinct from the sync-toggle icon --
+            // ported from the deleted CloudOnlyWorldListEntry's filled-blue-square
+            // placeholder, pending a real cloud_only.png texture asset.
+            int iconSize = (rowHeight - IMAGE_MARGIN * 2) * 2 / 3;
+            int iconX = leftX + IMAGE_MARGIN;
+            int iconY = rowY + (rowHeight - iconSize) / 2;
+            guiGraphics.fill(iconX, iconY, iconX + iconSize, iconY + iconSize, 0xFF3399FF);
+            int textX = iconX + iconSize + 6;
+
+            guiGraphics.text(font, Component.literal(cloudOnly.displayName()), textX, rowY + 4, 0xFFEAE8E1);
+            String detail = cloudOnly.deviceLabel() + " · " + formatSyncedAt(cloudOnly.syncedAtTimestamp());
+            guiGraphics.text(font, Component.literal(detail), textX, rowY + 15, 0xFF908C7F);
+
+            rowY += rowHeight + 4;
+        }
+    }
+
+    /**
+     * FR-A.1/FR-A.3: ported verbatim (colors/tooltips) from the deleted
+     * {@code WorldListEntrySyncIconMixin.lazuli$drawSyncIcon} -- an 8px-square
+     * toggle icon at the row's top-right corner, plus (once synced at least
+     * once) a second status icon immediately to its left. Renders in both
+     * compact and expanded row states (FR-A.1). No icon at all if Steam Cloud
+     * Sync is unavailable (FR-A.6).
+     */
+    private void drawSyncIcons(GuiGraphicsExtractor guiGraphics, LevelSummary summary,
+            int rowX, int rowY, int rowWidth, int mouseX, int mouseY, boolean rowHovered) {
+        WorldSyncToggleHook hook = WorldSyncToggleHookHolder.getOrNull();
+        if (hook == null) {
+            return;
+        }
+        boolean enabled = hook.isSyncEnabled(summary.getLevelId());
+        int left = syncIconLeft(rowX, rowWidth);
+        int top = rowY + SYNC_ICON_MARGIN;
+        guiGraphics.fill(left, top, left + SYNC_ICON_SIZE, top + SYNC_ICON_SIZE, enabled ? COLOR_SYNC_ENABLED : COLOR_SYNC_DISABLED);
+
+        WorldSyncStatusHook statusHook = WorldSyncStatusHookHolder.getOrNull();
+        if (statusHook == null) {
+            return;
+        }
+        SyncStatus status = statusHook.statusFor(summary.getLevelId());
+        if (status == SyncStatus.NOT_SYNCED) {
+            return;
+        }
+        int statusColor = status == SyncStatus.SYNCED ? COLOR_SYNC_SYNCED
+                : status == SyncStatus.SYNC_ERROR ? COLOR_SYNC_ERROR
+                : COLOR_SYNC_SKIPPED;
+        int statusLeft = left - SYNC_ICON_MARGIN - SYNC_ICON_SIZE;
+        guiGraphics.fill(statusLeft, top, statusLeft + SYNC_ICON_SIZE, top + SYNC_ICON_SIZE, statusColor);
+
+        if (rowHovered && mouseX >= statusLeft && mouseX < statusLeft + SYNC_ICON_SIZE && mouseY >= top && mouseY < top + SYNC_ICON_SIZE) {
+            if (status == SyncStatus.SYNC_ERROR) {
+                String error = statusHook.lastErrorFor(summary.getLevelId());
+                guiGraphics.setTooltipForNextFrame(Component.literal(error != null ? error : "Steam Cloud sync failed."), mouseX, mouseY);
+            } else if (status == SyncStatus.SKIPPED_TOO_LARGE) {
+                guiGraphics.setTooltipForNextFrame(Component.literal("World is too large to sync automatically."), mouseX, mouseY);
+            }
+        }
+    }
+
+    private static int syncIconLeft(int rowX, int rowWidth) {
+        return rowX + rowWidth - SYNC_ICON_MARGIN - SYNC_ICON_SIZE;
     }
 
     /** @return true if this click was consumed by a row/button in this panel. */
@@ -218,13 +351,59 @@ public final class WorldsPanel {
                     return true;
                 }
             }
+            // FR-A.7: the toggle icon's hit-test is checked and consumed
+            // before the row's own whole-row expand/collapse fallthrough,
+            // same precedence the deleted mixin established via its own
+            // @Inject(at = @At("HEAD"), cancellable = true).
+            if (WorldSyncToggleHookHolder.getOrNull() != null) {
+                int left = syncIconLeft(x, width);
+                int top = rowY + SYNC_ICON_MARGIN;
+                if (mouseX >= left && mouseX < left + SYNC_ICON_SIZE && mouseY >= top && mouseY < top + SYNC_ICON_SIZE) {
+                    WorldSyncToggleHookHolder.getOrNull().toggleSync(summary.getLevelId());
+                    return true;
+                }
+            }
             if (mouseX >= x && mouseX <= x + width && mouseY >= rowY && mouseY <= rowY + rowHeight) {
                 state.toggleRowExpanded(summary.getLevelId());
                 return true;
             }
             rowY += rowHeight + 4;
         }
+
+        for (CloudOnlyWorldSummary cloudOnly : cloudOnlyWorlds) {
+            int rowHeight = ROW_HEIGHT_COMPACT;
+            if (rowY + rowHeight > y + height) {
+                break;
+            }
+            if (mouseX >= x && mouseX <= x + width && mouseY >= rowY && mouseY <= rowY + rowHeight) {
+                // FR-E.4: unambiguous single trigger -- cloud-only rows have
+                // no expand/collapse or Play/Edit pills to disambiguate
+                // against, so a single click opens the restore flow directly.
+                openRestoreFlow(cloudOnly);
+                return true;
+            }
+            rowY += rowHeight + 4;
+        }
         return false;
+    }
+
+    /**
+     * FR-E.4/FR-E.5 (Decision 1): opens {@code WorldRestoreScreen} as a full
+     * screen (reused verbatim except for its return-navigation callback,
+     * which now reloads this tab's world list and reopens {@code owner}
+     * instead of vanilla's {@code SelectWorldScreen}). No-op if Steam Cloud
+     * Sync is unavailable (mirrors FR-A.6's own null-hook no-op rule).
+     */
+    private void openRestoreFlow(CloudOnlyWorldSummary summary) {
+        WorldRestoreHook restoreHook = WorldRestoreHookHolder.getOrNull();
+        if (restoreHook == null) {
+            return;
+        }
+        MainMenuScreen.playClickSound();
+        Minecraft.getInstance().setScreenAndShow(new WorldRestoreScreen(summary, restoreHook, () -> {
+            reload();
+            Minecraft.getInstance().setScreenAndShow(owner);
+        }));
     }
 
     /** Batch-2-fixes FR-F4.2: real saved-world data for Home's Recent section (already sorted most-recent-first, natural ordering). */

@@ -1,8 +1,10 @@
 package de.lazuli;
 
 import de.lazuli.api.cloudsync.CloudSyncable;
+import de.lazuli.cloudsync.CrossWorldStatsOfflineBucketFilter;
 import de.lazuli.cloudsync.FabricBookmarkToggleInjector;
-import de.lazuli.cloudsync.FabricCloudOnlyWorldListInjector;
+import de.lazuli.features.crossworldstats.config.AccountStats;
+import de.lazuli.features.crossworldstats.config.CrossWorldStatsConfigIO;
 import de.lazuli.features.steamcloudsync.api.SteamCloudSyncConfig;
 import de.lazuli.features.steamcloudsync.config.SteamCloudSyncConfigIO;
 import de.lazuli.features.steamcloudsync.services.CloudSyncCoordinator;
@@ -18,8 +20,12 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.level.storage.LevelResource;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Client-only composition root for the Steam Cloud Sync feature on this
@@ -53,7 +59,11 @@ public final class SteamCloudSyncClientInitializer implements ClientModInitializ
         }
         SteamCloudSyncConfig config = configResult.config();
 
-        List<CloudSyncable> cloudSyncables = List.of();
+        Path gameDir = FabricLoader.getInstance().getGameDir();
+        List<CloudSyncable> cloudSyncables = List.of(
+                new OptionsTxtCloudSyncAdapter(gameDir.resolve("options.txt")),
+                new ServersDatCloudSyncAdapter(gameDir.resolve("servers.dat")),
+                new CrossWorldStatsCloudSyncAdapter(configDir.resolve("cross-world-stats.json")));
 
         CloudSyncCoordinator coordinator = new CloudSyncCoordinator(
                 steamworksService,
@@ -77,13 +87,183 @@ public final class SteamCloudSyncClientInitializer implements ClientModInitializ
         if (config.enabled() && steamworksService.isSteamAvailable()) {
             WorldSyncToggleHookHolder.publish(coordinator.worldSyncPreferenceService());
             WorldSyncStatusHookHolder.publish(coordinator.worldSyncStatusTracker());
-            LazuliMod.LOGGER.info("Steam Cloud world-sync toggle icon activated (per-row icon should now render on the Singleplayer screen).");
+            CloudOnlyWorldsHookHolder.publish(coordinator.cloudOnlyWorldsFacade());
+            WorldRestoreHookHolder.publish(coordinator.worldRestoreService());
+            LazuliMod.LOGGER.info("Steam Cloud world-sync toggle icon and cloud-only-world restore flow activated "
+                    + "(Worlds tab should now render both).");
         } else {
             LazuliMod.LOGGER.info(
-                    "Steam Cloud world-sync toggle icon NOT activated (config.enabled={}, isSteamAvailable={}) -- no icon will render.",
+                    "Steam Cloud world-sync toggle icon and cloud-only-world restore flow NOT activated "
+                            + "(config.enabled={}, isSteamAvailable={}) -- neither will render.",
                     config.enabled(), steamworksService.isSteamAvailable());
         }
-        new FabricCloudOnlyWorldListInjector(coordinator.cloudOnlyWorldsFacade(), coordinator.worldRestoreService());
+    }
+
+    /**
+     * FR-B.1/FR-B.2/FR-B.3: {@code options.txt} is synced as an opaque byte
+     * blob, unconditionally (no config toggle) -- the only gate is the master
+     * {@code enabled}/{@code isSteamAvailable()} check every other
+     * {@link CloudSyncable} in this list is already subject to.
+     *
+     * <p>FR-B.5 ordering caveat: this adapter's startup reconcile runs as part
+     * of {@link CloudSyncCoordinator#reconcileAtStartup()} above, which is not
+     * guaranteed to run before vanilla's own {@code Options} object is
+     * constructed/read for this same launch -- if a fresher Cloud copy is
+     * pulled after vanilla has already read the pre-existing local file, the
+     * pulled copy takes effect on the *next* launch instead of this one (see
+     * spec FR-B.5, plan Decision 5/Risk R2).
+     */
+    private static final class OptionsTxtCloudSyncAdapter implements CloudSyncable {
+        private final Path optionsPath;
+
+        private OptionsTxtCloudSyncAdapter(Path optionsPath) {
+            this.optionsPath = optionsPath;
+        }
+
+        @Override
+        public String cloudSyncId() {
+            return "options";
+        }
+
+        @Override
+        public byte[] exportState() {
+            try {
+                return Files.exists(optionsPath) ? Files.readAllBytes(optionsPath) : new byte[0];
+            } catch (IOException e) {
+                LazuliMod.LOGGER.warn("Failed to read options.txt for Cloud export: {}", e.toString());
+                return new byte[0];
+            }
+        }
+
+        @Override
+        public void importState(byte[] data) {
+            try {
+                Files.write(optionsPath, data);
+            } catch (IOException e) {
+                LazuliMod.LOGGER.warn("Failed to write options.txt from Cloud import: {}", e.toString());
+            }
+        }
+
+        @Override
+        public long localLastModifiedMillis() {
+            try {
+                return Files.exists(optionsPath) ? Files.getLastModifiedTime(optionsPath).toMillis() : -1L;
+            } catch (IOException e) {
+                return -1L;
+            }
+        }
+    }
+
+    /**
+     * FR-C.1/FR-C.2: {@code servers.dat} (vanilla's NBT-binary server list,
+     * distinct from this feature's own {@code BookmarkedServer} list, FR-C.3)
+     * is synced as an opaque byte blob, unconditionally, same shape/caveats as
+     * {@link OptionsTxtCloudSyncAdapter} (see FR-C.4).
+     */
+    private static final class ServersDatCloudSyncAdapter implements CloudSyncable {
+        private final Path serversPath;
+
+        private ServersDatCloudSyncAdapter(Path serversPath) {
+            this.serversPath = serversPath;
+        }
+
+        @Override
+        public String cloudSyncId() {
+            return "servers-dat";
+        }
+
+        @Override
+        public byte[] exportState() {
+            try {
+                return Files.exists(serversPath) ? Files.readAllBytes(serversPath) : new byte[0];
+            } catch (IOException e) {
+                LazuliMod.LOGGER.warn("Failed to read servers.dat for Cloud export: {}", e.toString());
+                return new byte[0];
+            }
+        }
+
+        @Override
+        public void importState(byte[] data) {
+            try {
+                Files.write(serversPath, data);
+            } catch (IOException e) {
+                LazuliMod.LOGGER.warn("Failed to write servers.dat from Cloud import: {}", e.toString());
+            }
+        }
+
+        @Override
+        public long localLastModifiedMillis() {
+            try {
+                return Files.exists(serversPath) ? Files.getLastModifiedTime(serversPath).toMillis() : -1L;
+            } catch (IOException e) {
+                return -1L;
+            }
+        }
+    }
+
+    /**
+     * FR-D.1-FR-D.5: {@code config/cross-world-stats.json} is synced via
+     * {@link CrossWorldStatsConfigIO}'s typed load/save (not raw bytes, since
+     * the FR-D.2 offline-bucket exclusion needs to inspect per-account keys).
+     *
+     * <p>NFR1: this is the one deliberate, spec-sanctioned exception to
+     * {@code CloudSyncable}'s "no Feature-to-Feature dependency" default --
+     * confined to this platform-module-local adapter class, not inside
+     * {@code features/steam-cloud-sync} itself (Risk R3). The offline-bucket
+     * filter/merge logic itself is a separate, directly-unit-tested pure
+     * function, {@link CrossWorldStatsOfflineBucketFilter} (NFR4).
+     */
+    private static final class CrossWorldStatsCloudSyncAdapter implements CloudSyncable {
+        private final Path statsPath;
+        private final CrossWorldStatsConfigIO configIO = new CrossWorldStatsConfigIO();
+
+        private CrossWorldStatsCloudSyncAdapter(Path statsPath) {
+            this.statsPath = statsPath;
+        }
+
+        @Override
+        public String cloudSyncId() {
+            return "cross-world-stats";
+        }
+
+        @Override
+        public byte[] exportState() {
+            Map<String, AccountStats> local = loadLocal();
+            Map<String, AccountStats> exportable = CrossWorldStatsOfflineBucketFilter.filterForExport(local);
+            return configIO.serialize(exportable).getBytes(StandardCharsets.UTF_8);
+        }
+
+        @Override
+        public void importState(byte[] data) {
+            CrossWorldStatsConfigIO.ParseResult incomingResult = configIO.parse(new String(data, StandardCharsets.UTF_8));
+            if (incomingResult.warning() != null) {
+                LazuliMod.LOGGER.warn("Malformed Cross-World Stats Cloud payload, ignoring: {}", incomingResult.warning());
+                return;
+            }
+            Map<String, AccountStats> local = loadLocal();
+            Map<String, AccountStats> merged = CrossWorldStatsOfflineBucketFilter.mergeForImport(local, incomingResult.accounts());
+            String warning = configIO.save(statsPath, merged);
+            if (warning != null) {
+                LazuliMod.LOGGER.warn(warning);
+            }
+        }
+
+        @Override
+        public long localLastModifiedMillis() {
+            try {
+                return Files.exists(statsPath) ? Files.getLastModifiedTime(statsPath).toMillis() : -1L;
+            } catch (IOException e) {
+                return -1L;
+            }
+        }
+
+        private Map<String, AccountStats> loadLocal() {
+            CrossWorldStatsConfigIO.ParseResult loaded = configIO.load(statsPath);
+            if (loaded.warning() != null) {
+                LazuliMod.LOGGER.warn(loaded.warning());
+            }
+            return loaded.accounts();
+        }
     }
 
     private void onPlayJoin(Minecraft client, CloudSyncCoordinator coordinator) {
