@@ -42,7 +42,13 @@ public final class RichPresencePublisher {
         }
         Optional<String> previous = lastWritten;
         if (current.isPresent()) {
-            gateway.setLocalRichPresence(STATUS_KEY, current.get());
+            boolean accepted = gateway.setLocalRichPresence(STATUS_KEY, current.get());
+            if (!accepted) {
+                changeLogger.accept("Failed to set local Rich Presence key \"" + STATUS_KEY
+                        + "\" to \"" + current.get() + "\": rejected by Steam (not running, app not "
+                        + "initialized, or invalid key/value).");
+                return;
+            }
         } else {
             gateway.clearLocalRichPresence();
         }

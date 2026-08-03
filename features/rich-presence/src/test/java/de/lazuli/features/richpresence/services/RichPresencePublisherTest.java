@@ -137,6 +137,25 @@ class RichPresencePublisherTest {
     }
 
     @Test
+    void logsWarningAndDoesNotThrowWhenSteamRejectsWrite() {
+        ScriptedTracker tracker = new ScriptedTracker(Optional.of("Exploring Plains"));
+        SteamFriendsGateway gateway = Mockito.mock(SteamFriendsGateway.class);
+        when(gateway.setLocalRichPresence(anyString(), anyString())).thenReturn(false);
+        List<String> logged = new ArrayList<>();
+        Consumer<String> changeLogger = logged::add;
+        RichPresencePublisher publisher = new RichPresencePublisher(tracker, gateway, changeLogger);
+
+        publisher.tick();
+
+        verify(gateway, times(1)).setLocalRichPresence(eq("status"), eq("Exploring Plains"));
+        assertEquals(1, logged.size());
+        assertEquals(
+                "Failed to set local Rich Presence key \"status\" to \"Exploring Plains\": rejected by "
+                        + "Steam (not running, app not initialized, or invalid key/value).",
+                logged.get(0));
+    }
+
+    @Test
     void doesNotClearOnFirstTickWhenAlreadyEmpty() {
         ScriptedTracker tracker = new ScriptedTracker(Optional.empty(), Optional.empty());
         SteamFriendsGateway gateway = Mockito.mock(SteamFriendsGateway.class);
