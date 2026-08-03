@@ -16,22 +16,22 @@ class SteamworksServiceTest {
 
     @Test
     void unavailableInstanceReportsUnavailableAndAppId() {
-        SteamworksService service = new SteamworksService(false, 480L);
+        SteamworksService service = new SteamworksService(false, 5052800L);
 
         assertThat(service.isSteamAvailable()).isFalse();
-        assertThat(service.steamAppId()).isEqualTo(480L);
+        assertThat(service.steamAppId()).isEqualTo(5052800L);
     }
 
     @Test
     void unavailableInstancePumpCallbacksIsNoopAndNeverThrows() {
-        SteamworksService service = new SteamworksService(false, 480L);
+        SteamworksService service = new SteamworksService(false, 5052800L);
 
         assertThatCode(service::pumpCallbacks).doesNotThrowAnyException();
     }
 
     @Test
     void unavailableInstanceShutdownIsNoopAndIdempotent() {
-        SteamworksService service = new SteamworksService(false, 480L);
+        SteamworksService service = new SteamworksService(false, 5052800L);
 
         assertThatCode(() -> {
             service.shutdown();
@@ -41,10 +41,10 @@ class SteamworksServiceTest {
 
     @Test
     void availableInstanceReportsAvailableAndAppId() {
-        SteamworksService service = new SteamworksService(true, 480L);
+        SteamworksService service = new SteamworksService(true, 5052800L);
 
         assertThat(service.isSteamAvailable()).isTrue();
-        assertThat(service.steamAppId()).isEqualTo(480L);
+        assertThat(service.steamAppId()).isEqualTo(5052800L);
     }
 
     // Note: an "available == true but constructed via the precomputed-state
@@ -71,7 +71,7 @@ class SteamworksServiceTest {
         // steam_appid.txt in the test working directory. The hard invariant
         // this test guards is "create(...) never throws" (NFR2/FR1) -- NOT a
         // hard-coded isSteamAvailable() value. A developer running the full
-        // suite locally with the real Steam client open and App ID 480
+        // suite locally with the real Steam client open and App ID 5052800
         // resolvable may observe isSteamAvailable() == true instead of
         // false; that is expected and not a test failure (see
         // implementation-plan.md, Risk 2).
@@ -84,7 +84,7 @@ class SteamworksServiceTest {
         // assertion.
         List<String> warnings = new ArrayList<>();
 
-        assertThatCode(() -> SteamworksService.create(480L, nativeLibraryDirectory, warnings::add))
+        assertThatCode(() -> SteamworksService.create(5052800L, nativeLibraryDirectory, warnings::add))
                 .doesNotThrowAnyException();
     }
 }

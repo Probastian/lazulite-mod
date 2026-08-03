@@ -10,10 +10,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 class SteamAppIdResolverTest {
 
     @Test
-    void noOverridePresentFallsBackToValveTestAppId() {
+    void noOverridePresentFallsBackToDefaultAppId() {
         Function<String, String> noProperties = key -> null;
 
-        assertThat(SteamAppIdResolver.resolve(noProperties)).isEqualTo(480L);
+        assertThat(SteamAppIdResolver.resolve(noProperties)).isEqualTo(SteamAppIdResolver.DEFAULT_APP_ID);
     }
 
     @Test
@@ -27,18 +27,18 @@ class SteamAppIdResolverTest {
     void blankOverrideFallsBackToDefault() {
         Function<String, String> properties = key -> "   ";
 
-        assertThat(SteamAppIdResolver.resolve(properties)).isEqualTo(480L);
+        assertThat(SteamAppIdResolver.resolve(properties)).isEqualTo(SteamAppIdResolver.DEFAULT_APP_ID);
     }
 
     @Test
     void unparseableOverrideFallsBackToDefaultRatherThanThrowing() {
         Function<String, String> properties = key -> "not-a-number";
 
-        assertThat(SteamAppIdResolver.resolve(properties)).isEqualTo(480L);
+        assertThat(SteamAppIdResolver.resolve(properties)).isEqualTo(SteamAppIdResolver.DEFAULT_APP_ID);
     }
 
     @Test
     void nullLookupFallsBackToDefaultRatherThanThrowing() {
-        assertThat(SteamAppIdResolver.resolve(null)).isEqualTo(480L);
+        assertThat(SteamAppIdResolver.resolve(null)).isEqualTo(SteamAppIdResolver.DEFAULT_APP_ID);
     }
 }

@@ -37,7 +37,7 @@ import java.util.function.Consumer;
  * <pre>{@code
  * Path nativeDir = FabricLoader.getInstance().getConfigDir()
  *         .resolve("lazuli").resolve("steamworks-natives");
- * SteamworksService steam = SteamworksService.create(480L, nativeDir, LOGGER::warn);
+ * SteamworksService steam = SteamworksService.create(5052800L, nativeDir, LOGGER::warn);
  *
  * ClientTickEvents.END_CLIENT_TICK.register(client -> steam.pumpCallbacks());
  * ClientLifecycleEvents.CLIENT_STOPPING.register(client -> steam.shutdown());

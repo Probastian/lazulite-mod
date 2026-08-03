@@ -10,9 +10,8 @@ import java.util.function.Function;
  * <ol>
  *     <li>The {@code lazuli.steamAppId} JVM system property, if present and
  *     parseable as a {@code long}.</li>
- *     <li>Otherwise, Valve's public test App ID {@code 480} ("Spacewar"),
- *     the standard placeholder for local development before a real
- *     Steamworks App ID is issued.</li>
+ *     <li>Otherwise, this project's real Steamworks App ID,
+ *     {@code 5052800} ("Lazulite").</li>
  * </ol>
  *
  * <p><strong>This is entirely this project's own convenience layer, not a
@@ -36,7 +35,7 @@ import java.util.function.Function;
  * <p>Usage example:
  * <pre>{@code
  * long appId = SteamAppIdResolver.resolve(System::getProperty);
- * // -> the lazuli.steamAppId system property's value, or 480L if absent/invalid
+ * // -> the lazuli.steamAppId system property's value, or 5052800L if absent/invalid
  * }</pre>
  */
 public final class SteamAppIdResolver {
@@ -48,10 +47,9 @@ public final class SteamAppIdResolver {
     public static final String SYSTEM_PROPERTY = "lazuli.steamAppId";
 
     /**
-     * Valve's public test App ID ("Spacewar"), the standard placeholder used
-     * for local development before a real Steamworks App ID is issued.
+     * This project's real Steamworks App ID ("Lazulite").
      */
-    public static final long DEFAULT_APP_ID = 480L;
+    public static final long DEFAULT_APP_ID = 5052800L;
 
     private SteamAppIdResolver() {
     }

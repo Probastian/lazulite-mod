@@ -69,13 +69,13 @@ dependencies {
 }
 
 // Writes a dev-only run/steam_appid.txt before runClient, defaulting to
-// Valve's public test App ID 480 ("Spacewar"), overridable via
-// -PsteamAppId=<id>. This is a Gradle-build-time concern, deliberately
+// this project's real Steamworks App ID, 5052800 ("Lazulite"), overridable
+// via -PsteamAppId=<id>. This is a Gradle-build-time concern, deliberately
 // separate from SteamAppIdResolver's runtime JVM-system-property override
 // (see services/steamworks/SteamAppIdResolver's JavaDoc).
 tasks.register('generateSteamAppId') {
 	def outputFile = layout.projectDirectory.file('run/steam_appid.txt')
-	def appId = project.findProperty('steamAppId') ?: '480'
+	def appId = project.findProperty('steamAppId') ?: '5052800'
 	inputs.property('appId', appId)
 	outputs.file(outputFile)
 

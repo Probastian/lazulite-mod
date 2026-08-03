@@ -7,9 +7,14 @@ import java.util.Map;
  * sample achievements (batch-3-fixes Item BF5, FR-BF5.1/5.2), keyed by the
  * raw {@code apiName()} {@code AchievementSummary} already exposes. Sourced
  * from Valve's own publicly documented Steamworks SDK sample content for
- * Spacewar (the same sample app this repo's dev/test Steam App ID already
- * points at) -- a well-known, stable set of five achievements. This mapping
- * is intentionally partial/thin (spec Risk #4): any {@code apiName()} not
+ * Spacewar -- a well-known, stable set of five achievements -- used as
+ * temporary mock/placeholder achievement data during development, since this
+ * project's own real App ID (Lazulite, 5052800) has no real achievements
+ * configured yet. App ID 480 here refers only to Valve's Spacewar sample
+ * app this data is sourced from; it is unrelated to and not this project's
+ * own Steamworks App ID (see {@code SteamAppIdResolver.DEFAULT_APP_ID}).
+ * This mapping is intentionally partial/thin (spec Risk #4): any
+ * {@code apiName()} not
  * present here falls back to {@code AchievementsPanel}'s existing
  * raw-name-only rendering (FR-BF5.3), never an error/placeholder.
  *

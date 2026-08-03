@@ -31,12 +31,12 @@ class ServerBrowserSessionImplTest {
 
         @Override
         public long steamAppId() {
-            return 480L;
+            return 5052800L;
         }
     }
 
     private ServerBrowserSessionImpl newSession() {
-        ServerBrowserQuery query = new ServerBrowserQuery(new UnavailableSteam(), () -> 480, message -> { });
+        ServerBrowserQuery query = new ServerBrowserQuery(new UnavailableSteam(), () -> 5052800, message -> { });
         return new ServerBrowserSessionImpl(query, new ServerBrowserTableModel());
     }
 
