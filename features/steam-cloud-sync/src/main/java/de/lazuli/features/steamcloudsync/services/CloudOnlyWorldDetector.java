@@ -43,11 +43,17 @@ public final class CloudOnlyWorldDetector {
         List<CloudOnlyWorldSummary> result = new ArrayList<>();
         for (WorldFingerprint fingerprint : fingerprints) {
             if (!localFolders.contains(fingerprint.worldSlug())) {
+                // The richer, metadata-file-sourced fields are left at their
+                // "unavailable" sentinels here -- this pure, Cloud-I/O-free
+                // detector only ever sees the fingerprint list; CloudOnlyWorldsFacade
+                // attaches the WorldCloudMetadata-sourced fields afterward
+                // (cloud-world-metadata-file spec Requirement 5).
                 result.add(new CloudOnlyWorldSummary(
                         fingerprint.worldSlug(),
                         fingerprint.displayName(),
                         fingerprint.deviceLabel(),
-                        fingerprint.syncedAtTimestamp()));
+                        fingerprint.syncedAtTimestamp(),
+                        -1L, null, null, null, null, false, null));
             }
         }
         return List.copyOf(result);

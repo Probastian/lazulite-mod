@@ -99,11 +99,41 @@ public final class SteamRemoteStorageCloudFileStore implements CloudFileStore {
     @Override
     public OptionalLong fileTimestamp(String fileName) {
         try {
+            // ISteamRemoteStorage::GetFileTimestamp() returns Unix epoch
+            // *seconds*, but every caller of this method (CloudSyncableReconciler,
+            // LocalCloudFileReconciler) compares this value directly against
+            // File.lastModified()-style epoch *milliseconds*. Left unconverted,
+            // the Cloud side always reads as ~1000x older than local, so local
+            // is always (wrongly) treated as newer -- the fresh-launch
+            // upload-instead-of-download bug. Convert to millis here so the
+            // contract matches every consumer's assumption.
             long timestamp = remoteStorage.getFileTimestamp(fileName);
-            return timestamp > 0 ? OptionalLong.of(timestamp) : OptionalLong.empty();
+            return timestamp > 0 ? OptionalLong.of(toEpochMillis(timestamp)) : OptionalLong.empty();
         } catch (RuntimeException e) {
             warn("Failed to read Steam Cloud file timestamp for \"" + fileName + "\": " + e);
             return OptionalLong.empty();
+        }
+    }
+
+    /**
+     * Converts {@code ISteamRemoteStorage::GetFileTimestamp()}'s Unix epoch
+     * <em>seconds</em> return value to epoch <em>milliseconds</em>, the unit
+     * every {@link CloudFileStore#fileTimestamp(String)} caller assumes.
+     * Package-private and static purely so this one-line conversion --
+     * otherwise buried inside a class that requires a real, initialized
+     * Steam session to construct -- is directly unit-testable (NFR1).
+     */
+    static long toEpochMillis(long epochSeconds) {
+        return epochSeconds * 1000L;
+    }
+
+    @Override
+    public boolean delete(String fileName) {
+        try {
+            return remoteStorage.fileDelete(fileName);
+        } catch (RuntimeException e) {
+            warn("Failed to delete Steam Cloud file \"" + fileName + "\": " + e);
+            return false;
         }
     }
 

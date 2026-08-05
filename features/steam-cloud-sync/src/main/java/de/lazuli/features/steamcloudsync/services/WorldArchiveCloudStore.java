@@ -78,8 +78,14 @@ public interface WorldArchiveCloudStore {
 
     /**
      * @param fileName the flat, lowercase Cloud file name
-     * @return the file's last-write timestamp on Steam Cloud, or empty if it
-     *         does not exist or Steam is unavailable
+     * @return the file's last-write timestamp on Steam Cloud, in epoch
+     *         <strong>milliseconds</strong> (matching
+     *         {@link java.nio.file.Files#getLastModifiedTime}'s unit, since
+     *         callers compare the two directly), or empty if it does not
+     *         exist or Steam is unavailable. A real implementation backed by
+     *         {@code ISteamRemoteStorage::GetFileTimestamp()} (which itself
+     *         returns Unix epoch <em>seconds</em>) must convert to millis
+     *         here.
      */
     OptionalLong fileTimestamp(String fileName);
 
@@ -102,6 +108,20 @@ public interface WorldArchiveCloudStore {
      * @return {@code true} if the operation succeeded
      */
     boolean forget(String fileName);
+
+    /**
+     * Removes {@code fileName} from Steam Cloud <strong>and propagates an
+     * actual delete</strong> (Valve's documented {@code fileDelete}
+     * behavior) -- distinct from {@link #forget(String)}'s
+     * Cloud-pointer-only, quota-housekeeping semantics. Used when the player
+     * explicitly opts a world out of sync (un-sync), so its Cloud storage is
+     * freed deterministically rather than left in {@code forget}'s
+     * "pointer removed, but not necessarily reclaimed until GC" state.
+     *
+     * @param fileName the flat, lowercase Cloud file name to delete
+     * @return {@code true} if the operation succeeded
+     */
+    boolean deleteWorldArchive(String fileName);
 
     /**
      * Receives the result of one {@link #beginAsyncRead(String, AsyncReadListener)}

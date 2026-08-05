@@ -17,6 +17,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.OptionalLong;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.zip.ZipEntry;
@@ -28,6 +29,15 @@ class WorldRestoreServiceTest {
 
     private static final class FakeWorldArchiveCloudStore implements WorldArchiveCloudStore {
         final Map<String, byte[]> archives = new HashMap<>();
+
+        /**
+         * Number of bytes delivered per {@code onChunk} call. Defaults to
+         * delivering the whole file in one chunk (existing behavior); tests
+         * that need to observe intermediate progress (e.g. FR6.2's milestone
+         * logging) can lower this to split a file's bytes across several
+         * chunks.
+         */
+        int chunkSize = Integer.MAX_VALUE;
 
         @Override
         public boolean isAvailable() {
@@ -47,7 +57,12 @@ class WorldRestoreServiceTest {
                 listener.onFailed("not found");
                 return;
             }
-            listener.onChunk(data);
+            int offset = 0;
+            while (offset < data.length) {
+                int length = Math.min(chunkSize, data.length - offset);
+                listener.onChunk(Arrays.copyOfRange(data, offset, offset + length));
+                offset += length;
+            }
             listener.onComplete();
         }
 
@@ -69,6 +84,11 @@ class WorldRestoreServiceTest {
 
         @Override
         public boolean forget(String fileName) {
+            return archives.remove(fileName) != null;
+        }
+
+        @Override
+        public boolean deleteWorldArchive(String fileName) {
             return archives.remove(fileName) != null;
         }
     }
@@ -218,6 +238,79 @@ class WorldRestoreServiceTest {
         assertThat(listener.completedSlug).isNull();
         assertThat(Files.exists(savesDirectory.resolve("corrupt_world"))).isFalse();
         assertThat(Files.exists(savesDirectory.resolve(".tmp-restore-corrupt_world"))).isFalse();
+
+        worker.shutdown();
+    }
+
+    @Test
+    void milestoneLogFiresExactlyOncePerProgressBoundary(@TempDir Path tempDir) throws Exception {
+        Path savesDirectory = Files.createDirectory(tempDir.resolve("saves"));
+
+        // Pad the (otherwise arbitrarily-sized, compression-dependent) archive out to a
+        // multiple of 4 bytes so splitting it into four equal chunks below lands processed
+        // bytes on exactly 25/50/75/100% of the reading phase -- ZipInputStream stops
+        // reading entries once it hits the central directory, so the extra trailing zero
+        // bytes are never visited and do not affect extraction.
+        byte[] rawArchive = buildZipArchive(Map.of("level.dat", "fake level data"));
+        int paddedLength = ((rawArchive.length + 3) / 4) * 4;
+        byte[] archiveBytes = Arrays.copyOf(rawArchive, paddedLength);
+
+        FakeWorldArchiveCloudStore archiveStore = new FakeWorldArchiveCloudStore();
+        archiveStore.archives.put("lazuli-world-milestone_world.zip", archiveBytes);
+        archiveStore.chunkSize = paddedLength / 4;
+
+        WorldSyncPreferenceService preferenceService =
+                new WorldSyncPreferenceService(tempDir.resolve("world-sync-preferences.json"), w -> { });
+        preferenceService.load();
+        CloudSyncWorker worker = new CloudSyncWorker(w -> { });
+
+        List<String> infoLogs = new CopyOnWriteArrayList<>();
+        WorldRestoreService service = new WorldRestoreService(
+                archiveStore, preferenceService, worker, savesDirectory, w -> { }, infoLogs::add);
+
+        RecordingListener listener = new RecordingListener();
+        service.beginRestore("milestone_world", listener);
+
+        assertThat(listener.done.await(5, TimeUnit.SECONDS)).isTrue();
+        assertThat(listener.completedSlug).isEqualTo("milestone_world");
+
+        List<String> milestoneLogs = infoLogs.stream()
+                .filter(log -> log.contains("Cloud world download"))
+                .toList();
+        assertThat(milestoneLogs).hasSize(4);
+        assertThat(milestoneLogs.get(0)).contains(": 25%");
+        assertThat(milestoneLogs.get(1)).contains(": 50%");
+        assertThat(milestoneLogs.get(2)).contains(": 75%");
+        assertThat(milestoneLogs.get(3)).contains(": 100%");
+
+        worker.shutdown();
+    }
+
+    @Test
+    void droppingHandleReferenceDoesNotAbortBackgroundRestore(@TempDir Path tempDir) throws Exception {
+        Path savesDirectory = Files.createDirectory(tempDir.resolve("saves"));
+        FakeWorldArchiveCloudStore archiveStore = new FakeWorldArchiveCloudStore();
+        archiveStore.archives.put("lazuli-world-dropped_handle_world.zip",
+                buildZipArchive(Map.of("level.dat", "fake level data")));
+
+        WorldSyncPreferenceService preferenceService =
+                new WorldSyncPreferenceService(tempDir.resolve("world-sync-preferences.json"), w -> { });
+        preferenceService.load();
+        CloudSyncWorker worker = new CloudSyncWorker(w -> { });
+        WorldRestoreService service = new WorldRestoreService(archiveStore, preferenceService, worker, savesDirectory, w -> { });
+
+        RecordingListener listener = new RecordingListener();
+        // Intentionally discard the returned RestoreHandle -- this documents the
+        // "Cancel doesn't abort" contract (FR2.2/FR2.3) at the service layer: the
+        // background restore must run to completion purely off WorldRestoreService's
+        // own internal state (activeRestores), never depending on the caller retaining
+        // a reference to the handle it was handed back.
+        service.beginRestore("dropped_handle_world", listener);
+        System.gc();
+
+        assertThat(listener.done.await(5, TimeUnit.SECONDS)).isTrue();
+        assertThat(listener.completedSlug).isEqualTo("dropped_handle_world");
+        assertThat(Files.exists(savesDirectory.resolve("dropped_handle_world").resolve("level.dat"))).isTrue();
 
         worker.shutdown();
     }

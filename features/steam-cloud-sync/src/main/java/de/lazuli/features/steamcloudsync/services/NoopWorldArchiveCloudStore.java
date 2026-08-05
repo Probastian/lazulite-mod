@@ -49,4 +49,9 @@ public final class NoopWorldArchiveCloudStore implements WorldArchiveCloudStore 
     public boolean forget(String fileName) {
         return false;
     }
+
+    @Override
+    public boolean deleteWorldArchive(String fileName) {
+        return false;
+    }
 }

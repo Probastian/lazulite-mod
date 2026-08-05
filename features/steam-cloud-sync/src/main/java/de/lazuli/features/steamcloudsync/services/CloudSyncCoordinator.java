@@ -6,12 +6,16 @@ import de.lazuli.api.steamworks.SteamAvailability;
 import de.lazuli.features.steamcloudsync.api.LastPlayedPointer;
 import de.lazuli.features.steamcloudsync.api.SteamCloudSyncConfig;
 
+import java.io.IOException;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Consumer;
+import java.util.stream.Stream;
 
 /**
  * The composition point for every Cloud checkpoint this feature defines
@@ -58,6 +62,7 @@ public final class CloudSyncCoordinator {
     private final CloudSyncWorker worker;
     private final List<CloudSyncable> cloudSyncables;
     private final SteamCloudSyncConfig config;
+    private final Path savesDirectory;
     private final Consumer<String> warningLogger;
     private final Consumer<String> playerNotifier;
 
@@ -69,6 +74,7 @@ public final class CloudSyncCoordinator {
     private final WorldSaveSyncService worldSaveSyncService;
     private final WorldRestoreService worldRestoreService;
     private final CloudOnlyWorldsHook cloudOnlyWorldsFacade;
+    private final CloudSyncableUploadGate cloudSyncableUploadGate;
 
     /**
      * @param steamAvailability      whether Steam is available for this
@@ -106,7 +112,7 @@ public final class CloudSyncCoordinator {
         this.config = Objects.requireNonNull(config, "config");
         this.cloudSyncables = List.copyOf(Objects.requireNonNull(cloudSyncables, "cloudSyncables"));
         Objects.requireNonNull(featureConfigDir, "featureConfigDir");
-        Objects.requireNonNull(savesDirectory, "savesDirectory");
+        this.savesDirectory = Objects.requireNonNull(savesDirectory, "savesDirectory");
         this.warningLogger = Objects.requireNonNull(warningLogger, "warningLogger");
         this.playerNotifier = Objects.requireNonNull(playerNotifier, "playerNotifier");
         Objects.requireNonNull(continuePointerNotifier, "continuePointerNotifier");
@@ -131,18 +137,43 @@ public final class CloudSyncCoordinator {
         this.worldSyncPreferenceService = new WorldSyncPreferenceService(
                 featureConfigDir.resolve("world-sync-preferences.json"), warningLogger, playerNotifier);
 
-        Path fingerprintCachePath = featureConfigDir.resolve("world-fingerprint-cache.json");
+        Path ancestorCachePath = featureConfigDir.resolve("world-sync-ancestor-cache.json");
         String deviceLabel = DeviceLabelResolver.resolve(System.getProperty("user.name"), resolveHostNameOrNull());
+
+        // RAM-only per-process cache of Cloud's current fingerprint state (never
+        // persisted to disk -- see WorldFingerprintCache's Javadoc); shared between
+        // the two consumers that need it so a single pullFingerprints() call keeps
+        // both in sync.
+        WorldFingerprintCache fingerprintCache = new WorldFingerprintCache();
 
         this.worldSyncStatusTracker = new WorldSyncStatusTracker();
 
         this.worldSaveSyncService = new WorldSaveSyncService(
-                archiveStore, cloudFileStore, worldSyncPreferenceService, worker, fingerprintCachePath,
-                deviceLabel, config.maxWorldArchiveSizeMb(), config.allowSelectiveFallback(), warningLogger, playerNotifier,
+                archiveStore, cloudFileStore, worldSyncPreferenceService, worker, fingerprintCache, ancestorCachePath,
+                deviceLabel, WorldSaveSyncService.MAX_WORLD_ARCHIVE_SIZE_MB, warningLogger, playerNotifier,
                 worldSyncStatusTracker);
         this.worldRestoreService = new WorldRestoreService(
                 archiveStore, worldSyncPreferenceService, worker, savesDirectory, warningLogger, playerNotifier);
-        this.cloudOnlyWorldsFacade = new CloudOnlyWorldsFacade(fingerprintCachePath, warningLogger);
+        this.cloudOnlyWorldsFacade = new CloudOnlyWorldsFacade(fingerprintCache, worldSaveSyncService);
+        this.cloudSyncableUploadGate = new CloudSyncableUploadGate(
+                featureConfigDir.resolve("cloudsyncable-upload-state.json"), warningLogger);
+
+        // Gap 2 (sync-conflict-coverage-gaps): wired here, after both services
+        // exist, to break the construction-order cycle (worldSaveSyncService
+        // itself depends on worldSyncPreferenceService). Resolves the just-
+        // re-enabled world's on-disk folder from this device's own saves
+        // directory -- the same resolution listKnownWorlds() already applies
+        // for the FR-T.2 startup checkpoint.
+        this.worldSyncPreferenceService.setOnSyncEnabledListener(worldSlug ->
+                worldSaveSyncService.handleSyncReenabled(worldSlug, savesDirectory.resolve(worldSlug), worldSlug));
+
+        // Request 3 (cloud-sync-threshold-and-full-sync-only): the symmetric
+        // enabled->disabled un-sync checkpoint. This coordinator layer has no
+        // richer display name available at listener-fire time either, so
+        // worldSlug is passed as both the slug and display-name arguments,
+        // matching the setOnSyncEnabledListener wiring's own precedent above.
+        this.worldSyncPreferenceService.setOnSyncDisabledListener(worldSlug ->
+                worldSaveSyncService.handleSyncDisabled(worldSlug, worldSlug));
     }
 
     /**
@@ -155,13 +186,45 @@ public final class CloudSyncCoordinator {
         boolean settingsSyncEnabled = config.enabled() && config.syncSettings();
         for (CloudSyncable syncable : cloudSyncables) {
             CloudSyncableReconciler.reconcileAtStartup(
-                    cloudFileStore, cloudSyncableFileName(syncable), syncable, settingsSyncEnabled, warningLogger, playerNotifier);
+                    cloudFileStore, cloudSyncableFileName(syncable), syncable, settingsSyncEnabled,
+                    cloudSyncableUploadGate, warningLogger, playerNotifier);
         }
 
         bookmarkedServersService.reconcileAtStartup();
         notesService.reconcileAtStartup();
         lastPlayedPointerService.reconcileAtStartup();
-        worldSaveSyncService.pullFingerprintsAtStartup();
+        worldSaveSyncService.pullFingerprints();
+        worker.submitBackgroundWork(() ->
+                worldSaveSyncService.checkAndUploadStaleWorldsAtStartup(listKnownWorlds()));
+    }
+
+    /**
+     * The FR-T.4 checkpoint: extends the existing per-world upload trigger
+     * that already fires on return to the main menu (disconnect from a
+     * singleplayer world) with a metadata-only refresh -- re-pulling the
+     * fingerprint cache so freshness/cloud-only-world state reflects any
+     * change another device made to Cloud while this session was in a
+     * world. Never pulls a full world archive over an existing local world
+     * (Non-goals).
+     */
+    public void onReturnToMainMenu() {
+        worldSaveSyncService.pullFingerprints();
+    }
+
+    private List<WorldSaveSyncService.KnownWorld> listKnownWorlds() {
+        List<WorldSaveSyncService.KnownWorld> knownWorlds = new ArrayList<>();
+        if (!Files.exists(savesDirectory)) {
+            return knownWorlds;
+        }
+        try (Stream<Path> children = Files.list(savesDirectory)) {
+            children.filter(Files::isDirectory).forEach(worldFolder -> {
+                String worldSlug = worldFolder.getFileName().toString();
+                knownWorlds.add(new WorldSaveSyncService.KnownWorld(worldSlug, worldFolder, worldSlug));
+            });
+        } catch (IOException e) {
+            warningLogger.accept("Failed to list local worlds under " + savesDirectory + " for the FR-T.2 startup stale-upload check: " + e);
+        }
+        return knownWorlds;
     }
 
     /**
@@ -173,7 +236,8 @@ public final class CloudSyncCoordinator {
         boolean settingsSyncEnabled = config.enabled() && config.syncSettings();
         for (CloudSyncable syncable : cloudSyncables) {
             CloudSyncableReconciler.pushOnShutdown(
-                    cloudFileStore, cloudSyncableFileName(syncable), syncable, settingsSyncEnabled, warningLogger, playerNotifier);
+                    cloudFileStore, cloudSyncableFileName(syncable), syncable, settingsSyncEnabled,
+                    cloudSyncableUploadGate, warningLogger, playerNotifier);
         }
 
         bookmarkedServersService.syncOnShutdown();

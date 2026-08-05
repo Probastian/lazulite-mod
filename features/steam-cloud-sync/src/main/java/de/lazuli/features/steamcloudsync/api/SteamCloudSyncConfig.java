@@ -17,9 +17,7 @@ package de.lazuli.features.steamcloudsync.api;
  *   "syncAccessibility": true,
  *   "syncBookmarkedServers": true,
  *   "syncContinuePointer": true,
- *   "syncNotes": true,
- *   "maxWorldArchiveSizeMb": 1024,
- *   "allowSelectiveFallback": true
+ *   "syncNotes": true
  * }
  * }</pre>
  *
@@ -30,6 +28,14 @@ package de.lazuli.features.steamcloudsync.api;
  *     // sync the bookmarked-servers file at this checkpoint
  * }
  * }</pre>
+ *
+ * <p>Note: the Group 6 world-archive size threshold is intentionally
+ * <strong>not</strong> a field of this config -- it is a hardcoded,
+ * non-configurable constant
+ * ({@link de.lazuli.features.steamcloudsync.services.WorldSaveSyncService#MAX_WORLD_ARCHIVE_SIZE_MB})
+ * that is never read from or written to any on-disk file (see that
+ * constant's own Javadoc). Likewise, the critical-files-only selective-sync
+ * fallback has been removed entirely -- sync is strictly all-or-nothing.
  *
  * @param schemaVersion          this config schema's version, for future
  *                               evolution
@@ -42,15 +48,6 @@ package de.lazuli.features.steamcloudsync.api;
  * @param syncBookmarkedServers  Group 3 (bookmarked servers) toggle
  * @param syncContinuePointer    Group 4 (continue-where-you-left-off) toggle
  * @param syncNotes              Group 5 (notes/waypoints) toggle
- * @param maxWorldArchiveSizeMb  the size threshold (megabytes) above which a
- *                               world's save folder falls back to selective
- *                               sync (or is skipped, if
- *                               {@link #allowSelectiveFallback()} is
- *                               {@code false}) instead of a whole-archive zip
- * @param allowSelectiveFallback whether to fall back to a small
- *                               critical-files-only archive (FR6.4) for a
- *                               world over {@link #maxWorldArchiveSizeMb()},
- *                               rather than skipping sync for it entirely
  */
 public record SteamCloudSyncConfig(
         int schemaVersion,
@@ -59,9 +56,7 @@ public record SteamCloudSyncConfig(
         boolean syncAccessibility,
         boolean syncBookmarkedServers,
         boolean syncContinuePointer,
-        boolean syncNotes,
-        int maxWorldArchiveSizeMb,
-        boolean allowSelectiveFallback) {
+        boolean syncNotes) {
 
     /** The current schema version this feature writes/expects. */
     public static final int CURRENT_SCHEMA_VERSION = 1;
@@ -71,5 +66,5 @@ public record SteamCloudSyncConfig(
      * an existing file fails to parse.
      */
     public static final SteamCloudSyncConfig DEFAULT =
-            new SteamCloudSyncConfig(CURRENT_SCHEMA_VERSION, true, true, true, true, true, true, 1024, true);
+            new SteamCloudSyncConfig(CURRENT_SCHEMA_VERSION, true, true, true, true, true, true);
 }

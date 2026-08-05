@@ -5,6 +5,7 @@
 	"mixins": [
 		"ExampleMixin",
 		"IntegratedServerWorldHostingMixin",
+		"WorldSaveHookMixin",
 		"ServerConnectionListenerCaptureMixin",
 		"ConnectionSteamChannelMixin",
 		"ClientHandshakeStubDigestMixin",

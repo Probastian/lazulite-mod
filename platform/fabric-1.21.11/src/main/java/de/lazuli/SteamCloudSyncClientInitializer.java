@@ -7,6 +7,7 @@ import de.lazuli.features.crossworldstats.config.AccountStats;
 import de.lazuli.features.crossworldstats.config.CrossWorldStatsConfigIO;
 import de.lazuli.features.steamcloudsync.api.SteamCloudSyncConfig;
 import de.lazuli.features.steamcloudsync.config.SteamCloudSyncConfigIO;
+import de.lazuli.api.cloudsync.WorldConflictResolutionHook;
 import de.lazuli.features.steamcloudsync.services.CloudSyncCoordinator;
 import de.lazuli.services.steamworks.SteamworksService;
 
@@ -66,7 +67,8 @@ public final class SteamCloudSyncClientInitializer implements ClientModInitializ
         List<CloudSyncable> cloudSyncables = List.of(
                 new OptionsTxtCloudSyncAdapter(gameDir.resolve("options.txt")),
                 new ServersDatCloudSyncAdapter(gameDir.resolve("servers.dat")),
-                new CrossWorldStatsCloudSyncAdapter(configDir.resolve("cross-world-stats.json")));
+                new CrossWorldStatsCloudSyncAdapter(configDir.resolve("cross-world-stats.json")),
+                new TweaksJsonCloudSyncAdapter(configDir.resolve("tweaks.json")));
 
         CloudSyncCoordinator coordinator = new CloudSyncCoordinator(
                 steamworksService,
@@ -92,6 +94,9 @@ public final class SteamCloudSyncClientInitializer implements ClientModInitializ
             WorldSyncStatusHookHolder.publish(coordinator.worldSyncStatusTracker());
             CloudOnlyWorldsHookHolder.publish(coordinator.cloudOnlyWorldsFacade());
             WorldRestoreHookHolder.publish(coordinator.worldRestoreService());
+            WorldSaveHookHolder.publish(coordinator.worldSaveSyncService());
+            WorldFreshnessHookHolder.publish(coordinator.worldSaveSyncService());
+            WorldConflictHookHolder.publish(coordinator.worldSaveSyncService());
             LazuliMod.LOGGER.info("Steam Cloud world-sync toggle icon and cloud-only-world restore flow activated "
                     + "(Worlds tab should now render both).");
         } else {
@@ -197,6 +202,54 @@ public final class SteamCloudSyncClientInitializer implements ClientModInitializ
     }
 
     /**
+     * FR1/FR2: {@code config/tweaks.json} is synced as an opaque byte blob,
+     * unconditionally (no config toggle) -- same shape/caveats as
+     * {@link OptionsTxtCloudSyncAdapter} (FR3: no init-order coupling with
+     * {@code TweaksClientInitializer}'s own independent load of the same
+     * path is required or introduced).
+     */
+    private static final class TweaksJsonCloudSyncAdapter implements CloudSyncable {
+        private final Path tweaksPath;
+
+        private TweaksJsonCloudSyncAdapter(Path tweaksPath) {
+            this.tweaksPath = tweaksPath;
+        }
+
+        @Override
+        public String cloudSyncId() {
+            return "tweaks";
+        }
+
+        @Override
+        public byte[] exportState() {
+            try {
+                return Files.exists(tweaksPath) ? Files.readAllBytes(tweaksPath) : new byte[0];
+            } catch (IOException e) {
+                LazuliMod.LOGGER.warn("Failed to read tweaks.json for Cloud export: {}", e.toString());
+                return new byte[0];
+            }
+        }
+
+        @Override
+        public void importState(byte[] data) {
+            try {
+                Files.write(tweaksPath, data);
+            } catch (IOException e) {
+                LazuliMod.LOGGER.warn("Failed to write tweaks.json from Cloud import: {}", e.toString());
+            }
+        }
+
+        @Override
+        public long localLastModifiedMillis() {
+            try {
+                return Files.exists(tweaksPath) ? Files.getLastModifiedTime(tweaksPath).toMillis() : -1L;
+            } catch (IOException e) {
+                return -1L;
+            }
+        }
+    }
+
+    /**
      * FR-D.1-FR-D.5: {@code config/cross-world-stats.json}, synced via
      * {@link CrossWorldStatsConfigIO}'s typed load/save with FR-D.2's
      * offline-bucket exclusion (NFR1 exception, Risk R3).
@@ -268,12 +321,18 @@ public final class SteamCloudSyncClientInitializer implements ClientModInitializ
         if (client.isIntegratedServerRunning()) {
             singleplayerWorldInfo(client).ifPresent(info -> {
                 coordinator.lastPlayedPointerService().recordWorldExited(info.displayName(), info.worldSlug());
-                coordinator.worldSaveSyncService().onWorldUnload(info.worldSlug(), info.worldFolder(), info.displayName());
+                coordinator.worldSaveSyncService().onWorldUnload(info.worldSlug(), info.worldFolder(), info.displayName(),
+                        () -> readLevelDatBatch(info.worldSlug()));
             });
         } else if (client.getCurrentServerEntry() != null) {
             ServerInfo server = client.getCurrentServerEntry();
             coordinator.lastPlayedPointerService().recordServerDisconnected(server.name, server.address);
         }
+        // FR-T.4: return-to-main-menu is, for this mod's purposes, the same
+        // event as disconnect (F14) -- refresh Cloud metadata (fingerprint
+        // cache/cloud-only-world list) here too, alongside the existing
+        // upload trigger above. Metadata-only; never pulls a full archive.
+        coordinator.onReturnToMainMenu();
     }
 
     private Optional<SingleplayerWorldInfo> singleplayerWorldInfo(MinecraftClient client) {
@@ -293,5 +352,63 @@ public final class SteamCloudSyncClientInitializer implements ClientModInitializ
     }
 
     private record SingleplayerWorldInfo(String worldSlug, String displayName, Path worldFolder) {
+    }
+
+    /**
+     * cloud-world-metadata-file gap fix: the {@code onWorldUnload} checkpoint's
+     * real {@code level.dat} NBT read, invoked lazily on
+     * {@code WorldSaveSyncService}'s background worker thread (never on the
+     * client tick thread that fires {@code onPlayDisconnect}) -- safe here
+     * because by the time this checkpoint fires the integrated server has
+     * already fully unloaded/disconnected (per
+     * {@code WorldSaveSyncService#onWorldUnload}'s own Javadoc), so a fresh
+     * {@code LevelStorage.Session} does not race any still-held session
+     * lock. Mirrors {@code WorldsPanel}'s own {@code readLevelDatBatch} read
+     * shape (Yarn/1.21.11's {@code LevelStorage.Session.readLevelProperties()}
+     * equivalent of the Mojang-mapped
+     * {@code LevelStorageAccess.getUnfixedDataTagWithFallback()}, see
+     * {@code minecraft.md}'s Known Cross-Version API Differences table),
+     * duplicated here rather than shared since {@code WorldsPanel} is a
+     * client-menu-only type this background-thread call site should not
+     * depend on.
+     */
+    private static WorldConflictResolutionHook.LevelDatBatch readLevelDatBatch(String worldSlug) {
+        try (net.minecraft.world.level.storage.LevelStorage.Session session =
+                MinecraftClient.getInstance().getLevelStorage().createSession(worldSlug)) {
+            com.mojang.serialization.Dynamic<?> root = session.readLevelProperties();
+            com.mojang.serialization.Dynamic<?> data = root.get("Data").orElseEmptyMap();
+            Long seed = data.get("WorldGenSettings").get("seed").asNumber().result().map(Number::longValue).orElse(null);
+            int difficultyId = data.get("Difficulty").asNumber().result().map(Number::intValue).orElse(-1);
+            String difficulty = switch (difficultyId) {
+                case 0 -> "Peaceful";
+                case 1 -> "Easy";
+                case 2 -> "Normal";
+                case 3 -> "Hard";
+                default -> null;
+            };
+            Boolean cheatsEnabled = data.get("allowCommands").asBoolean().result().orElse(null);
+            long dayTimeTicks = data.get("DayTime").asNumber().result().map(Number::longValue).orElse(-1L);
+            long dayCount = dayTimeTicks >= 0 ? dayTimeTicks / 24000L : -1L;
+            String minecraftVersion = data.get("Version").get("Name").asString().result().orElse(null);
+            // cloud-world-entry-parity Requirement 3b: the ordinary
+            // background-sync checkpoint's own real lastPlayedMillis/
+            // gameMode/hardcore reads -- reusing the exact same Dynamic<?>
+            // root already opened above, no second LevelStorage.Session.
+            long lastPlayedMillis = data.get("LastPlayed").asNumber().result().map(Number::longValue).orElse(-1L);
+            int gameTypeId = data.get("GameType").asNumber().result().map(Number::intValue).orElse(-1);
+            String gameMode = switch (gameTypeId) {
+                case 0 -> "Survival";
+                case 1 -> "Creative";
+                case 2 -> "Adventure";
+                case 3 -> "Spectator";
+                default -> null;
+            };
+            boolean hardcore = data.get("hardcore").asBoolean().result().orElse(false);
+            return new WorldConflictResolutionHook.LevelDatBatch(seed, difficulty, cheatsEnabled, dayCount, minecraftVersion, true,
+                    lastPlayedMillis, gameMode, hardcore);
+        } catch (Exception e) {
+            LazuliMod.LOGGER.warn("Failed to read level.dat batch for world \"" + worldSlug + "\" at unload: " + e);
+            return WorldConflictResolutionHook.LevelDatBatch.unreadable();
+        }
     }
 }

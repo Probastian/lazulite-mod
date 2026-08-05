@@ -206,8 +206,11 @@ public final class SteamRemoteStorageWorldArchiveStore implements WorldArchiveCl
     @Override
     public OptionalLong fileTimestamp(String fileName) {
         try {
+            // See SteamRemoteStorageCloudFileStore.fileTimestamp(): GetFileTimestamp()
+            // returns Unix epoch *seconds*; convert to millis to match every
+            // caller's epoch-millis assumption.
             long timestamp = remoteStorage.getFileTimestamp(fileName);
-            return timestamp > 0 ? OptionalLong.of(timestamp) : OptionalLong.empty();
+            return timestamp > 0 ? OptionalLong.of(SteamRemoteStorageCloudFileStore.toEpochMillis(timestamp)) : OptionalLong.empty();
         } catch (RuntimeException e) {
             warn("Failed to read Steam Cloud world archive timestamp for \"" + fileName + "\": " + e);
             return OptionalLong.empty();
@@ -230,6 +233,16 @@ public final class SteamRemoteStorageWorldArchiveStore implements WorldArchiveCl
             return remoteStorage.fileForget(fileName);
         } catch (RuntimeException e) {
             warn("Failed to forget Steam Cloud world archive \"" + fileName + "\": " + e);
+            return false;
+        }
+    }
+
+    @Override
+    public boolean deleteWorldArchive(String fileName) {
+        try {
+            return remoteStorage.fileDelete(fileName);
+        } catch (RuntimeException e) {
+            warn("Failed to delete Steam Cloud world archive \"" + fileName + "\": " + e);
             return false;
         }
     }

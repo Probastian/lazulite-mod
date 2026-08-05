@@ -88,9 +88,7 @@ public final class SteamCloudSyncConfigIO {
                     root.getBoolean("syncAccessibility"),
                     root.getBoolean("syncBookmarkedServers"),
                     root.getBoolean("syncContinuePointer"),
-                    root.getBoolean("syncNotes"),
-                    root.getInt("maxWorldArchiveSizeMb"),
-                    root.getBoolean("allowSelectiveFallback"));
+                    root.getBoolean("syncNotes"));
             return ParseResult.ok(config);
         } catch (RuntimeException e) {
             return ParseResult.fallback(
@@ -112,9 +110,7 @@ public final class SteamCloudSyncConfigIO {
                 .putBoolean("syncAccessibility", config.syncAccessibility())
                 .putBoolean("syncBookmarkedServers", config.syncBookmarkedServers())
                 .putBoolean("syncContinuePointer", config.syncContinuePointer())
-                .putBoolean("syncNotes", config.syncNotes())
-                .putNumber("maxWorldArchiveSizeMb", config.maxWorldArchiveSizeMb())
-                .putBoolean("allowSelectiveFallback", config.allowSelectiveFallback());
+                .putBoolean("syncNotes", config.syncNotes());
         return CloudSyncJson.write(root);
     }
 }

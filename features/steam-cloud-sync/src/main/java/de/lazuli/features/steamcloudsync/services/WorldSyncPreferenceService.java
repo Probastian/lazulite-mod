@@ -37,6 +37,8 @@ public final class WorldSyncPreferenceService implements WorldSyncToggleHook {
     private final Consumer<String> warningLogger;
     private final Consumer<String> infoLogger;
     private final Map<String, Boolean> preferences = new LinkedHashMap<>();
+    private volatile Consumer<String> onSyncEnabledListener = worldSlug -> { };
+    private volatile Consumer<String> onSyncDisabledListener = worldSlug -> { };
 
     /**
      * @param preferencesFilePath the local-only preferences file's location
@@ -88,6 +90,53 @@ public final class WorldSyncPreferenceService implements WorldSyncToggleHook {
         preferences.put(worldSlug, newValue);
         infoLogger.accept("Cloud sync " + (newValue ? "enabled" : "disabled") + " for world \"" + worldSlug + "\".");
         persist();
+        if (newValue) {
+            // Gap 2 (sync-conflict-coverage-gaps spec): only the
+            // disabled->enabled transition needs the strict conflict gate --
+            // fired after persist() so the preference is already durable
+            // before any async check/upload can observe it.
+            onSyncEnabledListener.accept(worldSlug);
+        } else {
+            // Request 3 (cloud-sync-threshold-and-full-sync-only): the
+            // enabled->disabled transition triggers un-sync Cloud deletion.
+            onSyncDisabledListener.accept(worldSlug);
+        }
+    }
+
+    /**
+     * Registers the listener invoked, with {@code worldSlug}, immediately
+     * after {@link #toggleSync(String)} transitions a world from disabled to
+     * enabled (Gap 2 of sync-conflict-coverage-gaps). Wired by the platform
+     * composition root ({@code CloudSyncCoordinator}) to
+     * {@code WorldSaveSyncService.handleSyncReenabled}, after both services
+     * are constructed. Not a constructor parameter because
+     * {@code WorldSaveSyncService} itself depends on this service, creating
+     * an unavoidable construction-order cycle otherwise.
+     *
+     * @param listener receives the re-enabled world's slug; never invoked
+     *                 with a thrown exception's caller left unguarded --
+     *                 callers are responsible for their own exception safety
+     */
+    public void setOnSyncEnabledListener(Consumer<String> listener) {
+        this.onSyncEnabledListener = Objects.requireNonNull(listener, "listener");
+    }
+
+    /**
+     * Registers the listener invoked, with {@code worldSlug}, immediately
+     * after {@link #toggleSync(String)} transitions a world from enabled to
+     * disabled (Request 3 of cloud-sync-threshold-and-full-sync-only).
+     * Wired by the platform composition root ({@code CloudSyncCoordinator})
+     * to {@code WorldSaveSyncService.handleSyncDisabled}, after both
+     * services are constructed -- mirrors
+     * {@link #setOnSyncEnabledListener(Consumer)}'s same construction-order-
+     * cycle rationale.
+     *
+     * @param listener receives the disabled world's slug; never invoked with
+     *                 a thrown exception's caller left unguarded -- callers
+     *                 are responsible for their own exception safety
+     */
+    public void setOnSyncDisabledListener(Consumer<String> listener) {
+        this.onSyncDisabledListener = Objects.requireNonNull(listener, "listener");
     }
 
     /**

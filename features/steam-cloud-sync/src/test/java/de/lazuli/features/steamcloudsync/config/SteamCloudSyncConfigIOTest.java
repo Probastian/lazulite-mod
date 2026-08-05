@@ -27,13 +27,35 @@ class SteamCloudSyncConfigIOTest {
 
     @Test
     void roundTripsNonDefaultValues() {
-        SteamCloudSyncConfig config = new SteamCloudSyncConfig(1, true, false, true, false, true, false, 25, false);
+        SteamCloudSyncConfig config = new SteamCloudSyncConfig(1, true, false, true, false, true, false);
 
         String serialized = configIO.serialize(config);
         SteamCloudSyncConfigIO.ParseResult reparsed = configIO.parse(serialized);
 
         assertThat(reparsed.config()).isEqualTo(config);
         assertThat(reparsed.warning()).isNull();
+    }
+
+    /**
+     * Request 1 (cloud-sync-threshold-and-full-sync-only): an old on-disk
+     * config file written before {@code maxWorldArchiveSizeMb}/
+     * {@code allowSelectiveFallback} were removed from the schema must still
+     * parse successfully -- those now-obsolete keys are simply ignored, not
+     * migrated, per the "new truth, no migration" decision.
+     */
+    @Test
+    void parsingAnOldConfigFileWithNowObsoleteKeysStillSucceeds() {
+        String legacyJson = "{"
+                + "\"schemaVersion\": 1, \"enabled\": true, \"syncSettings\": true, "
+                + "\"syncAccessibility\": true, \"syncBookmarkedServers\": true, "
+                + "\"syncContinuePointer\": true, \"syncNotes\": true, "
+                + "\"maxWorldArchiveSizeMb\": 50, \"allowSelectiveFallback\": true"
+                + "}";
+
+        SteamCloudSyncConfigIO.ParseResult result = configIO.parse(legacyJson);
+
+        assertThat(result.warning()).isNull();
+        assertThat(result.config()).isEqualTo(new SteamCloudSyncConfig(1, true, true, true, true, true, true));
     }
 
     @Test

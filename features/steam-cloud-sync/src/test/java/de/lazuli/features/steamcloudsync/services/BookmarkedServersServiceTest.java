@@ -47,6 +47,12 @@ class BookmarkedServersServiceTest {
             Long timestamp = timestamps.get(fileName);
             return timestamp == null ? OptionalLong.empty() : OptionalLong.of(timestamp);
         }
+
+        @Override
+        public boolean delete(String fileName) {
+            timestamps.remove(fileName);
+            return files.remove(fileName) != null;
+        }
     }
 
     @Test

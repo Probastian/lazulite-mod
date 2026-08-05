@@ -38,4 +38,9 @@ public final class NoopCloudFileStore implements CloudFileStore {
     public OptionalLong fileTimestamp(String fileName) {
         return OptionalLong.empty();
     }
+
+    @Override
+    public boolean delete(String fileName) {
+        return false;
+    }
 }

@@ -100,4 +100,23 @@ class CloudSyncCoordinatorTest {
 
         assertThat(warnings).isEmpty();
     }
+
+    @Test
+    void onReturnToMainMenuRefreshesFingerprintCacheWithoutSideEffectsOnUnrelatedState(@TempDir Path tempDir) {
+        CloudSyncCoordinator coordinator = new CloudSyncCoordinator(
+                new UnavailableSteam(), SteamCloudSyncConfig.DEFAULT, List.of(),
+                tempDir, tempDir.resolve("saves"), w -> { }, m -> { }, p -> { });
+        coordinator.reconcileAtStartup();
+
+        coordinator.bookmarkedServersService().add("My Server", "play.example.com:25565");
+        coordinator.notesService().add("A reminder");
+        coordinator.worldSyncPreferenceService().toggleSync("my_world");
+
+        assertThatCode(coordinator::onReturnToMainMenu).doesNotThrowAnyException();
+
+        assertThat(coordinator.bookmarkedServersService().list()).hasSize(1);
+        assertThat(coordinator.notesService().list()).hasSize(1);
+        assertThat(coordinator.worldSyncPreferenceService().isSyncEnabled("my_world")).isTrue();
+        assertThat(coordinator.cloudOnlyWorldsFacade().listCloudOnlyWorlds(List.of())).isEmpty();
+    }
 }

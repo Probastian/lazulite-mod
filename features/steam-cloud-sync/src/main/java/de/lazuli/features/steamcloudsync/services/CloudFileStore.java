@@ -68,8 +68,31 @@ public interface CloudFileStore {
 
     /**
      * @param fileName the flat, lowercase Cloud file name
-     * @return the file's last-write timestamp on Steam Cloud, or empty if
-     *         the file does not exist or Steam is unavailable
+     * @return the file's last-write timestamp on Steam Cloud, in epoch
+     *         <strong>milliseconds</strong> (the same unit as
+     *         {@link java.nio.file.Files#getLastModifiedTime} /
+     *         {@code CloudSyncable#localLastModifiedMillis()}, so every
+     *         reconciliation caller can compare the two directly) -- or
+     *         empty if the file does not exist or Steam is unavailable. A
+     *         real implementation backed by
+     *         {@code ISteamRemoteStorage::GetFileTimestamp()} (which itself
+     *         returns Unix epoch <em>seconds</em>) must convert to millis
+     *         here.
      */
     OptionalLong fileTimestamp(String fileName);
+
+    /**
+     * Deletes {@code fileName} from Steam Cloud outright (Valve's
+     * {@code fileDelete} semantics -- unlike {@link WorldArchiveCloudStore}'s
+     * own {@code forget}, there is no quota-freeing-only counterpart on this
+     * interface to contrast against; every file behind this seam is small
+     * enough that "delete" is always the correct operation).
+     *
+     * @param fileName the flat, lowercase Cloud file name
+     * @return {@code true} if the delete succeeded; {@code false} if Steam is
+     *         unavailable, the delete failed, or the file did not exist
+     *         (mirroring Steam Cloud's own {@code fileDelete} semantics for a
+     *         nonexistent file); never throws
+     */
+    boolean delete(String fileName);
 }

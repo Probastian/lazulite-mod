@@ -23,7 +23,8 @@ class CloudOnlyWorldDetectorTest {
 
         List<CloudOnlyWorldSummary> result = detector.detect(List.of(), List.of(fingerprint));
 
-        assertThat(result).containsExactly(new CloudOnlyWorldSummary("my_world_folder", "My World", "duck's PC", 123L));
+        assertThat(result).containsExactly(new CloudOnlyWorldSummary(
+                "my_world_folder", "My World", "duck's PC", 123L, -1L, null, null, null, null, false, null));
     }
 
     @Test

@@ -2,74 +2,85 @@ package de.lazuli.features.steamcloudsync.services;
 
 import de.lazuli.api.cloudsync.CloudOnlyWorldSummary;
 import de.lazuli.api.cloudsync.CloudOnlyWorldsHook;
+import de.lazuli.features.steamcloudsync.api.WorldCloudMetadata;
 import de.lazuli.features.steamcloudsync.api.WorldFingerprint;
-import de.lazuli.features.steamcloudsync.config.WorldFingerprintIO;
 
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
-import java.util.function.Consumer;
+import java.util.Optional;
 
 /**
  * Thin {@link CloudOnlyWorldsHook} implementation composing the pure
- * {@link CloudOnlyWorldDetector} with this device's already-pulled local
- * fingerprint cache (FR6.6/FR6.8) -- the Cloud fingerprint file itself is
- * only ever pulled at the client-startup checkpoint (FR0.3), like every
- * other Cloud file; this facade just re-reads that already-local cache each
- * time it is asked, which stays cheap and synchronous on the render/client
- * thread (FR6.8).
+ * {@link CloudOnlyWorldDetector} with this device's RAM-only, already-pulled
+ * {@link WorldFingerprintCache} (FR6.6/FR6.8) -- the Cloud fingerprint file
+ * itself is only ever pulled from Steam at the client-startup checkpoint
+ * (FR0.3) and other refresh checkpoints, like every other Cloud file; this
+ * facade just re-reads that already-in-memory snapshot each time it is
+ * asked, which stays cheap and synchronous on the render/client thread
+ * (FR6.8). Deliberately never reads from or writes to any local file: see
+ * {@link WorldFingerprintCache}'s Javadoc for why this state must not
+ * survive a process restart via disk persistence.
  *
  * <p>Usage example (from a platform Version Adapter holding this facade
  * through its {@link CloudOnlyWorldsHook} contract):
  * <pre>{@code
- * CloudOnlyWorldsHook hook = new CloudOnlyWorldsFacade(fingerprintCachePath, LazuliMod.LOGGER::warn);
+ * CloudOnlyWorldsHook hook = new CloudOnlyWorldsFacade(fingerprintCache);
  * List<CloudOnlyWorldSummary> cloudOnly = hook.listCloudOnlyWorlds(localSaveFolderNames);
  * }</pre>
  */
 public final class CloudOnlyWorldsFacade implements CloudOnlyWorldsHook {
 
-    private final WorldFingerprintIO io = new WorldFingerprintIO();
     private final CloudOnlyWorldDetector detector = new CloudOnlyWorldDetector();
-    private final Path fingerprintCachePath;
-    private final Consumer<String> warningLogger;
+    private final WorldFingerprintCache fingerprintCache;
+    private final WorldSaveSyncService worldSaveSyncService;
 
     /**
-     * @param fingerprintCachePath this device's local cache of the Cloud
+     * @param fingerprintCache     this process's RAM-only snapshot of Cloud's
      *                             fingerprint file (kept up to date by
-     *                             {@code WorldSaveSyncService} at the
-     *                             client-startup checkpoint)
-     * @param warningLogger        receives a human-readable message for any
-     *                             I/O failure; never invoked with a thrown
-     *                             exception
+     *                             {@code WorldSaveSyncService#pullFingerprints()}
+     *                             at the client-startup checkpoint and other
+     *                             refresh checkpoints)
+     * @param worldSaveSyncService cloud-world-metadata-file spec Requirement
+     *                             5's new coupling: used only for its
+     *                             synchronous, per-call
+     *                             {@link WorldSaveSyncService#cloudMetadataFor(String)}
+     *                             read, to attach the richer per-world
+     *                             fields to each detected cloud-only world
      */
-    public CloudOnlyWorldsFacade(Path fingerprintCachePath, Consumer<String> warningLogger) {
-        this.fingerprintCachePath = Objects.requireNonNull(fingerprintCachePath, "fingerprintCachePath");
-        this.warningLogger = Objects.requireNonNull(warningLogger, "warningLogger");
+    public CloudOnlyWorldsFacade(WorldFingerprintCache fingerprintCache, WorldSaveSyncService worldSaveSyncService) {
+        this.fingerprintCache = Objects.requireNonNull(fingerprintCache, "fingerprintCache");
+        this.worldSaveSyncService = Objects.requireNonNull(worldSaveSyncService, "worldSaveSyncService");
     }
 
     @Override
     public List<CloudOnlyWorldSummary> listCloudOnlyWorlds(List<String> localWorldFolderNames) {
-        List<WorldFingerprint> fingerprints = readFingerprints();
-        return detector.detect(localWorldFolderNames, fingerprints);
+        List<WorldFingerprint> fingerprints = fingerprintCache.entries();
+        List<CloudOnlyWorldSummary> baseSummaries = detector.detect(localWorldFolderNames, fingerprints);
+        List<CloudOnlyWorldSummary> enriched = new ArrayList<>(baseSummaries.size());
+        for (CloudOnlyWorldSummary summary : baseSummaries) {
+            enriched.add(attachMetadata(summary));
+        }
+        return List.copyOf(enriched);
     }
 
-    private List<WorldFingerprint> readFingerprints() {
-        try {
-            if (Files.notExists(fingerprintCachePath)) {
-                return List.of();
-            }
-            String content = Files.readString(fingerprintCachePath, StandardCharsets.UTF_8);
-            WorldFingerprintIO.ParseResult result = io.parse(content);
-            if (result.warning() != null) {
-                warningLogger.accept(result.warning());
-            }
-            return result.entries();
-        } catch (IOException e) {
-            warningLogger.accept("Failed to read " + fingerprintCachePath + ": " + e);
-            return List.of();
+    /**
+     * Attaches the richer, {@link WorldCloudMetadata}-sourced fields to
+     * {@code summary} when a metadata file exists for its world; returns
+     * {@code summary} unchanged (at its documented "unavailable" sentinels)
+     * when it does not (Compatibility -- an old world synced before this
+     * feature shipped, or a metadata upload that failed independently of the
+     * archive upload).
+     */
+    private CloudOnlyWorldSummary attachMetadata(CloudOnlyWorldSummary summary) {
+        Optional<WorldCloudMetadata> metadata = worldSaveSyncService.cloudMetadataFor(summary.worldSlug());
+        if (metadata.isEmpty()) {
+            return summary;
         }
+        WorldCloudMetadata m = metadata.get();
+        return new CloudOnlyWorldSummary(
+                summary.worldSlug(), summary.displayName(), summary.deviceLabel(), summary.syncedAtTimestamp(),
+                m.lastPlayedMillis(), m.minecraftVersion(), m.seed(), m.gameMode(), m.difficulty(), m.hardcore(),
+                m.iconBase64());
     }
 }

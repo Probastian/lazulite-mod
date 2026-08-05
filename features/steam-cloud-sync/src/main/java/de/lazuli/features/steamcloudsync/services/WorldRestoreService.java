@@ -1,5 +1,6 @@
 package de.lazuli.features.steamcloudsync.services;
 
+import de.lazuli.api.cloudsync.DownloadProgressPresenter;
 import de.lazuli.api.cloudsync.RestoreHandle;
 import de.lazuli.api.cloudsync.RestoreProgress;
 import de.lazuli.api.cloudsync.RestoreProgressListener;
@@ -106,9 +107,20 @@ public final class WorldRestoreService implements WorldRestoreHook {
 
         Path targetWorldFolder = savesDirectory.resolve(worldSlug);
         if (Files.exists(targetWorldFolder)) {
-            listener.onFailed(worldSlug, "A local world folder named \"" + worldSlug
-                    + "\" already exists; restore aborted before any extraction began.");
-            return new RestoreHandle(worldSlug);
+            if (isRealSaveFolder(targetWorldFolder)) {
+                listener.onFailed(worldSlug, "A local world folder named \"" + worldSlug
+                        + "\" already exists; restore aborted before any extraction began.");
+                return new RestoreHandle(worldSlug);
+            }
+            // The folder has no level.dat (or is empty) -- it is a stale
+            // leftover, not a real save (e.g. from an earlier aborted restore
+            // via this exact codepath, which never cleaned up after itself,
+            // or a stray folder created some other way). Safe to clear so the
+            // world isn't permanently and silently blocked from ever being
+            // downloaded again.
+            infoLogger.accept("Clearing stale, non-save local folder \"" + worldSlug
+                    + "\" (no level.dat) before restoring from Steam Cloud.");
+            deleteRecursively(targetWorldFolder);
         }
 
         String archiveFileName = WorldSaveSyncService.archiveFileName(worldSlug);
@@ -118,7 +130,7 @@ public final class WorldRestoreService implements WorldRestoreHook {
             return new RestoreHandle(worldSlug);
         }
 
-        RestoreContext context = new RestoreContext(worldSlug, listener);
+        RestoreContext context = new RestoreContext(worldSlug, listener, totalSize);
         activeRestores.put(worldSlug, context);
 
         infoLogger.accept("Downloading world \"" + worldSlug + "\" (" + totalSize + " bytes) from Steam Cloud.");
@@ -129,8 +141,12 @@ public final class WorldRestoreService implements WorldRestoreHook {
                     return;
                 }
                 context.archiveBuffer.writeBytes(chunk);
-                listener.onProgress(new RestoreProgress(
-                        RestoreProgress.Phase.READING_FROM_CLOUD, context.archiveBuffer.size(), totalSize));
+                long processed = context.archiveBuffer.size();
+                listener.onProgress(new RestoreProgress(RestoreProgress.Phase.READING_FROM_CLOUD, processed, totalSize));
+
+                float fraction = DownloadProgressPresenter.combinedFraction(
+                        processed, totalSize, 0L, 0L, RestoreProgress.Phase.READING_FROM_CLOUD);
+                logMilestoneIfCrossed(context, processed, totalSize, fraction);
             }
 
             @Override
@@ -204,6 +220,11 @@ public final class WorldRestoreService implements WorldRestoreHook {
                     zip.closeEntry();
                     context.listener.onProgress(
                             new RestoreProgress(RestoreProgress.Phase.EXTRACTING, processed, totalUncompressed));
+
+                    float fraction = DownloadProgressPresenter.combinedFraction(
+                            context.readingTotalBytes, context.readingTotalBytes,
+                            processed, totalUncompressed, RestoreProgress.Phase.EXTRACTING);
+                    logMilestoneIfCrossed(context, processed, totalUncompressed, fraction);
                 }
             }
 
@@ -222,6 +243,39 @@ public final class WorldRestoreService implements WorldRestoreHook {
             warningLogger.accept("Failed to restore world \"" + context.worldSlug + "\": " + e);
             context.listener.onFailed(context.worldSlug, "Failed to restore world: " + e.getMessage());
         }
+    }
+
+    /**
+     * FR6.2: logs once, at info level, the first time the combined
+     * weighted-fraction (FR3.2, same math {@code DownloadProgressPresenter}
+     * uses for the download screen's progress bar) crosses a new 25% boundary
+     * (25/50/75/100). Fires from here (not the screen) so the milestone log
+     * keeps appearing even after the player has pressed Cancel on the new
+     * "Downloading..." screen and the background restore keeps running
+     * unattended (FR2.2/FR2.3).
+     */
+    private void logMilestoneIfCrossed(RestoreContext context, long processed, long total, float fraction) {
+        int milestone = milestoneFor(fraction);
+        if (milestone > context.lastLoggedMilestone) {
+            context.lastLoggedMilestone = milestone;
+            infoLogger.accept("Cloud world download \"" + context.worldSlug + "\": " + milestone + "% ("
+                    + DownloadProgressPresenter.formatBytes(processed) + " / "
+                    + DownloadProgressPresenter.formatBytes(total) + ").");
+        }
+    }
+
+    private static int milestoneFor(float fraction) {
+        int percentage = Math.round(fraction * 100f);
+        if (percentage >= 100) {
+            return 100;
+        } else if (percentage >= 75) {
+            return 75;
+        } else if (percentage >= 50) {
+            return 50;
+        } else if (percentage >= 25) {
+            return 25;
+        }
+        return 0;
     }
 
     private void finishCancelled(RestoreContext context) {
@@ -247,6 +301,25 @@ public final class WorldRestoreService implements WorldRestoreHook {
         return anyUnknown || total == 0 ? archiveBytes.length : total;
     }
 
+    /**
+     * FR6.13 hardening: distinguishes a real, previously-restored/created
+     * save (must never be destroyed) from a stale/invalid leftover folder at
+     * the same slug (safe to clear so the world isn't permanently blocked).
+     * A folder is only ever treated as "real" when it contains a readable
+     * {@code level.dat} -- the same file vanilla's own {@code LevelStorage}
+     * requires to load a save, so this matches the exact criterion that
+     * causes such a folder to be silently skipped by {@code WorldsPanel}'s
+     * local-world scan in the first place.
+     */
+    private static boolean isRealSaveFolder(Path candidate) {
+        if (!Files.isDirectory(candidate)) {
+            // A plain file (not a directory) at this path is never a real
+            // save folder either; treat it the same as an empty leftover.
+            return false;
+        }
+        return Files.isRegularFile(candidate.resolve("level.dat"));
+    }
+
     private static void deleteRecursively(Path path) {
         if (Files.notExists(path)) {
             return;
@@ -267,12 +340,15 @@ public final class WorldRestoreService implements WorldRestoreHook {
     private static final class RestoreContext {
         final String worldSlug;
         final RestoreProgressListener listener;
+        final long readingTotalBytes;
         final ByteArrayOutputStream archiveBuffer = new ByteArrayOutputStream();
         volatile boolean cancelled;
+        volatile int lastLoggedMilestone;
 
-        RestoreContext(String worldSlug, RestoreProgressListener listener) {
+        RestoreContext(String worldSlug, RestoreProgressListener listener, long readingTotalBytes) {
             this.worldSlug = worldSlug;
             this.listener = listener;
+            this.readingTotalBytes = readingTotalBytes;
         }
     }
 }
