@@ -1,12 +1,14 @@
 package de.lazuli.cloudsync;
 
+import de.lazuli.LazuliMod;
 import de.lazuli.api.cloudsync.CloudOnlyWorldSummary;
+import de.lazuli.api.cloudsync.DownloadProgressPresenter;
 import de.lazuli.api.cloudsync.RestoreHandle;
 import de.lazuli.api.cloudsync.RestoreProgress;
 import de.lazuli.api.cloudsync.RestoreProgressListener;
 import de.lazuli.api.cloudsync.WorldRestoreHook;
+import de.lazuli.api.cloudsync.WorldSyncStatusHook;
 
-import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.widget.ButtonWidget;
@@ -15,55 +17,93 @@ import net.minecraft.text.Text;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * Thin {@code Screen} subclass driving/displaying one FR6.10-FR6.12 world
- * restore attempt on Minecraft 1.21.11 (Yarn-mapped, obfuscated).
+ * Thin {@code Screen} subclass driving/displaying one cloud-world download
+ * (cloud-world-download spec) on Minecraft 1.21.11 (Yarn-mapped, obfuscated).
  *
- * <p>Uses the honest "Restoring.../Extracting..." framing (FR6.11) -- never
- * "Downloading...", since the real Cloud transfer already happened silently
- * before Minecraft launched. The progress bar is a manually-drawn filled
- * rectangle sized to {@code processedBytes/totalBytes}, drawn via
- * {@link DrawContext} primitives (this version's older, still-immediate-mode
- * rendering model, as opposed to 26.x's renamed/refactored
- * {@code GuiGraphicsExtractor}/{@code extractRenderState} model -- see
- * {@code .claude/context/minecraft.md}'s Known Cross-Version API Differences
- * table) rather than any per-version reusable progress-bar widget class.
+ * <p>Uses the "Downloading '&lt;world_name&gt;' from Steam Cloud..." framing
+ * (FR1.1) with a percentage, human-readable current/total size, and a
+ * once-per-second ETA (FR1.3-FR1.5), all computed by the shared, Minecraft-free
+ * {@link DownloadProgressPresenter} (FR3-FR5) so the numbers are identical
+ * across all three platforms (FR1.7). The progress bar is a manually-drawn
+ * filled rectangle, drawn via {@link DrawContext} primitives (this version's
+ * older, still-immediate-mode rendering model, as opposed to 26.x's
+ * renamed/refactored {@code GuiGraphicsExtractor}/{@code extractRenderState}
+ * model -- see {@code .claude/context/minecraft.md}'s Known Cross-Version API
+ * Differences table) rather than any per-version reusable progress-bar widget
+ * class.
  *
  * <p>{@link RestoreProgressListener} callbacks may arrive from a background
  * thread ({@code CloudSyncWorker}); this screen only ever reads the latest
  * snapshot from a {@link AtomicReference} field on the render thread, never
  * blocking it.
  *
- * <p>Cloud Sync Restoration Decision 1: pushed as a full screen from the
- * Worlds tab's cloud-only synthetic row, reused verbatim except for the
- * {@code onReturn} callback below (originally hardcoded to reopen a fresh
- * {@code SelectWorldScreen}), which now lets the caller (a
- * {@code features/main-menu} {@code WorldsPanel}) reopen/refresh
- * {@code MainMenuScreen}'s Worlds tab instead (FR-E.5).
+ * <p>FR2: pressing Cancel does <em>not</em> call
+ * {@link WorldRestoreHook#cancelRestore(RestoreHandle)} -- it only navigates
+ * back to the Worlds tab via {@code onReturn}. The in-flight
+ * {@link RestoreProgressListener} (owned by {@code WorldRestoreService}'s
+ * internal restore context, not by this screen) keeps running to completion
+ * in the background exactly like {@code WorldConflictScreen}'s "Keep Cloud"
+ * flow already does, using the same {@link WorldSyncStatusHook}
+ * markDownloadPending/markDownloadFinished bracketing (FR2.4).
  */
 public final class WorldRestoreScreen extends Screen {
 
     private final CloudOnlyWorldSummary summary;
     private final WorldRestoreHook restoreHook;
+    private final WorldSyncStatusHook statusHook;
+    private final Runnable onCompleted;
     private final Runnable onReturn;
     private final AtomicReference<RestoreProgress> latestProgress = new AtomicReference<>();
     private final AtomicReference<String> failureReason = new AtomicReference<>();
     private volatile boolean completed;
     private RestoreHandle handle;
+    private DownloadProgressPresenter presenter;
 
-    public WorldRestoreScreen(CloudOnlyWorldSummary summary, WorldRestoreHook restoreHook, Runnable onReturn) {
-        super(Text.literal("Restoring " + summary.displayName()));
+    /**
+     * @param summary     the cloud-only world being downloaded
+     * @param restoreHook drives the download/restore attempt
+     * @param statusHook  nullable; used to bracket the download with
+     *                    {@code markDownloadPending}/{@code markDownloadFinished}
+     *                    (FR2.4) so the Worlds tab's existing blocked-row gate
+     *                    picks this download up with no further changes
+     * @param onCompleted nullable; invoked (on the render thread) instead of
+     *                    {@code onReturn} at the natural-completion call site
+     *                    only (never on Cancel) -- e.g. to launch the
+     *                    just-restored world (Requirement 4's "Download &amp;
+     *                    Play" pill). Falls back to {@code onReturn} when
+     *                    {@code null}, preserving this screen's original
+     *                    single-Runnable behavior.
+     * @param onReturn    invoked (on the render thread) when this screen is
+     *                    done -- on successful completion (when {@code
+     *                    onCompleted} is {@code null}) or on Cancel -- to
+     *                    navigate back to whatever screen opened this one
+     */
+    public WorldRestoreScreen(
+            CloudOnlyWorldSummary summary,
+            WorldRestoreHook restoreHook,
+            WorldSyncStatusHook statusHook,
+            Runnable onCompleted,
+            Runnable onReturn) {
+        super(Text.literal("Downloading '" + summary.displayName() + "' from Steam Cloud..."));
         this.summary = summary;
         this.restoreHook = restoreHook;
+        this.statusHook = statusHook;
+        this.onCompleted = onCompleted;
         this.onReturn = onReturn;
     }
 
     @Override
     protected void init() {
         addDrawableChild(ButtonWidget.builder(Text.literal("Cancel"), button -> onCancel())
-                .dimensions(width / 2 - 50, height / 2 + 40, 100, 20)
+                .dimensions(width / 2 - 50, height / 2 + 52, 100, 20)
                 .build());
 
-        handle = restoreHook.beginRestore(summary.worldSlug(), new RestoreProgressListener() {
+        String worldSlug = summary.worldSlug();
+        if (statusHook != null) {
+            statusHook.markDownloadPending(worldSlug);
+        }
+
+        handle = restoreHook.beginRestore(worldSlug, new RestoreProgressListener() {
             @Override
             public void onProgress(RestoreProgress progress) {
                 latestProgress.set(progress);
@@ -71,11 +111,17 @@ public final class WorldRestoreScreen extends Screen {
 
             @Override
             public void onComplete(String worldSlug) {
+                if (statusHook != null) {
+                    statusHook.markDownloadFinished(worldSlug);
+                }
                 completed = true;
             }
 
             @Override
             public void onFailed(String worldSlug, String reason) {
+                if (statusHook != null) {
+                    statusHook.markDownloadFinished(worldSlug);
+                }
                 failureReason.set(reason);
             }
         });
@@ -86,7 +132,11 @@ public final class WorldRestoreScreen extends Screen {
         super.render(context, mouseX, mouseY, delta);
 
         if (completed) {
-            onReturn.run();
+            if (onCompleted != null) {
+                onCompleted.run();
+            } else {
+                onReturn.run();
+            }
             return;
         }
         String failure = failureReason.get();
@@ -96,28 +146,34 @@ public final class WorldRestoreScreen extends Screen {
         }
 
         RestoreProgress progress = latestProgress.get();
-        String statusText = progress == null
-                ? "Restoring world from Steam Cloud..."
-                : switch (progress.phase()) {
-                    case READING_FROM_CLOUD -> "Restoring world from Steam Cloud...";
-                    case EXTRACTING -> "Extracting world files...";
-                };
-        context.drawCenteredTextWithShadow(textRenderer, statusText, width / 2, height / 2 - 30, 0xFFFFFF);
+        if (presenter == null && progress != null) {
+            presenter = new DownloadProgressPresenter(progress.totalBytes(), progress.totalBytes());
+        }
+        if (presenter != null && progress != null) {
+            presenter.onProgress(progress);
+        }
 
         int barWidth = 200;
         int barX = width / 2 - barWidth / 2;
         int barY = height / 2;
         context.fill(barX, barY, barX + barWidth, barY + 10, 0xFF555555);
-        if (progress != null && progress.totalBytes() > 0) {
-            float fraction = Math.min(1f, (float) progress.processedBytes() / progress.totalBytes());
-            context.fill(barX, barY, barX + (int) (barWidth * fraction), barY + 10, 0xFF33AA33);
+
+        if (presenter != null) {
+            DownloadProgressPresenter.DownloadDisplayStats stats = presenter.currentStats(System.currentTimeMillis());
+            context.fill(barX, barY, barX + (int) (barWidth * stats.overallFraction()), barY + 10, 0xFF33AA33);
+
+            context.drawCenteredTextWithShadow(textRenderer, stats.percentage() + "%", width / 2, barY + 14, 0xFFFFFF);
+            context.drawCenteredTextWithShadow(textRenderer,
+                    stats.currentSizeText() + " / " + stats.totalSizeText(), width / 2, barY + 26, 0xFFFFFF);
+            context.drawCenteredTextWithShadow(textRenderer, stats.etaText(), width / 2, barY + 38, 0xFFFFFF);
+        } else {
+            context.drawCenteredTextWithShadow(textRenderer, "Calculating...", width / 2, barY + 14, 0xFFFFFF);
         }
     }
 
     private void onCancel() {
-        if (handle != null) {
-            restoreHook.cancelRestore(handle);
-        }
+        LazuliMod.LOGGER.info("Player left the download screen for cloud-only world \""
+                + summary.worldSlug() + "\"; download continues in the background.");
         onReturn.run();
     }
 }
