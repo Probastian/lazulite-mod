@@ -10,6 +10,7 @@ import de.lazuli.api.cloudsync.CloudOnlyWorldSummary;
 import de.lazuli.api.cloudsync.CloudOnlyWorldsHook;
 import de.lazuli.api.cloudsync.WorldConflictHook;
 import de.lazuli.api.cloudsync.WorldConflictHook.ConflictStatus;
+import de.lazuli.api.cloudsync.RestoreFailureMessages;
 import de.lazuli.api.cloudsync.WorldFreshnessHook;
 import de.lazuli.api.cloudsync.WorldFreshnessHook.FreshnessDetail;
 import de.lazuli.api.cloudsync.WorldFreshnessHook.UpToDateStatus;
@@ -1134,7 +1135,7 @@ public final class WorldsPanel {
                     statusHook.markDownloadFinished(worldSlug);
                 }
                 de.lazuli.LazuliMod.LOGGER.warn("Background-only download of cloud-only world \"" + worldSlug + "\" failed: " + reason);
-                downloadOnlyStatusMessage = "Download failed: " + reason;
+                downloadOnlyStatusMessage = "Download failed: " + RestoreFailureMessages.toPlayerMessage(reason);
                 downloadOnlyStatusSetAtMillis = System.currentTimeMillis();
             }
         });

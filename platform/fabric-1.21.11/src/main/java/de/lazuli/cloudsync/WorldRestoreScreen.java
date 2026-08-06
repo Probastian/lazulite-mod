@@ -5,6 +5,7 @@ import de.lazuli.api.cloudsync.CloudOnlyWorldSummary;
 import de.lazuli.api.cloudsync.DownloadProgressPresenter;
 import de.lazuli.api.cloudsync.RestoreHandle;
 import de.lazuli.api.cloudsync.RestoreProgress;
+import de.lazuli.api.cloudsync.RestoreFailureMessages;
 import de.lazuli.api.cloudsync.RestoreProgressListener;
 import de.lazuli.api.cloudsync.WorldRestoreHook;
 import de.lazuli.api.cloudsync.WorldSyncStatusHook;
@@ -141,7 +142,9 @@ public final class WorldRestoreScreen extends Screen {
         }
         String failure = failureReason.get();
         if (failure != null) {
-            context.drawCenteredTextWithShadow(textRenderer, "Restore failed: " + failure, width / 2, height / 2 - 20, 0xFF5555);
+            context.drawCenteredTextWithShadow(textRenderer,
+                    "Restore failed: " + RestoreFailureMessages.toPlayerMessage(failure),
+                    width / 2, height / 2 - 20, 0xFF5555);
             return;
         }
 
