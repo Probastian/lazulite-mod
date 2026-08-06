@@ -50,7 +50,9 @@ public final class SteamworksService implements SteamAvailability {
 
     private final boolean available;
     private final long appId;
+    private final Consumer<String> warningLogger;
     private boolean shutDown;
+    private boolean pumpFailureLogged;
 
     /**
      * Package-private constructor for a precomputed availability/App-ID
@@ -59,8 +61,13 @@ public final class SteamworksService implements SteamAvailability {
      * Production code should use {@link #create(long, Path, Consumer)}.
      */
     SteamworksService(boolean available, long appId) {
+        this(available, appId, null);
+    }
+
+    private SteamworksService(boolean available, long appId, Consumer<String> warningLogger) {
         this.available = available;
         this.appId = appId;
+        this.warningLogger = warningLogger;
     }
 
     /**
@@ -94,7 +101,7 @@ public final class SteamworksService implements SteamAvailability {
             boolean librariesLoaded = SteamAPI.loadLibraries(loader);
             if (!librariesLoaded) {
                 warn(warningLogger, "Steamworks native libraries failed to load; Steam features unavailable.");
-                return new SteamworksService(false, appId);
+                return new SteamworksService(false, appId, warningLogger);
             }
 
             SteamAPI.InitResult result = SteamAPI.initEx();
@@ -102,19 +109,19 @@ public final class SteamworksService implements SteamAvailability {
                 warn(warningLogger, "Steamworks API failed to initialize (" + result
                         + "); Steam features unavailable. Is Steam running, and is a valid "
                         + "steam_appid.txt present (App ID " + appId + ")?");
-                return new SteamworksService(false, appId);
+                return new SteamworksService(false, appId, warningLogger);
             }
 
-            return new SteamworksService(true, appId);
+            return new SteamworksService(true, appId, warningLogger);
         } catch (SteamException e) {
             warn(warningLogger, "Steamworks API threw during initialization; Steam features unavailable: " + e);
-            return new SteamworksService(false, appId);
+            return new SteamworksService(false, appId, warningLogger);
         } catch (RuntimeException | UnsatisfiedLinkError e) {
             // Defense in depth beyond the checked SteamException above: this
             // bootstrap must never throw out of Minecraft's client startup,
             // regardless of what an unexpected native-layer failure raises.
             warn(warningLogger, "Unexpected failure initializing Steamworks API; Steam features unavailable: " + e);
-            return new SteamworksService(false, appId);
+            return new SteamworksService(false, appId, warningLogger);
         }
     }
 
@@ -123,10 +130,59 @@ public final class SteamworksService implements SteamAvailability {
      * tick, from the same thread {@code SteamAPI.init()} ran on (Minecraft's
      * client tick thread, in every platform module this project supports).
      * A no-op if this instance is unavailable.
+     *
+     * <p>Deliberately never lets a {@link SteamException} (or any other
+     * {@link RuntimeException}) escape to the caller. In production, a
+     * client-crashing {@code SteamException} ("Couldn't retrieve callback
+     * method.") was observed here while a Steam Cloud world-restore's
+     * chunked {@code FileReadAsync}/{@code FileReadAsyncComplete} loop was in
+     * flight - a native steamworks4j-fork-layer failure resolving the JNI
+     * callback method for that particular pending call, not a
+     * threading/reentrancy bug in this project's call sites (the Steamworks
+     * call that issues the read and this per-tick callback pump both run on
+     * the same client tick thread, sequentially, per this project's
+     * single-thread Steamworks convention - never nested/reentrant with each
+     * other). Because Valve's C API gives no way to cancel or requery a
+     * single broken pending call, a callback that fails to dispatch this way
+     * is dropped for good; any in-flight caller waiting on it would stop
+     * receiving progress and never see a terminal outcome for that one call,
+     * rather than the whole client crashing.
+     *
+     * <p>{@code SteamRemoteStorageWorldArchiveStore.beginAsyncRead} (the cloud
+     * world-restore read path that originally triggered this) has since been
+     * switched to a single synchronous {@code FileRead} call and no longer
+     * depends on this pump at all, so it is no longer exposed to this failure
+     * mode. This catch remains in place as defense-in-depth for any other
+     * consumer of this fork's async/callback surface (e.g. {@code
+     * FileWriteAsync}, UGC downloads) that has not been given the same
+     * treatment - such a consumer would still see the "stops receiving
+     * progress, no terminal outcome" stall described above rather than a
+     * crash, and would need either the same synchronous-call treatment or a
+     * tick-thread timeout/watchdog if no synchronous alternative exists for
+     * it.
      */
     public void pumpCallbacks() {
-        if (available) {
+        if (!available) {
+            return;
+        }
+        try {
             SteamAPI.runCallbacks();
+        } catch (Exception e) {
+            // SteamAPI.runCallbacks() does not declare "throws SteamException"
+            // (confirmed against the fork's compiled bytecode), so this must
+            // catch the unchecked-from-javac's-perspective java.lang.Exception
+            // rather than SteamException itself - the JVM does not enforce
+            // checked-exception declarations for native methods, so the
+            // observed crash (a SteamException actually thrown from this
+            // native call at runtime) would make a narrower catch clause
+            // "unreachable code" at compile time despite being reachable at
+            // runtime.
+            if (!pumpFailureLogged) {
+                pumpFailureLogged = true;
+                warn(warningLogger, "Steamworks callback pump threw and was suppressed to avoid crashing the "
+                        + "client (this will keep happening every tick, and any Steam call still waiting on a "
+                        + "callback may never complete): " + e);
+            }
         }
     }
 
