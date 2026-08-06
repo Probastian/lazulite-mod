@@ -94,6 +94,7 @@ public final class SteamCloudSyncClientInitializer implements ClientModInitializ
             WorldRestoreHookHolder.publish(coordinator.worldRestoreService());
             WorldSaveHookHolder.publish(coordinator.worldSaveSyncService());
             WorldFreshnessHookHolder.publish(coordinator.worldSaveSyncService());
+            WorldCloudMigrationHolder.publish(coordinator.worldCloudMigrationService());
             WorldConflictHookHolder.publish(coordinator.worldSaveSyncService());
             LazuliMod.LOGGER.info("Steam Cloud world-sync toggle icon and cloud-only-world restore flow activated "
                     + "(Worlds tab should now render both).");

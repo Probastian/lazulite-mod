@@ -34,6 +34,7 @@ public final class CloudOnlyWorldsFacade implements CloudOnlyWorldsHook {
     private final CloudOnlyWorldDetector detector = new CloudOnlyWorldDetector();
     private final WorldFingerprintCache fingerprintCache;
     private final WorldSaveSyncService worldSaveSyncService;
+    private final WorldCloudMigrationService migrationService;
 
     /**
      * @param fingerprintCache     this process's RAM-only snapshot of Cloud's
@@ -48,15 +49,19 @@ public final class CloudOnlyWorldsFacade implements CloudOnlyWorldsHook {
      *                             read, to attach the richer per-world
      *                             fields to each detected cloud-only world
      */
-    public CloudOnlyWorldsFacade(WorldFingerprintCache fingerprintCache, WorldSaveSyncService worldSaveSyncService) {
+    public CloudOnlyWorldsFacade(WorldFingerprintCache fingerprintCache, WorldSaveSyncService worldSaveSyncService,
+            WorldCloudMigrationService migrationService) {
         this.fingerprintCache = Objects.requireNonNull(fingerprintCache, "fingerprintCache");
         this.worldSaveSyncService = Objects.requireNonNull(worldSaveSyncService, "worldSaveSyncService");
+        this.migrationService = Objects.requireNonNull(migrationService, "migrationService");
     }
 
     @Override
     public List<CloudOnlyWorldSummary> listCloudOnlyWorlds(List<String> localWorldFolderNames) {
         List<WorldFingerprint> fingerprints = fingerprintCache.entries();
-        List<CloudOnlyWorldSummary> baseSummaries = detector.detect(localWorldFolderNames, fingerprints);
+        java.util.Set<String> pendingRenameCloudWorldIds = new java.util.LinkedHashSet<>();
+        migrationService.knownLocalCloudWorldIds().forEach(id -> pendingRenameCloudWorldIds.add(id.toString()));
+        List<CloudOnlyWorldSummary> baseSummaries = detector.detect(localWorldFolderNames, fingerprints, pendingRenameCloudWorldIds);
         List<CloudOnlyWorldSummary> enriched = new ArrayList<>(baseSummaries.size());
         for (CloudOnlyWorldSummary summary : baseSummaries) {
             enriched.add(attachMetadata(summary));

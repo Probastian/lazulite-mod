@@ -77,6 +77,7 @@ public final class WorldConflictScreen extends Screen {
     private final long lastPlayedMillis;
     private final boolean hardcore;
     private final LevelDatBatch levelDatBatch;
+    private final Runnable onKeepCloudCompleted;
     private final Runnable onReturn;
 
     private ConflictDetail detail;
@@ -115,10 +116,20 @@ public final class WorldConflictScreen extends Screen {
      *                                {@code level.dat} NBT read, performed
      *                                once by the caller before this screen
      *                                opens
+     * @param onKeepCloudCompleted    invoked (on the render thread) only
+     *                                when the "Keep Cloud" restore finishes
+     *                                successfully, to launch the just-
+     *                                downloaded world -- mirroring
+     *                                {@code WorldRestoreScreen}'s
+     *                                {@code onCompleted}. Never invoked on
+     *                                failure; the failure path continues to
+     *                                show "Restore failed: <reason>"
+     *                                without navigating away.
      * @param onReturn                invoked (on the render thread) when
-     *                                this screen is done -- on either
-     *                                resolution or on Cancel -- to navigate
-     *                                back to whatever screen opened this one
+     *                                this screen is done via any other
+     *                                path -- "Keep Local" or Cancel -- to
+     *                                navigate back to whatever screen
+     *                                opened this one
      */
     public WorldConflictScreen(
             String worldSlug,
@@ -131,6 +142,7 @@ public final class WorldConflictScreen extends Screen {
             long lastPlayedMillis,
             boolean hardcore,
             LevelDatBatch levelDatBatch,
+            Runnable onKeepCloudCompleted,
             Runnable onReturn) {
         super(Component.literal("Sync Conflict: " + displayName));
         this.worldSlug = worldSlug;
@@ -143,6 +155,7 @@ public final class WorldConflictScreen extends Screen {
         this.lastPlayedMillis = lastPlayedMillis;
         this.hardcore = hardcore;
         this.levelDatBatch = levelDatBatch;
+        this.onKeepCloudCompleted = onKeepCloudCompleted;
         this.onReturn = onReturn;
     }
 
@@ -174,7 +187,7 @@ public final class WorldConflictScreen extends Screen {
 
         if (keepCloudCompleted) {
             resolutionHook.recordKeepCloudResolution(worldSlug, detail.cloud().deviceLabel(), detail.cloud().syncedAtTimestamp());
-            onReturn.run();
+            onKeepCloudCompleted.run();
             return;
         }
         String failure = failureReason.get();
@@ -309,7 +322,7 @@ public final class WorldConflictScreen extends Screen {
         if (statusHook != null) {
             statusHook.markDownloadPending(worldSlug);
         }
-        restoreHandle = restoreHook.beginRestore(worldSlug, new RestoreProgressListener() {
+        restoreHandle = restoreHook.beginRestore(worldSlug, displayName, new RestoreProgressListener() {
             @Override
             public void onProgress(RestoreProgress progress) {
                 latestProgress.set(progress);

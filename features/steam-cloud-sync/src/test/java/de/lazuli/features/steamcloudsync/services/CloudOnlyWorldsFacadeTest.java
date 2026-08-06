@@ -56,12 +56,21 @@ class CloudOnlyWorldsFacadeTest {
         }
     }
 
-    private WorldSaveSyncService newService(Path tempDir, FakeCloudFileStore cloudFileStore, WorldFingerprintCache fingerprintCache) {
+    private WorldCloudMigrationService newMigrationService(Path tempDir, FakeCloudFileStore cloudFileStore, WorldFingerprintCache fingerprintCache) {
+        return new WorldCloudMigrationService(
+                tempDir.resolve("world-cloud-migration.json"), tempDir.resolve("saves"), new NoopWorldArchiveCloudStore(),
+                cloudFileStore, fingerprintCache,
+                new WorldSyncPreferenceService(tempDir.resolve("world-sync-preferences.json"), w -> { }),
+                w -> { }, m -> { });
+    }
+
+    private WorldSaveSyncService newService(Path tempDir, FakeCloudFileStore cloudFileStore, WorldFingerprintCache fingerprintCache,
+            WorldCloudMigrationService migrationService) {
         return new WorldSaveSyncService(
                 new NoopWorldArchiveCloudStore(), cloudFileStore,
                 new WorldSyncPreferenceService(tempDir.resolve("world-sync-preferences.json"), w -> { }),
                 new CloudSyncWorker(w -> { }), fingerprintCache, tempDir.resolve("world-sync-ancestor-cache.json"),
-                "test-device", 50, w -> { }, m -> { }, new WorldSyncStatusTracker());
+                "test-device", 50, w -> { }, m -> { }, new WorldSyncStatusTracker(), migrationService);
     }
 
     @Test
@@ -79,8 +88,9 @@ class CloudOnlyWorldsFacadeTest {
         cloudFileStore.files.put(WorldSaveSyncService.metadataFileName("cloud_world"),
                 metadataIO.serialize(metadata).getBytes(StandardCharsets.UTF_8));
 
-        WorldSaveSyncService worldSaveSyncService = newService(tempDir, cloudFileStore, fingerprintCache);
-        CloudOnlyWorldsFacade facade = new CloudOnlyWorldsFacade(fingerprintCache, worldSaveSyncService);
+        WorldCloudMigrationService migrationService = newMigrationService(tempDir, cloudFileStore, fingerprintCache);
+        WorldSaveSyncService worldSaveSyncService = newService(tempDir, cloudFileStore, fingerprintCache, migrationService);
+        CloudOnlyWorldsFacade facade = new CloudOnlyWorldsFacade(fingerprintCache, worldSaveSyncService, migrationService);
 
         List<CloudOnlyWorldSummary> result = facade.listCloudOnlyWorlds(List.of());
 
@@ -102,8 +112,9 @@ class CloudOnlyWorldsFacadeTest {
         fingerprintCache.replaceAll(fingerprints);
 
         FakeCloudFileStore cloudFileStore = new FakeCloudFileStore();
-        WorldSaveSyncService worldSaveSyncService = newService(tempDir, cloudFileStore, fingerprintCache);
-        CloudOnlyWorldsFacade facade = new CloudOnlyWorldsFacade(fingerprintCache, worldSaveSyncService);
+        WorldCloudMigrationService migrationService = newMigrationService(tempDir, cloudFileStore, fingerprintCache);
+        WorldSaveSyncService worldSaveSyncService = newService(tempDir, cloudFileStore, fingerprintCache, migrationService);
+        CloudOnlyWorldsFacade facade = new CloudOnlyWorldsFacade(fingerprintCache, worldSaveSyncService, migrationService);
 
         List<CloudOnlyWorldSummary> result = facade.listCloudOnlyWorlds(List.of());
 

@@ -75,6 +75,7 @@ public final class CloudSyncCoordinator {
     private final WorldRestoreService worldRestoreService;
     private final CloudOnlyWorldsHook cloudOnlyWorldsFacade;
     private final CloudSyncableUploadGate cloudSyncableUploadGate;
+    private final WorldCloudMigrationService worldCloudMigrationService;
 
     /**
      * @param steamAvailability      whether Steam is available for this
@@ -148,13 +149,23 @@ public final class CloudSyncCoordinator {
 
         this.worldSyncStatusTracker = new WorldSyncStatusTracker();
 
+        // cloud-sync-uuid-identity: constructed here, self-contained, same
+        // construction-order position as worldSyncPreferenceService above --
+        // no change needed to any platform composition root
+        // (SteamCloudSyncClientInitializer) since every dependency this
+        // service needs is already available at this point.
+        this.worldCloudMigrationService = new WorldCloudMigrationService(
+                featureConfigDir.resolve("world-cloud-migration.json"), savesDirectory, archiveStore, cloudFileStore,
+                fingerprintCache, worldSyncPreferenceService, warningLogger, playerNotifier);
+
         this.worldSaveSyncService = new WorldSaveSyncService(
                 archiveStore, cloudFileStore, worldSyncPreferenceService, worker, fingerprintCache, ancestorCachePath,
                 deviceLabel, WorldSaveSyncService.MAX_WORLD_ARCHIVE_SIZE_MB, warningLogger, playerNotifier,
-                worldSyncStatusTracker);
+                worldSyncStatusTracker, worldCloudMigrationService);
         this.worldRestoreService = new WorldRestoreService(
-                archiveStore, worldSyncPreferenceService, worker, savesDirectory, warningLogger, playerNotifier);
-        this.cloudOnlyWorldsFacade = new CloudOnlyWorldsFacade(fingerprintCache, worldSaveSyncService);
+                archiveStore, worldSyncPreferenceService, worker, savesDirectory, warningLogger, playerNotifier,
+                worldCloudMigrationService);
+        this.cloudOnlyWorldsFacade = new CloudOnlyWorldsFacade(fingerprintCache, worldSaveSyncService, worldCloudMigrationService);
         this.cloudSyncableUploadGate = new CloudSyncableUploadGate(
                 featureConfigDir.resolve("cloudsyncable-upload-state.json"), warningLogger);
 
@@ -165,15 +176,16 @@ public final class CloudSyncCoordinator {
         // directory -- the same resolution listKnownWorlds() already applies
         // for the FR-T.2 startup checkpoint.
         this.worldSyncPreferenceService.setOnSyncEnabledListener(worldSlug ->
-                worldSaveSyncService.handleSyncReenabled(worldSlug, savesDirectory.resolve(worldSlug), worldSlug));
+                worldSaveSyncService.handleSyncReenabled(worldSlug, savesDirectory.resolve(worldSlug),
+                        LevelDatNameReader.readLevelName(savesDirectory.resolve(worldSlug), worldSlug)));
 
         // Request 3 (cloud-sync-threshold-and-full-sync-only): the symmetric
-        // enabled->disabled un-sync checkpoint. This coordinator layer has no
-        // richer display name available at listener-fire time either, so
-        // worldSlug is passed as both the slug and display-name arguments,
-        // matching the setOnSyncEnabledListener wiring's own precedent above.
+        // enabled->disabled un-sync checkpoint. cloud-sync-uuid-identity
+        // FR7.1/FR7.3: now uses a real level.dat-sourced displayName here too,
+        // instead of the previous worldSlug-as-displayName placeholder.
         this.worldSyncPreferenceService.setOnSyncDisabledListener(worldSlug ->
-                worldSaveSyncService.handleSyncDisabled(worldSlug, worldSlug));
+                worldSaveSyncService.handleSyncDisabled(worldSlug,
+                        LevelDatNameReader.readLevelName(savesDirectory.resolve(worldSlug), worldSlug)));
     }
 
     /**
@@ -182,6 +194,7 @@ public final class CloudSyncCoordinator {
      */
     public void reconcileAtStartup() {
         worldSyncPreferenceService.load();
+        worldCloudMigrationService.load();
 
         boolean settingsSyncEnabled = config.enabled() && config.syncSettings();
         for (CloudSyncable syncable : cloudSyncables) {
@@ -219,7 +232,14 @@ public final class CloudSyncCoordinator {
         try (Stream<Path> children = Files.list(savesDirectory)) {
             children.filter(Files::isDirectory).forEach(worldFolder -> {
                 String worldSlug = worldFolder.getFileName().toString();
-                knownWorlds.add(new WorldSaveSyncService.KnownWorld(worldSlug, worldFolder, worldSlug));
+                // cloud-sync-uuid-identity FR7.1/FR7.3: a real displayName,
+                // read live from level.dat, rather than the previous
+                // worldSlug-as-displayName placeholder -- this coordinator
+                // layer is otherwise deliberately Minecraft-type-free, but
+                // LevelDatNameReader keeps that constraint intact (no
+                // NbtIo/CompoundTag dependency).
+                String displayName = LevelDatNameReader.readLevelName(worldFolder, worldSlug);
+                knownWorlds.add(new WorldSaveSyncService.KnownWorld(worldSlug, worldFolder, displayName));
             });
         } catch (IOException e) {
             warningLogger.accept("Failed to list local worlds under " + savesDirectory + " for the FR-T.2 startup stale-upload check: " + e);
@@ -276,6 +296,11 @@ public final class CloudSyncCoordinator {
 
     public CloudOnlyWorldsHook cloudOnlyWorldsFacade() {
         return cloudOnlyWorldsFacade;
+    }
+
+    /** cloud-sync-uuid-identity Risk #3: exposed so a platform Version Adapter can poll {@link WorldCloudMigrationService#drainRecentRenames()}. */
+    public WorldCloudMigrationService worldCloudMigrationService() {
+        return worldCloudMigrationService;
     }
 
     /** @return the shared background worker; the platform composition root pumps it once per client tick. */

@@ -152,9 +152,12 @@ public final class SteamRemoteStorageWorldArchiveStore implements WorldArchiveCl
 
     @Override
     public void beginAsyncRead(String fileName, AsyncReadListener listener) {
+        warn("[DEBUG-RETRY] beginAsyncRead entered for fileName=\"" + fileName + "\"");
         try {
             int size = remoteStorage.getFileSize(fileName);
+            warn("[DEBUG-RETRY] beginAsyncRead: remoteStorage.getFileSize(\"" + fileName + "\")=" + size);
             if (size <= 0) {
+                warn("[DEBUG-RETRY] beginAsyncRead: EARLY-RETURN onFailed \"empty or does not exist\" branch for \"" + fileName + "\" (size=" + size + ")");
                 listener.onFailed("World archive \"" + fileName + "\" is empty or does not exist on Steam Cloud.");
                 return;
             }
@@ -163,27 +166,35 @@ public final class SteamRemoteStorageWorldArchiveStore implements WorldArchiveCl
             int read;
             try {
                 read = remoteStorage.fileRead(fileName, buffer);
+                warn("[DEBUG-RETRY] beginAsyncRead: remoteStorage.fileRead(\"" + fileName + "\") returned read=" + read + " bytes (requested size=" + size + ")");
             } catch (SteamException e) {
+                warn("[DEBUG-RETRY] beginAsyncRead: SteamException thrown from fileRead for \"" + fileName + "\": " + e);
                 warn("Steam Cloud read failed for \"" + fileName + "\": " + e);
                 listener.onFailed("Steam Cloud read failed for \"" + fileName + "\": " + e);
                 return;
             }
             if (read <= 0) {
+                warn("[DEBUG-RETRY] beginAsyncRead: EARLY-RETURN onFailed \"no data\" branch for \"" + fileName + "\" (read=" + read + ")");
                 listener.onFailed("Steam Cloud returned no data for \"" + fileName + "\".");
                 return;
             }
 
             buffer.rewind();
             int delivered = 0;
+            int chunkCount = 0;
             while (delivered < read) {
                 int length = Math.min(READ_CHUNK_BYTES, read - delivered);
                 byte[] chunk = new byte[length];
                 buffer.get(chunk);
                 listener.onChunk(chunk);
                 delivered += length;
+                chunkCount++;
             }
+            warn("[DEBUG-RETRY] beginAsyncRead: delivered " + delivered + " bytes across " + chunkCount
+                    + " onChunk() calls for \"" + fileName + "\", now calling listener.onComplete()");
             listener.onComplete();
         } catch (RuntimeException e) {
+            warn("[DEBUG-RETRY] beginAsyncRead: RuntimeException caught for \"" + fileName + "\": " + e);
             warn("Failed to read Steam Cloud world archive \"" + fileName + "\": " + e);
             listener.onFailed("Failed to read world archive: " + e);
         }

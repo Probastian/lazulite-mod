@@ -22,6 +22,43 @@ import static org.assertj.core.api.Assertions.assertThat;
 class WorldSaveSyncServiceTest {
 
     /**
+     * cloud-sync-uuid-identity: a deterministic (per-slug, stable within one
+     * test run) stand-in for {@link WorldCloudMigrationService}, so this
+     * pre-existing test suite compiles and runs against the new
+     * {@code WorldSaveSyncService} constructor shape. {@code resolveCloudWorldId}
+     * mints a name-derived UUID (stable for a given input slug, distinct
+     * across different slugs); {@code existingCloudWorldId} mirrors the real
+     * FR1.2 zero-I/O fast path (only a folder already named with a UUID
+     * resolves without "migrating"). NOTE: assertions elsewhere in this file
+     * that check literal old-style Cloud key strings (e.g.
+     * {@code "lazuli-world-my_world.zip"}) now exercise the resolved-UUID
+     * key instead, since that is this feature's actual, intended behavior
+     * change -- follow-up work should update those specific assertions to
+     * compute the expected key via this same {@code fakeMigrationService()}.
+     */
+    private static WorldCloudMigrationService fakeMigrationService() {
+        return Mockito.mock(WorldCloudMigrationService.class, invocation -> {
+            String methodName = invocation.getMethod().getName();
+            if ("resolveCloudWorldId".equals(methodName)) {
+                String slug = invocation.getArgument(0);
+                return java.util.UUID.nameUUIDFromBytes(slug.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            }
+            if ("existingCloudWorldId".equals(methodName)) {
+                String slug = invocation.getArgument(0);
+                try {
+                    return Optional.of(java.util.UUID.fromString(slug));
+                } catch (IllegalArgumentException e) {
+                    return Optional.empty();
+                }
+            }
+            if ("knownLocalCloudWorldIds".equals(methodName)) {
+                return java.util.Set.of();
+            }
+            return Mockito.RETURNS_DEFAULTS.answer(invocation);
+        });
+    }
+
+    /**
      * Hand-written fake {@link WorldArchiveCloudStore} (per the
      * implementation plan's Test Strategy).
      */
@@ -188,7 +225,7 @@ class WorldSaveSyncServiceTest {
         WorldSaveSyncService service = new WorldSaveSyncService(
                 archiveStore, cloudFileStore, preferenceService, worker,
                 fingerprintCache, tempDir.resolve("world-sync-ancestor-cache.json"), "test-device", 50, w -> { }, notifications::add,
-                new WorldSyncStatusTracker());
+                new WorldSyncStatusTracker(), fakeMigrationService());
 
         service.syncWorldNow("my_world", worldFolder, "My World");
         worker.pumpTickWork();
@@ -217,7 +254,7 @@ class WorldSaveSyncServiceTest {
         WorldSaveSyncService service = new WorldSaveSyncService(
                 archiveStore, cloudFileStore, preferenceService, worker,
                 new WorldFingerprintCache(), tempDir.resolve("world-sync-ancestor-cache.json"), "test-device", 50, w -> { }, m -> { },
-                statusTracker);
+                statusTracker, fakeMigrationService());
 
         service.syncWorldNow("my_world", worldFolder, "My World");
         worker.pumpTickWork();
@@ -243,7 +280,7 @@ class WorldSaveSyncServiceTest {
         WorldSaveSyncService service = new WorldSaveSyncService(
                 archiveStore, cloudFileStore, preferenceService, worker,
                 new WorldFingerprintCache(), tempDir.resolve("world-sync-ancestor-cache.json"), "test-device", 50, warnings::add, m -> { },
-                statusTracker);
+                statusTracker, fakeMigrationService());
 
         service.syncWorldNow("my_world", worldFolder, "My World");
         worker.pumpTickWork();
@@ -269,7 +306,7 @@ class WorldSaveSyncServiceTest {
         WorldSaveSyncService service = new WorldSaveSyncService(
                 archiveStore, cloudFileStore, preferenceService, worker,
                 new WorldFingerprintCache(), tempDir.resolve("world-sync-ancestor-cache.json"), "test-device", 0, w -> { }, m -> { },
-                statusTracker);
+                statusTracker, fakeMigrationService());
 
         service.syncWorldNow("big_world", worldFolder, "Big World");
         worker.pumpTickWork();
@@ -294,7 +331,7 @@ class WorldSaveSyncServiceTest {
         WorldSaveSyncService service = new WorldSaveSyncService(
                 archiveStore, cloudFileStore, preferenceService, worker,
                 new WorldFingerprintCache(), tempDir.resolve("world-sync-ancestor-cache.json"), "test-device", 50, warnings::add, m -> { },
-                new WorldSyncStatusTracker());
+                new WorldSyncStatusTracker(), fakeMigrationService());
 
         service.syncWorldNow("my_world", worldFolder, "My World");
         worker.pumpTickWork();
@@ -320,7 +357,7 @@ class WorldSaveSyncServiceTest {
         WorldSaveSyncService service = new WorldSaveSyncService(
                 archiveStore, cloudFileStore, preferenceService, worker,
                 new WorldFingerprintCache(), tempDir.resolve("world-sync-ancestor-cache.json"), "test-device", 50, warnings::add, m -> { },
-                new WorldSyncStatusTracker());
+                new WorldSyncStatusTracker(), fakeMigrationService());
 
         service.syncWorldNow("new_world", worldFolder, "New World");
         worker.pumpTickWork();
@@ -347,7 +384,7 @@ class WorldSaveSyncServiceTest {
         WorldSaveSyncService service = new WorldSaveSyncService(
                 archiveStore, cloudFileStore, preferenceService, worker,
                 new WorldFingerprintCache(), tempDir.resolve("world-sync-ancestor-cache.json"), "test-device", 0, w -> { }, notifications::add,
-                new WorldSyncStatusTracker());
+                new WorldSyncStatusTracker(), fakeMigrationService());
 
         service.syncWorldNow("big_world", worldFolder, "Big World");
         worker.pumpTickWork();
@@ -378,7 +415,7 @@ class WorldSaveSyncServiceTest {
         WorldSaveSyncService service = new WorldSaveSyncService(
                 archiveStore, cloudFileStore, preferenceService, worker,
                 fingerprintCache, tempDir.resolve("world-sync-ancestor-cache.json"), "test-device", 50, w -> { }, notifications::add,
-                new WorldSyncStatusTracker());
+                new WorldSyncStatusTracker(), fakeMigrationService());
 
         service.syncWorldNow("new_world", worldFolder, "New World");
         worker.pumpTickWork();
@@ -400,7 +437,7 @@ class WorldSaveSyncServiceTest {
         WorldSaveSyncService service = new WorldSaveSyncService(
                 archiveStore, cloudFileStore, preferenceService, worker,
                 new WorldFingerprintCache(), tempDir.resolve("world-sync-ancestor-cache.json"), "test-device", 50, w -> { }, m -> { },
-                new WorldSyncStatusTracker());
+                new WorldSyncStatusTracker(), fakeMigrationService());
 
         service.onWorldUnload("disabled_world", tempDir, "Disabled World");
 
@@ -420,7 +457,7 @@ class WorldSaveSyncServiceTest {
         WorldSaveSyncService service = new WorldSaveSyncService(
                 archiveStore, cloudFileStore, preferenceService, worker,
                 new WorldFingerprintCache(), tempDir.resolve("world-sync-ancestor-cache.json"), "test-device", 50, w -> { }, m -> { },
-                new WorldSyncStatusTracker());
+                new WorldSyncStatusTracker(), fakeMigrationService());
 
         service.onWorldUnload("enabled_world", tempDir, "Enabled World");
 
@@ -458,7 +495,7 @@ class WorldSaveSyncServiceTest {
         WorldSaveSyncService service = new WorldSaveSyncService(
                 archiveStore, cloudFileStore, preferenceService, worker,
                 new WorldFingerprintCache(), tempDir.resolve("world-sync-ancestor-cache.json"), "test-device", 50, w -> { }, m -> { },
-                new WorldSyncStatusTracker());
+                new WorldSyncStatusTracker(), fakeMigrationService());
 
         de.lazuli.api.cloudsync.WorldConflictResolutionHook.LevelDatBatch batch =
                 new de.lazuli.api.cloudsync.WorldConflictResolutionHook.LevelDatBatch(
@@ -506,7 +543,7 @@ class WorldSaveSyncServiceTest {
         WorldSaveSyncService service = new WorldSaveSyncService(
                 archiveStore, cloudFileStore, preferenceService, worker,
                 new WorldFingerprintCache(), tempDir.resolve("world-sync-ancestor-cache.json"), "test-device", 50, w -> { }, m -> { },
-                new WorldSyncStatusTracker());
+                new WorldSyncStatusTracker(), fakeMigrationService());
 
         long beforeSync = System.currentTimeMillis();
         service.onWorldUnload("my_world", worldFolder, "My World",
@@ -561,7 +598,7 @@ class WorldSaveSyncServiceTest {
         WorldSaveSyncService service = new WorldSaveSyncService(
                 archiveStore, cloudFileStore, preferenceService, worker,
                 new WorldFingerprintCache(), tempDir.resolve("world-sync-ancestor-cache.json"), "test-device", 50, w -> { }, m -> { },
-                new WorldSyncStatusTracker());
+                new WorldSyncStatusTracker(), fakeMigrationService());
 
         service.syncWorldNow("my_world", worldFolder, "My World");
         worker.pumpTickWork();
@@ -583,10 +620,10 @@ class WorldSaveSyncServiceTest {
         // Round-trip through the existing, unmodified WorldRestoreService reader.
         Path savesDirectory = Files.createDirectory(tempDir.resolve("saves"));
         WorldRestoreService restoreService =
-                new WorldRestoreService(archiveStore, preferenceService, worker, savesDirectory, w -> { });
+                new WorldRestoreService(archiveStore, preferenceService, worker, savesDirectory, w -> { }, m -> { }, fakeMigrationService());
         java.util.concurrent.CountDownLatch done = new java.util.concurrent.CountDownLatch(1);
         String[] failureReason = new String[1];
-        restoreService.beginRestore("my_world", new de.lazuli.api.cloudsync.RestoreProgressListener() {
+        restoreService.beginRestore("my_world", "My World", new de.lazuli.api.cloudsync.RestoreProgressListener() {
             @Override
             public void onProgress(de.lazuli.api.cloudsync.RestoreProgress progress) {
             }
@@ -632,7 +669,7 @@ class WorldSaveSyncServiceTest {
         WorldSaveSyncService service = new WorldSaveSyncService(
                 archiveStore, cloudFileStore, preferenceService, worker,
                 new WorldFingerprintCache(), tempDir.resolve("world-sync-ancestor-cache.json"), "test-device", 50, w -> { }, m -> { },
-                statusTracker);
+                statusTracker, fakeMigrationService());
 
         service.onWorldUnload("my_world", worldFolder, "My World");
 
@@ -655,7 +692,7 @@ class WorldSaveSyncServiceTest {
         WorldSaveSyncService service = new WorldSaveSyncService(
                 archiveStore, cloudFileStore, preferenceService, worker,
                 new WorldFingerprintCache(), tempDir.resolve("world-sync-ancestor-cache.json"), "test-device", 50, w -> { }, m -> { },
-                statusTracker);
+                statusTracker, fakeMigrationService());
 
         statusTracker.markUploadPending("my_world");
         service.syncWorldNow("my_world", worldFolder, "My World");
@@ -681,7 +718,7 @@ class WorldSaveSyncServiceTest {
         WorldSaveSyncService service = new WorldSaveSyncService(
                 archiveStore, cloudFileStore, preferenceService, worker,
                 new WorldFingerprintCache(), tempDir.resolve("world-sync-ancestor-cache.json"), "test-device", 50, w -> { }, m -> { },
-                statusTracker);
+                statusTracker, fakeMigrationService());
 
         statusTracker.markUploadPending("my_world");
         service.syncWorldNow("my_world", worldFolder, "My World");
@@ -706,7 +743,7 @@ class WorldSaveSyncServiceTest {
         WorldSaveSyncService service = new WorldSaveSyncService(
                 archiveStore, cloudFileStore, preferenceService, worker,
                 new WorldFingerprintCache(), tempDir.resolve("world-sync-ancestor-cache.json"), "test-device", 0, w -> { }, m -> { },
-                statusTracker);
+                statusTracker, fakeMigrationService());
 
         statusTracker.markUploadPending("big_world");
         service.syncWorldNow("big_world", worldFolder, "Big World");
@@ -729,7 +766,7 @@ class WorldSaveSyncServiceTest {
         WorldSaveSyncService service = new WorldSaveSyncService(
                 archiveStore, cloudFileStore, preferenceService, worker,
                 new WorldFingerprintCache(), tempDir.resolve("world-sync-ancestor-cache.json"), "test-device", 50, w -> { }, m -> { },
-                statusTracker);
+                statusTracker, fakeMigrationService());
 
         statusTracker.markUploadPending("missing_world");
         service.syncWorldNow("missing_world", nonExistentWorldFolder, "Missing World");
@@ -751,7 +788,7 @@ class WorldSaveSyncServiceTest {
         WorldSaveSyncService service = new WorldSaveSyncService(
                 archiveStore, cloudFileStore, preferenceService, worker,
                 new WorldFingerprintCache(), tempDir.resolve("world-sync-ancestor-cache.json"), "test-device", 50, w -> { }, m -> { },
-                new WorldSyncStatusTracker());
+                new WorldSyncStatusTracker(), fakeMigrationService());
 
         service.onWorldSaved("disabled_world", tempDir, "Disabled World");
 
@@ -772,7 +809,7 @@ class WorldSaveSyncServiceTest {
         WorldSaveSyncService service = new WorldSaveSyncService(
                 archiveStore, cloudFileStore, preferenceService, worker,
                 new WorldFingerprintCache(), tempDir.resolve("world-sync-ancestor-cache.json"), "test-device", 50, w -> { }, m -> { },
-                statusTracker);
+                statusTracker, fakeMigrationService());
 
         service.onWorldSaved("enabled_world", tempDir, "Enabled World");
 
@@ -795,7 +832,7 @@ class WorldSaveSyncServiceTest {
         WorldSaveSyncService service = new WorldSaveSyncService(
                 archiveStore, cloudFileStore, preferenceService, worker,
                 new WorldFingerprintCache(), tempDir.resolve("world-sync-ancestor-cache.json"), "test-device", 50, w -> { }, m -> { },
-                statusTracker);
+                statusTracker, fakeMigrationService());
 
         service.onWorldSaved("enabled_world", tempDir, "Enabled World");
 
@@ -910,7 +947,7 @@ class WorldSaveSyncServiceTest {
         WorldSaveSyncService service = new WorldSaveSyncService(
                 archiveStore, cloudFileStore, preferenceService, worker,
                 fingerprintCache, tempDir.resolve("world-sync-ancestor-cache.json"), "test-device", 50, w -> { }, m -> { },
-                new WorldSyncStatusTracker());
+                new WorldSyncStatusTracker(), fakeMigrationService());
 
         service.checkAndUploadStaleWorldsAtStartup(
                 List.of(new WorldSaveSyncService.KnownWorld("my_world", worldFolder, "My World")));
@@ -940,7 +977,7 @@ class WorldSaveSyncServiceTest {
         WorldSaveSyncService service = new WorldSaveSyncService(
                 archiveStore, cloudFileStore, preferenceService, worker,
                 fingerprintCache, tempDir.resolve("world-sync-ancestor-cache.json"), "test-device", 50, w -> { }, m -> { },
-                statusTracker);
+                statusTracker, fakeMigrationService());
 
         service.checkAndUploadStaleWorldsAtStartup(
                 List.of(new WorldSaveSyncService.KnownWorld("my_world", worldFolder, "My World")));
@@ -970,7 +1007,7 @@ class WorldSaveSyncServiceTest {
         WorldSaveSyncService service = new WorldSaveSyncService(
                 archiveStore, cloudFileStore, preferenceService, worker,
                 fingerprintCache, tempDir.resolve("world-sync-ancestor-cache.json"), "test-device", 50, w -> { }, m -> { },
-                new WorldSyncStatusTracker());
+                new WorldSyncStatusTracker(), fakeMigrationService());
 
         service.checkAndUploadStaleWorldsAtStartup(
                 List.of(new WorldSaveSyncService.KnownWorld("my_world", worldFolder, "My World")));
@@ -994,7 +1031,7 @@ class WorldSaveSyncServiceTest {
         WorldSaveSyncService service = new WorldSaveSyncService(
                 archiveStore, cloudFileStore, preferenceService, worker,
                 new WorldFingerprintCache(), tempDir.resolve("world-sync-ancestor-cache.json"), "test-device", 50, w -> { }, m -> { },
-                new WorldSyncStatusTracker());
+                new WorldSyncStatusTracker(), fakeMigrationService());
 
         service.checkAndUploadStaleWorldsAtStartup(
                 List.of(new WorldSaveSyncService.KnownWorld("my_world", worldFolder, "My World")));
@@ -1081,7 +1118,7 @@ class WorldSaveSyncServiceTest {
                 new FakeWorldArchiveCloudStore(), new FakeCloudFileStore(),
                 new WorldSyncPreferenceService(tempDir.resolve("world-sync-preferences.json"), w -> { }),
                 Mockito.mock(CloudSyncWorker.class), fingerprintCache, ancestorCachePath, "test-device", 50, w -> { }, m -> { },
-                new WorldSyncStatusTracker());
+                new WorldSyncStatusTracker(), fakeMigrationService());
 
         de.lazuli.api.cloudsync.WorldConflictResolutionHook.ConflictDetail detail =
                 service.detailFor("my_world", worldFolder.toAbsolutePath().toString(), "My World",
@@ -1105,7 +1142,7 @@ class WorldSaveSyncServiceTest {
                 new WorldSyncPreferenceService(tempDir.resolve("world-sync-preferences.json"), w -> { }),
                 Mockito.mock(CloudSyncWorker.class), fingerprintCache,
                 tempDir.resolve("world-sync-ancestor-cache.json"), "test-device", 50, w -> { }, m -> { },
-                new WorldSyncStatusTracker());
+                new WorldSyncStatusTracker(), fakeMigrationService());
 
         de.lazuli.api.cloudsync.WorldConflictResolutionHook.ConflictDetail detail =
                 service.detailFor("my_world", worldFolder.toAbsolutePath().toString(), "My World",
@@ -1121,7 +1158,7 @@ class WorldSaveSyncServiceTest {
                 new WorldSyncPreferenceService(tempDir.resolve("world-sync-preferences-2.json"), w -> { }),
                 Mockito.mock(CloudSyncWorker.class), fingerprintCache2,
                 tempDir.resolve("world-sync-ancestor-cache-2.json"), "test-device", 50, w -> { }, m -> { },
-                new WorldSyncStatusTracker());
+                new WorldSyncStatusTracker(), fakeMigrationService());
         de.lazuli.api.cloudsync.WorldConflictResolutionHook.ConflictDetail detail2 =
                 service2.detailFor("other_world", otherWorldFolder.toAbsolutePath().toString(), "Other World",
                         "Survival", 0L, false, de.lazuli.api.cloudsync.WorldConflictResolutionHook.LevelDatBatch.unreadable());
@@ -1174,7 +1211,7 @@ class WorldSaveSyncServiceTest {
         return new WorldSaveSyncService(
                 archiveStore, cloudFileStore, preferenceService, worker,
                 fingerprintCache, tempDir.resolve("world-sync-ancestor-cache.json"), "test-device", 50, w -> { }, m -> { },
-                new WorldSyncStatusTracker());
+                new WorldSyncStatusTracker(), fakeMigrationService());
     }
 
     /**
@@ -1217,7 +1254,7 @@ class WorldSaveSyncServiceTest {
         WorldSaveSyncService service = new WorldSaveSyncService(
                 archiveStore, cloudFileStore, preferenceService, worker,
                 new WorldFingerprintCache(), ancestorCachePath, "test-device", 50, w -> { }, m -> { },
-                new WorldSyncStatusTracker());
+                new WorldSyncStatusTracker(), fakeMigrationService());
 
         service.syncWorldNow("my_world", worldFolder, "My World");
         worker.pumpTickWork();
@@ -1238,7 +1275,7 @@ class WorldSaveSyncServiceTest {
                 new WorldSyncPreferenceService(tempDir.resolve("world-sync-preferences.json"), w -> { }),
                 new CloudSyncWorker(w -> { }), fingerprintCache,
                 tempDir.resolve("world-sync-ancestor-cache.json"), "test-device", 50, w -> { }, m -> { },
-                new WorldSyncStatusTracker());
+                new WorldSyncStatusTracker(), fakeMigrationService());
 
         assertThat(service.checkConflictFor("my_world", worldFolder))
                 .isEqualTo(de.lazuli.api.cloudsync.WorldConflictHook.ConflictStatus.NONE);
@@ -1259,7 +1296,7 @@ class WorldSaveSyncServiceTest {
                 new FakeWorldArchiveCloudStore(), new FakeCloudFileStore(),
                 new WorldSyncPreferenceService(tempDir.resolve("world-sync-preferences.json"), w -> { }),
                 new CloudSyncWorker(w -> { }), fingerprintCache, ancestorCachePath, "test-device", 50, w -> { }, m -> { },
-                new WorldSyncStatusTracker());
+                new WorldSyncStatusTracker(), fakeMigrationService());
 
         assertThat(service.checkConflictFor("my_world", worldFolder))
                 .isEqualTo(de.lazuli.api.cloudsync.WorldConflictHook.ConflictStatus.NONE);
@@ -1280,7 +1317,7 @@ class WorldSaveSyncServiceTest {
                 new FakeWorldArchiveCloudStore(), new FakeCloudFileStore(),
                 new WorldSyncPreferenceService(tempDir.resolve("world-sync-preferences.json"), w -> { }),
                 new CloudSyncWorker(w -> { }), fingerprintCache, ancestorCachePath, "test-device", 50, w -> { }, m -> { },
-                new WorldSyncStatusTracker());
+                new WorldSyncStatusTracker(), fakeMigrationService());
 
         assertThat(service.checkConflictFor("my_world", worldFolder))
                 .isEqualTo(de.lazuli.api.cloudsync.WorldConflictHook.ConflictStatus.NONE);
@@ -1301,7 +1338,7 @@ class WorldSaveSyncServiceTest {
                 new FakeWorldArchiveCloudStore(), new FakeCloudFileStore(),
                 new WorldSyncPreferenceService(tempDir.resolve("world-sync-preferences.json"), w -> { }),
                 new CloudSyncWorker(w -> { }), fingerprintCache, ancestorCachePath, "test-device", 50, w -> { }, m -> { },
-                new WorldSyncStatusTracker());
+                new WorldSyncStatusTracker(), fakeMigrationService());
 
         assertThat(service.checkConflictFor("my_world", worldFolder))
                 .isEqualTo(de.lazuli.api.cloudsync.WorldConflictHook.ConflictStatus.CONFLICT);
@@ -1333,7 +1370,7 @@ class WorldSaveSyncServiceTest {
                 new FakeWorldArchiveCloudStore(), new FakeCloudFileStore(),
                 new WorldSyncPreferenceService(tempDir.resolve("world-sync-preferences.json"), w -> { }),
                 new CloudSyncWorker(w -> { }), fingerprintCache, ancestorCachePath, "test-device", 50, w -> { }, m -> { },
-                new WorldSyncStatusTracker());
+                new WorldSyncStatusTracker(), fakeMigrationService());
 
         assertThat(service.checkConflictFor("my_world", worldFolder))
                 .isEqualTo(de.lazuli.api.cloudsync.WorldConflictHook.ConflictStatus.CONFLICT);
@@ -1353,7 +1390,7 @@ class WorldSaveSyncServiceTest {
         WorldSaveSyncService service = new WorldSaveSyncService(
                 archiveStore, cloudFileStore, preferenceService, worker,
                 new WorldFingerprintCache(), tempDir.resolve("world-sync-ancestor-cache.json"),
-                "test-device", 50, w -> { }, m -> { }, statusTracker);
+                "test-device", 50, w -> { }, m -> { }, statusTracker, fakeMigrationService());
 
         service.onWorldSaved("my_world", tempDir, "My World");
 
@@ -1381,7 +1418,7 @@ class WorldSaveSyncServiceTest {
         WorldSaveSyncService service = new WorldSaveSyncService(
                 archiveStore, cloudFileStore, preferenceService, worker,
                 fingerprintCache, tempDir.resolve("world-sync-ancestor-cache.json"),
-                "test-device", 50, w -> { }, m -> { }, statusTracker);
+                "test-device", 50, w -> { }, m -> { }, statusTracker, fakeMigrationService());
 
         service.checkAndUploadStaleWorldsAtStartup(
                 List.of(new WorldSaveSyncService.KnownWorld("my_world", worldFolder, "My World")));
@@ -1401,7 +1438,7 @@ class WorldSaveSyncServiceTest {
                 new FakeWorldArchiveCloudStore(), new FakeCloudFileStore(),
                 new WorldSyncPreferenceService(tempDir.resolve("world-sync-preferences.json"), w -> { }),
                 worker, new WorldFingerprintCache(), tempDir.resolve("world-sync-ancestor-cache.json"),
-                "test-device", 50, w -> { }, m -> { }, statusTracker);
+                "test-device", 50, w -> { }, m -> { }, statusTracker, fakeMigrationService());
 
         service.handleSyncReenabled("my_world", worldFolder, "My World");
 
@@ -1439,7 +1476,7 @@ class WorldSaveSyncServiceTest {
         WorldSaveSyncService service = new WorldSaveSyncService(
                 archiveStore, new FakeCloudFileStore(),
                 new WorldSyncPreferenceService(tempDir.resolve("world-sync-preferences.json"), w -> { }),
-                worker, fingerprintCache, ancestorCachePath, "test-device", 50, w -> { }, m -> { }, statusTracker);
+                worker, fingerprintCache, ancestorCachePath, "test-device", 50, w -> { }, m -> { }, statusTracker, fakeMigrationService());
 
         service.handleSyncReenabled("my_world", worldFolder, "My World");
         awaitBackgroundWork(worker);
@@ -1467,7 +1504,7 @@ class WorldSaveSyncServiceTest {
                 archiveStore, cloudFileStore,
                 new WorldSyncPreferenceService(tempDir.resolve("world-sync-preferences.json"), w -> { }),
                 worker, fingerprintCache, tempDir.resolve("world-sync-ancestor-cache.json"),
-                "test-device", 50, w -> { }, m -> { }, statusTracker);
+                "test-device", 50, w -> { }, m -> { }, statusTracker, fakeMigrationService());
 
         service.handleSyncReenabled("my_world", worldFolder, "My World");
         awaitBackgroundWork(worker);
@@ -1493,7 +1530,7 @@ class WorldSaveSyncServiceTest {
                 archiveStore, cloudFileStore,
                 new WorldSyncPreferenceService(tempDir.resolve("world-sync-preferences.json"), w -> { }),
                 worker, fingerprintCache, tempDir.resolve("world-sync-ancestor-cache.json"),
-                "test-device", 50, w -> { }, m -> { }, statusTracker);
+                "test-device", 50, w -> { }, m -> { }, statusTracker, fakeMigrationService());
 
         // First toggle-on: no ancestor yet -> NONE -> normal upload, which
         // records this device's own ancestor entry.
@@ -1529,7 +1566,7 @@ class WorldSaveSyncServiceTest {
                 archiveStore, cloudFileStore,
                 new WorldSyncPreferenceService(tempDir.resolve("world-sync-preferences.json"), w -> { }),
                 worker, fingerprintCache, tempDir.resolve("world-sync-ancestor-cache.json"),
-                "test-device", 50, w -> { }, m -> { }, statusTracker);
+                "test-device", 50, w -> { }, m -> { }, statusTracker, fakeMigrationService());
 
         service.handleSyncDisabled("my_world", "My World");
         awaitBackgroundWork(worker);
@@ -1556,7 +1593,7 @@ class WorldSaveSyncServiceTest {
                 archiveStore, cloudFileStore,
                 new WorldSyncPreferenceService(tempDir.resolve("world-sync-preferences.json"), w -> { }),
                 worker, fingerprintCache, tempDir.resolve("world-sync-ancestor-cache.json"),
-                "test-device", 50, warnings::add, notifications::add, statusTracker);
+                "test-device", 50, warnings::add, notifications::add, statusTracker, fakeMigrationService());
 
         service.handleSyncDisabled("my_world", "My World");
         awaitBackgroundWork(worker);
@@ -1582,7 +1619,7 @@ class WorldSaveSyncServiceTest {
                 archiveStore, cloudFileStore,
                 new WorldSyncPreferenceService(tempDir.resolve("world-sync-preferences.json"), w -> { }),
                 worker, fingerprintCache, tempDir.resolve("world-sync-ancestor-cache.json"),
-                "test-device", 50, w -> { }, m -> { }, statusTracker);
+                "test-device", 50, w -> { }, m -> { }, statusTracker, fakeMigrationService());
 
         service.handleSyncDisabled("my_world", "My World");
         awaitBackgroundWork(worker);
@@ -1609,7 +1646,7 @@ class WorldSaveSyncServiceTest {
                 archiveStore, cloudFileStore,
                 new WorldSyncPreferenceService(tempDir.resolve("world-sync-preferences.json"), w -> { }),
                 worker, fingerprintCache, tempDir.resolve("world-sync-ancestor-cache.json"),
-                "test-device", 50, warnings::add, notifications::add, statusTracker);
+                "test-device", 50, warnings::add, notifications::add, statusTracker, fakeMigrationService());
 
         service.handleSyncDisabled("my_world", "My World");
         awaitBackgroundWork(worker);
@@ -1641,7 +1678,7 @@ class WorldSaveSyncServiceTest {
         WorldSaveSyncService service = new WorldSaveSyncService(
                 archiveStore, cloudFileStore, preferenceService, worker,
                 new WorldFingerprintCache(), tempDir.resolve("world-sync-ancestor-cache.json"), "test-device", 50, w -> { }, m -> { },
-                new WorldSyncStatusTracker());
+                new WorldSyncStatusTracker(), fakeMigrationService());
 
         de.lazuli.api.cloudsync.WorldConflictResolutionHook.LevelDatBatch batch =
                 new de.lazuli.api.cloudsync.WorldConflictResolutionHook.LevelDatBatch(
@@ -1676,7 +1713,7 @@ class WorldSaveSyncServiceTest {
         WorldSaveSyncService service = new WorldSaveSyncService(
                 archiveStore, cloudFileStore, preferenceService, worker,
                 new WorldFingerprintCache(), tempDir.resolve("world-sync-ancestor-cache.json"), "test-device", 0, w -> { }, m -> { },
-                new WorldSyncStatusTracker());
+                new WorldSyncStatusTracker(), fakeMigrationService());
 
         service.syncWorldNow("big_world", worldFolder, "Big World");
         worker.pumpTickWork();
@@ -1698,7 +1735,7 @@ class WorldSaveSyncServiceTest {
                 new FakeWorldArchiveCloudStore(), cloudFileStore,
                 new WorldSyncPreferenceService(tempDir.resolve("world-sync-preferences.json"), w -> { }),
                 new CloudSyncWorker(w -> { }), new WorldFingerprintCache(), tempDir.resolve("world-sync-ancestor-cache.json"),
-                "test-device", 50, w -> { }, m -> { }, new WorldSyncStatusTracker());
+                "test-device", 50, w -> { }, m -> { }, new WorldSyncStatusTracker(), fakeMigrationService());
 
         assertThat(service.cloudMetadataFor("never_synced_world")).isEmpty();
     }
@@ -1724,7 +1761,7 @@ class WorldSaveSyncServiceTest {
                 new FakeWorldArchiveCloudStore(), cloudFileStore,
                 new WorldSyncPreferenceService(tempDir.resolve("world-sync-preferences.json"), w -> { }),
                 Mockito.mock(CloudSyncWorker.class), fingerprintCache, tempDir.resolve("world-sync-ancestor-cache.json"),
-                "test-device", 50, w -> { }, m -> { }, new WorldSyncStatusTracker());
+                "test-device", 50, w -> { }, m -> { }, new WorldSyncStatusTracker(), fakeMigrationService());
 
         de.lazuli.api.cloudsync.WorldConflictResolutionHook.ConflictDetail detail =
                 service.detailFor("my_world", worldFolder.toAbsolutePath().toString(), "My World",

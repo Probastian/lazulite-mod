@@ -163,6 +163,27 @@ public final class WorldSyncPreferenceService implements WorldSyncToggleHook {
         setSyncEnabled(worldSlug, true);
     }
 
+    /**
+     * FR3.4/FR2.2 step 1 of the cloud-sync-uuid-identity spec: moves the
+     * preference entry (if any) from {@code oldFolderName} to
+     * {@code newFolderName}, preserving its enabled/disabled value, and
+     * persists the change. A no-op if no entry exists under
+     * {@code oldFolderName}. Called only from
+     * {@code WorldCloudMigrationService}'s Phase B, immediately after a
+     * successful physical folder rename.
+     *
+     * @param oldFolderName the folder's name before the rename
+     * @param newFolderName the folder's name after the rename (its {@code cloudWorldId})
+     */
+    public synchronized void renameKey(String oldFolderName, String newFolderName) {
+        if (!preferences.containsKey(oldFolderName)) {
+            return;
+        }
+        boolean enabled = preferences.remove(oldFolderName);
+        preferences.put(newFolderName, enabled);
+        persist();
+    }
+
     /** @return every currently-known preference entry */
     public synchronized List<WorldSyncPreference> list() {
         List<WorldSyncPreference> result = new ArrayList<>();

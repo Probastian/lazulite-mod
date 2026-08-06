@@ -4,6 +4,7 @@ import de.lazuli.api.cloudsync.RestoreHandle;
 import de.lazuli.api.cloudsync.RestoreProgress;
 import de.lazuli.api.cloudsync.RestoreProgressListener;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.ByteArrayOutputStream;
@@ -143,10 +144,10 @@ class WorldRestoreServiceTest {
                 new WorldSyncPreferenceService(tempDir.resolve("world-sync-preferences.json"), w -> { });
         preferenceService.load();
         CloudSyncWorker worker = new CloudSyncWorker(w -> { });
-        WorldRestoreService service = new WorldRestoreService(archiveStore, preferenceService, worker, savesDirectory, w -> { });
+        WorldRestoreService service = new WorldRestoreService(archiveStore, preferenceService, worker, savesDirectory, w -> { }, m -> { }, Mockito.mock(WorldCloudMigrationService.class));
 
         RecordingListener listener = new RecordingListener();
-        RestoreHandle handle = service.beginRestore("my_world", listener);
+        RestoreHandle handle = service.beginRestore("my_world", "my_world", listener);
 
         assertThat(listener.done.await(5, TimeUnit.SECONDS)).isTrue();
         assertThat(handle.worldSlug()).isEqualTo("my_world");
@@ -178,10 +179,10 @@ class WorldRestoreServiceTest {
                 new WorldSyncPreferenceService(tempDir.resolve("world-sync-preferences.json"), w -> { });
         preferenceService.load();
         CloudSyncWorker worker = new CloudSyncWorker(w -> { });
-        WorldRestoreService service = new WorldRestoreService(archiveStore, preferenceService, worker, savesDirectory, w -> { });
+        WorldRestoreService service = new WorldRestoreService(archiveStore, preferenceService, worker, savesDirectory, w -> { }, m -> { }, Mockito.mock(WorldCloudMigrationService.class));
 
         RecordingListener listener = new RecordingListener();
-        service.beginRestore("existing_world", listener);
+        service.beginRestore("existing_world", "existing_world", listener);
 
         assertThat(listener.failedSlug).isEqualTo("existing_world");
         assertThat(listener.failureReason).contains("already exists");
@@ -211,10 +212,10 @@ class WorldRestoreServiceTest {
         CloudSyncWorker worker = new CloudSyncWorker(w -> { });
         List<String> infoLogs = new CopyOnWriteArrayList<>();
         WorldRestoreService service = new WorldRestoreService(
-                archiveStore, preferenceService, worker, savesDirectory, w -> { }, infoLogs::add);
+                archiveStore, preferenceService, worker, savesDirectory, w -> { }, infoLogs::add, Mockito.mock(WorldCloudMigrationService.class));
 
         RecordingListener listener = new RecordingListener();
-        service.beginRestore("stale_world", listener);
+        service.beginRestore("stale_world", "stale_world", listener);
 
         assertThat(listener.done.await(5, TimeUnit.SECONDS)).isTrue();
         assertThat(listener.failedSlug).isNull();
@@ -234,10 +235,10 @@ class WorldRestoreServiceTest {
                 new WorldSyncPreferenceService(tempDir.resolve("world-sync-preferences.json"), w -> { });
         preferenceService.load();
         CloudSyncWorker worker = new CloudSyncWorker(w -> { });
-        WorldRestoreService service = new WorldRestoreService(archiveStore, preferenceService, worker, savesDirectory, w -> { });
+        WorldRestoreService service = new WorldRestoreService(archiveStore, preferenceService, worker, savesDirectory, w -> { }, m -> { }, Mockito.mock(WorldCloudMigrationService.class));
 
         RecordingListener listener = new RecordingListener();
-        service.beginRestore("never_uploaded", listener);
+        service.beginRestore("never_uploaded", "never_uploaded", listener);
 
         assertThat(listener.failedSlug).isEqualTo("never_uploaded");
         assertThat(listener.failureReason).contains("not found");
@@ -270,10 +271,10 @@ class WorldRestoreServiceTest {
                 new WorldSyncPreferenceService(tempDir.resolve("world-sync-preferences.json"), w -> { });
         preferenceService.load();
         CloudSyncWorker worker = new CloudSyncWorker(w -> { });
-        WorldRestoreService service = new WorldRestoreService(archiveStore, preferenceService, worker, savesDirectory, w -> { });
+        WorldRestoreService service = new WorldRestoreService(archiveStore, preferenceService, worker, savesDirectory, w -> { }, m -> { }, Mockito.mock(WorldCloudMigrationService.class));
 
         RecordingListener listener = new RecordingListener();
-        service.beginRestore("corrupt_world", listener);
+        service.beginRestore("corrupt_world", "corrupt_world", listener);
 
         assertThat(listener.done.await(5, TimeUnit.SECONDS)).isTrue();
         assertThat(listener.failedSlug).isEqualTo("corrupt_world");
@@ -308,10 +309,10 @@ class WorldRestoreServiceTest {
 
         List<String> infoLogs = new CopyOnWriteArrayList<>();
         WorldRestoreService service = new WorldRestoreService(
-                archiveStore, preferenceService, worker, savesDirectory, w -> { }, infoLogs::add);
+                archiveStore, preferenceService, worker, savesDirectory, w -> { }, infoLogs::add, Mockito.mock(WorldCloudMigrationService.class));
 
         RecordingListener listener = new RecordingListener();
-        service.beginRestore("milestone_world", listener);
+        service.beginRestore("milestone_world", "milestone_world", listener);
 
         assertThat(listener.done.await(5, TimeUnit.SECONDS)).isTrue();
         assertThat(listener.completedSlug).isEqualTo("milestone_world");
@@ -339,7 +340,7 @@ class WorldRestoreServiceTest {
                 new WorldSyncPreferenceService(tempDir.resolve("world-sync-preferences.json"), w -> { });
         preferenceService.load();
         CloudSyncWorker worker = new CloudSyncWorker(w -> { });
-        WorldRestoreService service = new WorldRestoreService(archiveStore, preferenceService, worker, savesDirectory, w -> { });
+        WorldRestoreService service = new WorldRestoreService(archiveStore, preferenceService, worker, savesDirectory, w -> { }, m -> { }, Mockito.mock(WorldCloudMigrationService.class));
 
         RecordingListener listener = new RecordingListener();
         // Intentionally discard the returned RestoreHandle -- this documents the
@@ -347,7 +348,7 @@ class WorldRestoreServiceTest {
         // background restore must run to completion purely off WorldRestoreService's
         // own internal state (activeRestores), never depending on the caller retaining
         // a reference to the handle it was handed back.
-        service.beginRestore("dropped_handle_world", listener);
+        service.beginRestore("dropped_handle_world", "dropped_handle_world", listener);
         System.gc();
 
         assertThat(listener.done.await(5, TimeUnit.SECONDS)).isTrue();
@@ -364,7 +365,7 @@ class WorldRestoreServiceTest {
                 new WorldSyncPreferenceService(tempDir.resolve("world-sync-preferences.json"), w -> { });
         preferenceService.load();
         CloudSyncWorker worker = new CloudSyncWorker(w -> { });
-        WorldRestoreService service = new WorldRestoreService(archiveStore, preferenceService, worker, tempDir, w -> { });
+        WorldRestoreService service = new WorldRestoreService(archiveStore, preferenceService, worker, tempDir, w -> { }, m -> { }, Mockito.mock(WorldCloudMigrationService.class));
 
         service.cancelRestore(new RestoreHandle("never_started"));
 

@@ -34,15 +34,27 @@ public final class CloudOnlyWorldDetector {
      *                              directory
      * @param fingerprints          every world fingerprint currently known
      *                              from Steam Cloud's metadata file
+     * @param pendingRenameCloudWorldIds cloud-sync-uuid-identity FR4.2/FR4.3:
+     *                              every {@code cloudWorldId} whose Phase A
+     *                              (Cloud-side identity resolution) has
+     *                              already finished but whose Phase B
+     *                              (physical folder rename) has not yet run
+     *                              -- treated as "known locally" even though
+     *                              no same-named local folder exists yet, so
+     *                              this transient window never produces a
+     *                              phantom cloud-only row for a world the
+     *                              player already has and is actively using
      * @return every fingerprint whose {@code worldSlug} has no matching
-     *         entry in {@code localWorldFolderNames}, in the same order as
+     *         entry in {@code localWorldFolderNames} and is not in
+     *         {@code pendingRenameCloudWorldIds}, in the same order as
      *         {@code fingerprints}; never {@code null}, empty if none
      */
-    public List<CloudOnlyWorldSummary> detect(List<String> localWorldFolderNames, List<WorldFingerprint> fingerprints) {
+    public List<CloudOnlyWorldSummary> detect(List<String> localWorldFolderNames, List<WorldFingerprint> fingerprints,
+            Set<String> pendingRenameCloudWorldIds) {
         Set<String> localFolders = new HashSet<>(localWorldFolderNames);
         List<CloudOnlyWorldSummary> result = new ArrayList<>();
         for (WorldFingerprint fingerprint : fingerprints) {
-            if (!localFolders.contains(fingerprint.worldSlug())) {
+            if (!localFolders.contains(fingerprint.worldSlug()) && !pendingRenameCloudWorldIds.contains(fingerprint.worldSlug())) {
                 // The richer, metadata-file-sourced fields are left at their
                 // "unavailable" sentinels here -- this pure, Cloud-I/O-free
                 // detector only ever sees the fingerprint list; CloudOnlyWorldsFacade

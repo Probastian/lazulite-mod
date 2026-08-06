@@ -29,15 +29,22 @@ public interface WorldRestoreHook {
      * extraction ever begun) if a local world folder already exists for this
      * slug (FR6.13).
      *
-     * @param worldSlug the cloud-only world's slug (its intended save-folder
-     *                  name), as reported by {@link CloudOnlyWorldsHook}
-     * @param listener  receives progress/completion/failure callbacks; may be
-     *                  called from a background thread, never the render
-     *                  thread directly
+     * @param worldSlug   the cloud-only world's Cloud-facing key (its
+     *                    {@code cloudWorldId}, opaque to this interface --
+     *                    per cloud-sync-uuid-identity FR5.2, the restored
+     *                    local folder is now created directly with this
+     *                    value as its name), as reported by
+     *                    {@link CloudOnlyWorldsHook}
+     * @param displayName a player-facing name for the world, used only in
+     *                    this hook's own log/toast strings (FR5.3) -- never
+     *                    used to compute the restored folder's name
+     * @param listener    receives progress/completion/failure callbacks; may
+     *                    be called from a background thread, never the
+     *                    render thread directly
      * @return an opaque handle identifying this restore attempt, usable with
      *         {@link #cancelRestore(RestoreHandle)}
      */
-    RestoreHandle beginRestore(String worldSlug, RestoreProgressListener listener);
+    RestoreHandle beginRestore(String worldSlug, String displayName, RestoreProgressListener listener);
 
     /**
      * Cancels an in-progress restore, if still running, and cleans up its

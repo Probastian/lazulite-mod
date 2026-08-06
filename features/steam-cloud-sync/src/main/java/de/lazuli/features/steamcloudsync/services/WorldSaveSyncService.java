@@ -92,6 +92,7 @@ public final class WorldSaveSyncService implements WorldFreshnessHook, WorldConf
     private final WorldFingerprintIO fingerprintIO = new WorldFingerprintIO();
     private final WorldSyncAncestorIO ancestorIO = new WorldSyncAncestorIO();
     private final WorldCloudMetadataIO metadataIO = new WorldCloudMetadataIO();
+    private final WorldCloudMigrationService migrationService;
 
     /**
      * @param archiveStore           the Group 6 Cloud seam (real or no-op)
@@ -143,7 +144,9 @@ public final class WorldSaveSyncService implements WorldFreshnessHook, WorldConf
             int maxWorldArchiveSizeMb,
             Consumer<String> warningLogger,
             Consumer<String> playerNotifier,
-            WorldSyncStatusTracker statusTracker) {
+            WorldSyncStatusTracker statusTracker,
+            WorldCloudMigrationService migrationService) {
+        this.migrationService = Objects.requireNonNull(migrationService, "migrationService");
         this.archiveStore = Objects.requireNonNull(archiveStore, "archiveStore");
         this.cloudFileStore = Objects.requireNonNull(cloudFileStore, "cloudFileStore");
         this.preferenceService = Objects.requireNonNull(preferenceService, "preferenceService");
@@ -155,6 +158,26 @@ public final class WorldSaveSyncService implements WorldFreshnessHook, WorldConf
         this.warningLogger = Objects.requireNonNull(warningLogger, "warningLogger");
         this.playerNotifier = Objects.requireNonNull(playerNotifier, "playerNotifier");
         this.statusTracker = Objects.requireNonNull(statusTracker, "statusTracker");
+    }
+
+    /**
+     * cloud-sync-uuid-identity FR1.4/FR6.1: the zero-Cloud-I/O key resolution
+     * used by every read-only status-query method
+     * ({@link #upToDateStatusFor}/{@link #upToDateStatusDetailFor}/
+     * {@link #checkConflictFor}/{@link #detailFor}/{@link #cloudMetadataFor}).
+     * These methods are reachable synchronously from the client/render
+     * thread (a platform {@code WorldsPanel} calls
+     * {@link WorldFreshnessHook}/{@link WorldConflictHook} directly, not via
+     * {@link CloudSyncWorker}), so they must never trigger real Phase A
+     * migration I/O (FR2.5 forbids that off the background thread) --
+     * instead they use {@link WorldCloudMigrationService#existingCloudWorldId}
+     * (FR1.2/FR1.3's synchronous, zero-I/O lookup), falling back to
+     * {@code worldSlug} itself unresolved when no migration has started yet
+     * for this folder (matching this method's pre-migration behavior for a
+     * world that has never been Cloud-synced by this feature).
+     */
+    private String resolveForRead(String worldSlug) {
+        return migrationService.existingCloudWorldId(worldSlug).map(java.util.UUID::toString).orElse(worldSlug);
     }
 
     /**
@@ -239,6 +262,10 @@ public final class WorldSaveSyncService implements WorldFreshnessHook, WorldConf
      * @param knownWorlds the worlds to consider
      */
     public void checkAndUploadStaleWorldsAtStartup(List<KnownWorld> knownWorlds) {
+        // cloud-sync-uuid-identity FR2.2: this checkpoint is definitionally
+        // reached only at client startup (no world loaded yet), so it is one
+        // of the two qualifying Phase B (physical rename) checkpoints.
+        migrationService.runPendingRenames();
         for (KnownWorld world : knownWorlds) {
             if (!preferenceService.isSyncEnabled(world.worldSlug())) {
                 continue;
@@ -312,6 +339,13 @@ public final class WorldSaveSyncService implements WorldFreshnessHook, WorldConf
                 syncWorldNow(worldSlug, worldFolder, displayName);
             } finally {
                 statusTracker.clearConflictCheckPending(worldSlug);
+                // cloud-sync-uuid-identity FR2.2: handleSyncReenabled only
+                // ever fires from the Worlds-tab main-menu screen, mutually
+                // exclusive with a loaded world -- the second qualifying
+                // Phase B (physical rename) checkpoint. Run after this
+                // world's own Phase A/sync attempt above so a freshly-toggled
+                // world's folder is renamed essentially immediately (FR2.3).
+                migrationService.runPendingRenames();
             }
         });
     }
@@ -340,10 +374,15 @@ public final class WorldSaveSyncService implements WorldFreshnessHook, WorldConf
      */
     public void handleSyncDisabled(String worldSlug, String displayName) {
         worker.submitBackgroundWork(() -> {
-            boolean deleted = archiveStore.deleteWorldArchive(archiveFileName(worldSlug));
+            // cloud-sync-uuid-identity FR1.5: un-syncing never undoes
+            // migration and never triggers a new one -- a zero-I/O read
+            // resolution is enough here (this world was already synced at
+            // least once for this checkpoint to even be reachable).
+            String cloudWorldId = resolveForRead(worldSlug);
+            boolean deleted = archiveStore.deleteWorldArchive(archiveFileName(cloudWorldId));
             if (deleted) {
                 List<WorldFingerprint> fingerprints = new ArrayList<>(readLocalFingerprintCache());
-                fingerprints.removeIf(fingerprint -> fingerprint.worldSlug().equals(worldSlug));
+                fingerprints.removeIf(fingerprint -> fingerprint.worldSlug().equals(cloudWorldId));
                 fingerprintCache.replaceAll(fingerprints);
                 cloudFileStore.write(FINGERPRINT_CLOUD_FILE_NAME,
                         fingerprintIO.serialize(fingerprints).getBytes(StandardCharsets.UTF_8));
@@ -353,7 +392,7 @@ public final class WorldSaveSyncService implements WorldFreshnessHook, WorldConf
                 // is this method's primary success signal; a metadata-delete
                 // failure here is logged only, not surfaced as a second
                 // player-facing failure message for one un-sync action.
-                if (!deleteCloudMetadata(worldSlug)) {
+                if (!deleteCloudMetadata(cloudWorldId)) {
                     warningLogger.accept("Failed to delete Steam Cloud metadata file for world \"" + displayName
                             + "\" after successfully deleting its archive; it may be left orphaned on Cloud.");
                 }
@@ -425,8 +464,9 @@ public final class WorldSaveSyncService implements WorldFreshnessHook, WorldConf
      * @return the classification for this world right now
      */
     public UpToDateStatus upToDateStatusFor(String worldSlug, Path worldFolder) {
+        String cloudWorldId = resolveForRead(worldSlug);
         WorldFingerprint fingerprint = readLocalFingerprintCache().stream()
-                .filter(entry -> entry.worldSlug().equals(worldSlug))
+                .filter(entry -> entry.worldSlug().equals(cloudWorldId))
                 .findFirst()
                 .orElse(null);
         if (fingerprint == null) {
@@ -465,8 +505,9 @@ public final class WorldSaveSyncService implements WorldFreshnessHook, WorldConf
      * @return this world's current classification, plus detail
      */
     public FreshnessDetail upToDateStatusDetailFor(String worldSlug, Path worldFolder) {
+        String cloudWorldId = resolveForRead(worldSlug);
         WorldFingerprint fingerprint = readLocalFingerprintCache().stream()
-                .filter(entry -> entry.worldSlug().equals(worldSlug))
+                .filter(entry -> entry.worldSlug().equals(cloudWorldId))
                 .findFirst()
                 .orElse(null);
         if (fingerprint == null) {
@@ -533,15 +574,16 @@ public final class WorldSaveSyncService implements WorldFreshnessHook, WorldConf
      * @return this world's current conflict classification
      */
     public ConflictStatus checkConflictFor(String worldSlug, Path worldFolder) {
+        String cloudWorldId = resolveForRead(worldSlug);
         WorldSyncAncestor ownAncestor = readLocalAncestorCache().stream()
-                .filter(entry -> entry.worldSlug().equals(worldSlug))
+                .filter(entry -> entry.worldSlug().equals(cloudWorldId))
                 .findFirst()
                 .orElse(null);
         if (ownAncestor == null) {
             return ConflictStatus.NONE;
         }
         WorldFingerprint globalFingerprint = readLocalFingerprintCache().stream()
-                .filter(entry -> entry.worldSlug().equals(worldSlug))
+                .filter(entry -> entry.worldSlug().equals(cloudWorldId))
                 .findFirst()
                 .orElse(null);
         if (globalFingerprint == null) {
@@ -575,8 +617,9 @@ public final class WorldSaveSyncService implements WorldFreshnessHook, WorldConf
     public ConflictDetail detailFor(String worldSlug, String worldFolderAbsolutePath, String displayName,
             String gameModeDisplayName, long lastPlayedMillis, boolean hardcore,
             WorldConflictResolutionHook.LevelDatBatch levelDatBatch) {
+        String cloudWorldId = resolveForRead(worldSlug);
         WorldFingerprint fingerprint = readLocalFingerprintCache().stream()
-                .filter(entry -> entry.worldSlug().equals(worldSlug))
+                .filter(entry -> entry.worldSlug().equals(cloudWorldId))
                 .findFirst()
                 .orElse(null);
         if (fingerprint == null) {
@@ -593,7 +636,7 @@ public final class WorldSaveSyncService implements WorldFreshnessHook, WorldConf
             return null;
         }
         Long ancestorSyncedAtTimestamp = readLocalAncestorCache().stream()
-                .filter(entry -> entry.worldSlug().equals(worldSlug))
+                .filter(entry -> entry.worldSlug().equals(cloudWorldId))
                 .findFirst()
                 .map(WorldSyncAncestor::syncedAtTimestamp)
                 .orElse(null);
@@ -629,8 +672,8 @@ public final class WorldSaveSyncService implements WorldFreshnessHook, WorldConf
                 levelDatBatch.readable(),
                 localContentSignature);
 
-        long archiveSizeBytes = archiveStore.fileSize(archiveFileName(worldSlug));
-        WorldCloudMetadata metadata = cloudMetadataFor(worldSlug).orElse(null);
+        long archiveSizeBytes = archiveStore.fileSize(archiveFileName(cloudWorldId));
+        WorldCloudMetadata metadata = cloudMetadataFor(cloudWorldId).orElse(null);
         ConflictDetail.CloudDetail cloud = metadata != null
                 ? new ConflictDetail.CloudDetail(
                         fingerprint.displayName(), fingerprint.syncedAtTimestamp(), archiveSizeBytes, fingerprint.deviceLabel(),
@@ -692,7 +735,7 @@ public final class WorldSaveSyncService implements WorldFreshnessHook, WorldConf
 
     @Override
     public void recordKeepCloudResolution(String worldSlug, String cloudDeviceLabel, long cloudSyncedAtTimestamp) {
-        writeAncestorEntry(worldSlug, cloudDeviceLabel, cloudSyncedAtTimestamp);
+        writeAncestorEntry(resolveForRead(worldSlug), cloudDeviceLabel, cloudSyncedAtTimestamp);
         statusTracker.clearPendingConflict(worldSlug);
     }
 
@@ -709,8 +752,13 @@ public final class WorldSaveSyncService implements WorldFreshnessHook, WorldConf
      * which should trigger a re-upload here).
      */
     private boolean isLocallyStale(String worldSlug, Path worldFolder) {
+        // Safe to fully resolve (not just resolveForRead) here: every caller
+        // of this method already runs on the background worker thread
+        // (checkAndUploadStaleWorldsAtStartup is itself always invoked
+        // inside a submitBackgroundWork lambda by CloudSyncCoordinator).
+        String cloudWorldId = migrationService.resolveCloudWorldId(worldSlug).toString();
         WorldFingerprint fingerprint = readLocalFingerprintCache().stream()
-                .filter(entry -> entry.worldSlug().equals(worldSlug))
+                .filter(entry -> entry.worldSlug().equals(cloudWorldId))
                 .findFirst()
                 .orElse(null);
         if (fingerprint == null || !fingerprint.deviceLabel().equals(deviceLabel)) {
@@ -968,12 +1016,23 @@ public final class WorldSaveSyncService implements WorldFreshnessHook, WorldConf
      */
     void syncWorldNow(String worldSlug, Path worldFolder, String displayName,
             WorldConflictResolutionHook.LevelDatBatch levelDatBatch) {
+        // cloud-sync-uuid-identity FR2.1/FR3.1: resolved once, at the top of
+        // this method -- the one real Cloud-key write checkpoint every
+        // public entry point (onWorldUnload/onWorldSaved/
+        // checkAndUploadStaleWorldsAtStartup/handleSyncReenabled/
+        // resolveKeepLocal) funnels through. Safe here: every caller of this
+        // method already runs on CloudSyncWorker's background thread
+        // (FR2.5), never the client tick thread. worldSlug (the raw, current
+        // local folder name) is kept for every statusTracker/preferenceService
+        // call below -- those stay keyed by "whatever folder name the
+        // platform layer already uses" (FR6.1/FR3.4), not the Cloud key.
+        String cloudWorldId = migrationService.resolveCloudWorldId(worldSlug).toString();
         try {
             long sizeBytes = computeFolderSizeBytes(worldFolder);
             SyncStrategy strategy = decideStrategy(sizeBytes, maxWorldArchiveSizeMb);
 
             long syncedAtTimestamp = System.currentTimeMillis();
-            buildAndUploadMetadata(worldSlug, worldFolder, displayName, levelDatBatch, syncedAtTimestamp);
+            buildAndUploadMetadata(cloudWorldId, worldFolder, displayName, levelDatBatch, syncedAtTimestamp);
 
             if (strategy == SyncStrategy.SKIPPED) {
                 playerNotifier.accept("World \"" + displayName + "\" (" + formatMb(sizeBytes) + " MB) exceeds the "
@@ -985,10 +1044,10 @@ public final class WorldSaveSyncService implements WorldFreshnessHook, WorldConf
 
             byte[] archiveBytes = buildWholeArchive(worldFolder);
 
-            checkFingerprintForConflict(worldSlug, displayName);
-            ensureQuota(archiveBytes.length, worldSlug);
+            checkFingerprintForConflict(cloudWorldId, displayName);
+            ensureQuota(archiveBytes.length, cloudWorldId);
 
-            String archiveFileName = archiveFileName(worldSlug);
+            String archiveFileName = archiveFileName(cloudWorldId);
             playerNotifier.accept("Uploading world \"" + displayName + "\" (" + archiveBytes.length + " bytes) to Steam Cloud.");
             worker.enqueueTickThreadWork(() -> {
                 // DEV-ONLY: see DebugSyncFaultInjector's javadoc for how to
@@ -997,7 +1056,7 @@ public final class WorldSaveSyncService implements WorldFreshnessHook, WorldConf
                         && archiveStore.streamWrite(archiveFileName, archiveBytes);
                 try {
                     if (written) {
-                        updateFingerprint(worldSlug, displayName);
+                        updateFingerprint(cloudWorldId, displayName);
                         statusTracker.markSynced(worldSlug);
                         playerNotifier.accept("Uploaded world \"" + displayName + "\" to Steam Cloud.");
                     } else {

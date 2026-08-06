@@ -3,6 +3,7 @@ package de.lazuli.mainmenu;
 import de.lazuli.CloudOnlyWorldsHookHolder;
 import de.lazuli.LazuliMod;
 import de.lazuli.WorldConflictHookHolder;
+import de.lazuli.WorldCloudMigrationHolder;
 import de.lazuli.WorldFreshnessHookHolder;
 import de.lazuli.WorldRestoreHookHolder;
 import de.lazuli.WorldSyncStatusHookHolder;
@@ -17,6 +18,7 @@ import de.lazuli.api.cloudsync.WorldFreshnessHook;
 import de.lazuli.api.cloudsync.WorldFreshnessHook.FreshnessDetail;
 import de.lazuli.api.cloudsync.WorldFreshnessHook.UpToDateStatus;
 import de.lazuli.api.cloudsync.WorldRestoreHook;
+import de.lazuli.api.cloudsync.StaleSaveFolderHealer;
 import de.lazuli.api.cloudsync.WorldSyncStatusHook;
 import de.lazuli.api.cloudsync.WorldSyncStatusHook.SyncStatus;
 import de.lazuli.api.cloudsync.WorldSyncToggleHook;
@@ -293,6 +295,54 @@ public final class WorldsPanel {
      * source.
      */
     void reload() {
+        reloadInternal();
+    }
+
+    /**
+     * cloud-sync-uuid-identity Risk #3: polls {@code WorldCloudMigrationService}
+     * (cheap, in-memory, drained) once per render frame for any physical
+     * folder rename completed since the last poll, and if any happened,
+     * forces a full {@link #reload()} plus clears every row-keyed cache
+     * (freshness/conflict/expanded-row id) that might still reference an
+     * old, now-renamed folder name -- so no stale reference to a
+     * since-renamed folder survives into the next frame.
+     */
+    private void checkForCompletedRenames() {
+        de.lazuli.features.steamcloudsync.services.WorldCloudMigrationService migrationService =
+                WorldCloudMigrationHolder.getOrNull();
+        if (migrationService == null) {
+            return;
+        }
+        var renames = migrationService.drainRecentRenames();
+        if (renames.isEmpty()) {
+            return;
+        }
+        for (var rename : renames) {
+            freshnessCache.remove(rename.oldFolderName());
+            conflictCache.remove(rename.oldFolderName());
+            if (rename.oldFolderName().equals(state.expandedRowId())) {
+                state.toggleRowExpanded(rename.oldFolderName());
+            }
+        }
+        reload();
+    }
+
+    private void reloadInternal() {
+        // Proactive-stale-save-folder-healing FR3: scans the whole saves
+        // directory (not just one restore's target slug) before the async
+        // summary load kicks off, so a freshly-healed folder never renders a
+        // stale-but-since-deleted row during this same reload pass.
+        List<String> healed = StaleSaveFolderHealer.healStaleFolders(
+                FabricLoader.getInstance().getGameDir().resolve("saves"),
+                worldSlug -> {
+                    WorldSyncStatusHook statusHook = WorldSyncStatusHookHolder.getOrNull();
+                    return statusHook != null && statusHook.isDownloadInProgress(worldSlug);
+                },
+                warning -> LazuliMod.LOGGER.warn(warning));
+        for (String slug : healed) {
+            LazuliMod.LOGGER.info("Healed stale local save folder \"{}\" (no level.dat, not mid-download).", slug);
+        }
+
         iconCache.invalidateAll();
         try {
             dataWidget = new WorldListWidget.Builder(MinecraftClient.getInstance(), owner)
@@ -419,7 +469,7 @@ public final class WorldsPanel {
         }
         try (DirectoryStream<Path> stream = Files.newDirectoryStream(savesDirectory)) {
             for (Path candidate : stream) {
-                if (Files.isDirectory(candidate) && Files.isRegularFile(candidate.resolve("level.dat"))) {
+                if (StaleSaveFolderHealer.isRealSaveFolder(candidate)) {
                     names.add(candidate.getFileName().toString());
                 }
             }
@@ -464,6 +514,7 @@ public final class WorldsPanel {
     private static final int CONTENT_LEFT_PAD = 8;
 
     public void render(DrawContext context, TextRenderer font, int x, int y, int width, int height, int mouseX, int mouseY) {
+        checkForCompletedRenames();
 
         int leftX = x + CONTENT_LEFT_PAD;
         context.drawText(font, Text.literal("Singleplayer Worlds"), leftX, y + 6, 0xFFEAE8E1, false);
@@ -1158,9 +1209,16 @@ public final class WorldsPanel {
         int playX = bounds[0], playW = bounds[1], editX = bounds[2], editW = bounds[3];
         WorldSyncStatusHook statusHook = WorldSyncStatusHookHolder.getOrNull();
         boolean blocked = statusHook != null && statusHook.isDownloadInProgress(cloudOnly.worldSlug());
+        LazuliMod.LOGGER.info("[DEBUG-RETRY] handleCloudOnlyPillClick: worldSlug=\"" + cloudOnly.worldSlug()
+                + "\", statusHook=" + (statusHook != null) + ", isDownloadInProgress=" + blocked);
         if (mouseX >= playX && mouseX <= playX + playW && mouseY >= buttonY && mouseY <= buttonY + 18) {
+            LazuliMod.LOGGER.info("[DEBUG-RETRY] handleCloudOnlyPillClick: \"Download & Play\" pill clicked for \""
+                    + cloudOnly.worldSlug() + "\", blocked=" + blocked);
             if (!blocked) {
                 downloadAndPlay(cloudOnly);
+            } else {
+                LazuliMod.LOGGER.info("[DEBUG-RETRY] handleCloudOnlyPillClick: click SUPPRESSED (blocked=true) for \""
+                        + cloudOnly.worldSlug() + "\" -- downloadAndPlay() was NOT called.");
             }
             return true;
         }
@@ -1213,7 +1271,7 @@ public final class WorldsPanel {
             statusHook.markDownloadPending(worldSlug);
         }
         MainMenuScreen.playClickSound();
-        restoreHook.beginRestore(worldSlug, new de.lazuli.api.cloudsync.RestoreProgressListener() {
+        restoreHook.beginRestore(worldSlug, cloudOnly.displayName(), new de.lazuli.api.cloudsync.RestoreProgressListener() {
             @Override
             public void onProgress(de.lazuli.api.cloudsync.RestoreProgress progress) {
                 // no-op, no screen watching this download's progress
@@ -1292,7 +1350,8 @@ public final class WorldsPanel {
         MainMenuScreen.playClickSound();
         MinecraftClient.getInstance().setScreen(new WorldConflictScreen(
                 worldSlug, worldFolderPath, summary.getDisplayName(), resolutionHook, restoreHook, statusHook,
-                gameModeDisplayName, lastPlayedMillis, hardcore, levelDatBatch, () -> {
+                gameModeDisplayName, lastPlayedMillis, hardcore, levelDatBatch,
+                () -> launchWorld(worldSlug), () -> {
                     reload();
                     MinecraftClient.getInstance().setScreen(owner);
                 }));
