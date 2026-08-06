@@ -323,26 +323,73 @@ sequenceDiagram
 
 ## Open questions
 
-- **⚠ HIGH-RISK / potentially feature-invalidating: skin-change auth.**
-  **Verified**, and worse than the original unresearched framing assumed.
-  Mojang's skin-change endpoint (`api.minecraftservices.com`) still exists,
-  but requires a Bearer **Minecraft access token** obtained only via the
-  Xbox Live → XSTS → Minecraft OAuth chain (Mojang accounts are fully
-  migrated to Microsoft; there is no separate "Mojang token" anymore). A mod
-  has **no documented, supported way to obtain or reuse this token** — the
-  running game client holds it only transiently, internally, for its own
-  auth flow, and reusing it would mean reaching into the vanilla auth
-  client's internals (e.g. via reflection), which is undocumented,
-  version-fragile, and not a sanctioned integration point. This needs its
-  own feasibility spike — confirming whether the token is even accessible
-  in-process at all — **before** the skins feature is scoped any further;
-  if it turns out not to be accessible, the whole "Workshop skin →
-  real Mojang account skin change" idea as stated may need to fall back to
-  a local-only cosmetic override instead (losing the "real account skin,
-  visible to other players" property that made it distinct from Wardrobe
-  cosmetics in the first place). Sources:
+- **DOWNGRADED (was ⚠ high-risk) to "two viable paths, pick deliberately":
+  token access is confirmed possible, but the mod with the most reason to
+  take the easy path chose not to.** Originally flagged as potentially
+  feature-invalidating because it seemed a mod would have no supported way
+  to obtain a Minecraft access token. Two things are now confirmed:
+  1. **In-process access is real.** Both Fabric and Forge expose the
+     client's live, already-authenticated session to any mod via a
+     documented, public API —
+     `MinecraftClient.getInstance().getSession().getAccessToken()` (Forge:
+     `Minecraft.getInstance().getSession()`, same shape) — confirmed
+     against Fabric's Yarn mappings docs back to at least 1.16.4. No
+     reflection into internals required. (Corroborating, if grim, evidence:
+     a documented malware case — a mod that stole session tokens via this
+     exact call for account takeover — and a purpose-built defensive tool,
+     [Token-Protector](https://github.com/cev-api/Token-Protector), built
+     specifically to stop third-party mods from reading this exact field.)
+  2. **But `SparkUniverse/Essential-Mod`'s real source (confirmed
+     source-available, not a stub — audited directly) shows Essential
+     deliberately does NOT take this shortcut**, despite being exactly the
+     kind of mod that would benefit most. Instead it implements a complete,
+     independent Microsoft OAuth → XBL → XSTS → Minecraft auth chain in
+     `subprojects/minecraft-auth/` (`MicrosoftAuthenticationService.kt`,
+     `XboxLiveAuthenticationService.kt`, `MinecraftAuthenticationService.kt`),
+     with its own OAuth browser flow, and calls
+     `MojangAPI.changeSkin(accessToken, uuid, model, url)`
+     (`gui/essential/src/main/kotlin/gg/essential/util/MojangAPI.kt:47`)
+     with a token from *its own* account manager — never from the game's
+     session object.
+
+  **Reading between those two facts**: Essential's choice is evidence, not
+  just caution — likely reasons are that the vanilla session token isn't
+  safely refreshable from mod-side (Essential needs long-lived, renewable
+  auth), it needs to support multiple/alternate accounts (not just
+  whatever's currently logged into the client), and reusing a
+  client-session token for out-of-band API calls beyond its intended
+  purpose sits in legally/ToS-murky territory even though it's technically
+  reachable. So the real choice for this feature isn't "is it possible"
+  (yes) but **which of two paths to take**:
+  - **Path A — reuse `Session.getAccessToken()`. (Preferred direction, per
+    project owner.)** Least implementation effort, no separate login UI —
+    the player is already logged into the client this mod runs inside, and
+    that's the only account this feature needs to act on (unlike Essential,
+    which needs multi-account support this mod doesn't). Tradeoffs to
+    watch for once this moves to a spec: uncertain token refresh/lifetime
+    behavior (the vanilla session token may not be designed to be reused
+    for calls outside the client's own auth flow, so a long Workshop-browsing
+    session might hold a token that's expired by the time a skin change is
+    attempted — needs verification), and this is the least-tested-by-precedent
+    path (Essential, the mod best positioned to take this shortcut, chose
+    not to — worth understanding why in more depth before committing, even
+    though the reasons guessed above look like they may not apply here).
+  - **Path B — build an independent OAuth flow like Essential's**, own
+    account/token management, more implementation effort and a browser-based
+    login UX to build, but proven-viable (Essential ships this today) and
+    avoids the refresh/reuse-legitimacy concerns of Path A. Kept here as the
+    fallback if Path A's refresh/lifetime behavior turns out to be a real
+    problem in practice.
+
+  Neither path is a technical blocker; Path A is the preferred starting
+  point given this mod's simpler single-account use case, with Path B as
+  the documented fallback. Sources:
   [wiki.vg Mojang API](https://wiki.vg/Mojang_API),
-  [Mojang API docs (skin change)](https://mojang-api-docs.gapple.pw/needs-auth/change-skin).
+  [Mojang API docs (skin change)](https://mojang-api-docs.gapple.pw/needs-auth/change-skin),
+  [Fabric Yarn `Session` mappings](https://maven.fabricmc.net/docs/yarn-1.21.5+build.1/net/minecraft/client/session/Session.html),
+  [Weedhack Stealer analysis](https://0xresetti.github.io/weedhack.html),
+  [SparkUniverse/Essential-Mod](https://github.com/SparkUniverse/Essential-Mod)
+  (`subprojects/minecraft-auth/`, `gui/essential/.../MojangAPI.kt`).
 - **Moderation/reporting.** Steam Workshop has its own report/flag/ban
   mechanisms at the platform level, but does this mod need any in-mod
   moderation surface (e.g. hiding a reported item locally before Valve
