@@ -165,7 +165,13 @@ class WorldRestoreServiceTest {
     @Test
     void collisionWithExistingLocalWorldAbortsBeforeExtraction(@TempDir Path tempDir) throws IOException {
         Path savesDirectory = Files.createDirectory(tempDir.resolve("saves"));
-        Files.createDirectory(savesDirectory.resolve("existing_world"));
+        // FR6.13: only a folder containing a readable level.dat counts as a
+        // real, previously-created save that must never be touched -- an
+        // empty directory at the same slug is a stale leftover instead (see
+        // staleNonSaveLocalFolderIsAutoHealedAndRestoreProceeds below), so
+        // this collision fixture must actually look like a real save.
+        Path existingWorld = Files.createDirectory(savesDirectory.resolve("existing_world"));
+        Files.writeString(existingWorld.resolve("level.dat"), "real save data");
 
         FakeWorldArchiveCloudStore archiveStore = new FakeWorldArchiveCloudStore();
         WorldSyncPreferenceService preferenceService =
@@ -180,6 +186,42 @@ class WorldRestoreServiceTest {
         assertThat(listener.failedSlug).isEqualTo("existing_world");
         assertThat(listener.failureReason).contains("already exists");
         assertThat(listener.completedSlug).isNull();
+        assertThat(existingWorld.resolve("level.dat")).exists();
+
+        worker.shutdown();
+    }
+
+    @Test
+    void staleNonSaveLocalFolderIsAutoHealedAndRestoreProceeds(@TempDir Path tempDir) throws Exception {
+        Path savesDirectory = Files.createDirectory(tempDir.resolve("saves"));
+        // Mirrors the real-world stale leftover this auto-heal logic targets:
+        // an empty (or session.lock-only) directory left behind by an earlier
+        // aborted/cancelled restore attempt through this exact codepath, with
+        // no level.dat -- must not permanently block re-downloading the world.
+        Path staleFolder = Files.createDirectory(savesDirectory.resolve("stale_world"));
+        Files.writeString(staleFolder.resolve("session.lock"), "0");
+
+        byte[] archiveBytes = buildZipArchive(Map.of("level.dat", "fake level data"));
+        FakeWorldArchiveCloudStore archiveStore = new FakeWorldArchiveCloudStore();
+        archiveStore.archives.put("lazuli-world-stale_world.zip", archiveBytes);
+
+        WorldSyncPreferenceService preferenceService =
+                new WorldSyncPreferenceService(tempDir.resolve("world-sync-preferences.json"), w -> { });
+        preferenceService.load();
+        CloudSyncWorker worker = new CloudSyncWorker(w -> { });
+        List<String> infoLogs = new CopyOnWriteArrayList<>();
+        WorldRestoreService service = new WorldRestoreService(
+                archiveStore, preferenceService, worker, savesDirectory, w -> { }, infoLogs::add);
+
+        RecordingListener listener = new RecordingListener();
+        service.beginRestore("stale_world", listener);
+
+        assertThat(listener.done.await(5, TimeUnit.SECONDS)).isTrue();
+        assertThat(listener.failedSlug).isNull();
+        assertThat(listener.completedSlug).isEqualTo("stale_world");
+        assertThat(infoLogs).anyMatch(log -> log.contains("Clearing stale, non-save local folder"));
+        assertThat(Files.readString(savesDirectory.resolve("stale_world").resolve("level.dat")))
+                .isEqualTo("fake level data");
 
         worker.shutdown();
     }

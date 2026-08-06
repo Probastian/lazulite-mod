@@ -1,15 +1,13 @@
 package de.lazuli.features.steamcloudsync.services;
 
-import com.codedisaster.steamworks.SteamAPICall;
+import com.codedisaster.steamworks.SteamException;
 import com.codedisaster.steamworks.SteamRemoteStorage;
 import com.codedisaster.steamworks.SteamRemoteStorageCallback;
-import com.codedisaster.steamworks.SteamResult;
 import com.codedisaster.steamworks.SteamUGCFileWriteStreamHandle;
 
 import java.nio.ByteBuffer;
 import java.util.Objects;
 import java.util.OptionalLong;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 
 /**
@@ -28,12 +26,27 @@ import java.util.function.Consumer;
  *
  * <p>{@link #streamWrite(String, byte[])} chunks the write under Valve's
  * documented 100MB-per-call cap, regardless of the archive's total size
- * (FR6.3). {@link #beginAsyncRead(String, AsyncReadListener)} drives a
- * repeated {@code fileReadAsync}/{@code fileReadAsyncComplete} chunked loop,
- * dispatched via this class's own {@link SteamRemoteStorageCallback}
- * implementation -- delivered only while the shared
- * {@code SteamworksService.pumpCallbacks()} keeps running on the client tick
- * thread.
+ * (FR6.3). {@link #beginAsyncRead(String, AsyncReadListener)} performs a
+ * single, fully <strong>synchronous</strong> {@code ISteamRemoteStorage
+ * ::FileRead} call -- <em>not</em> Valve's {@code FileReadAsync}/
+ * {@code FileReadAsyncComplete} pair. This is deliberate: {@code FileReadAsync}'s
+ * completion is only ever delivered from inside {@code SteamAPI.runCallbacks()}
+ * (see {@code SteamworksService.pumpCallbacks()}), and this project's
+ * steamworks4j fork has been observed throwing {@code SteamException}
+ * ("Couldn't retrieve callback method.") from that native call specifically
+ * while a chunked cloud-world-restore read was in flight -- silently
+ * stranding the pending read forever (no further chunks, no failure
+ * callback, the download screen's progress bar just stops). Since Steam
+ * Cloud files are already fully downloaded to disk before the game launches
+ * (FR6.11), a synchronous {@code FileRead} is just a fast local disk read and
+ * carries no meaningful blocking cost, while completely sidestepping the
+ * pump-dependent async callback path. The resulting bytes are then split
+ * into {@link #READ_CHUNK_BYTES}-sized pieces purely for
+ * {@link AsyncReadListener#onChunk(byte[])} progress-reporting granularity
+ * (so the existing 25/50/75/100% milestone logging and progress bar in
+ * {@code WorldRestoreService} keep working) -- this class no longer
+ * implements any of {@link SteamRemoteStorageCallback}'s methods with
+ * non-default behavior.
  *
  * <p>Every steamworks4j call site catches any unexpected
  * {@link RuntimeException}, logging via the injected {@code warningLogger}
@@ -52,12 +65,16 @@ public final class SteamRemoteStorageWorldArchiveStore implements WorldArchiveCl
     /** Comfortably under Valve's documented 100MB-per-call write cap (FR6.3). */
     private static final int WRITE_CHUNK_BYTES = 8 * 1024 * 1024;
 
-    /** A conservative per-chunk size for the async read loop (FR6.11). */
+    /**
+     * The size each {@link AsyncReadListener#onChunk(byte[])} delivery is
+     * split into after the single synchronous {@code FileRead} completes --
+     * purely for progress-reporting granularity (FR6.11), not a Steamworks
+     * per-call limit.
+     */
     private static final int READ_CHUNK_BYTES = 1 * 1024 * 1024;
 
     private final SteamRemoteStorage remoteStorage;
     private final Consumer<String> warningLogger;
-    private final ConcurrentHashMap<SteamAPICall, PendingRead> pendingReads = new ConcurrentHashMap<>();
 
     /**
      * @param warningLogger receives a human-readable message for every
@@ -141,55 +158,34 @@ public final class SteamRemoteStorageWorldArchiveStore implements WorldArchiveCl
                 listener.onFailed("World archive \"" + fileName + "\" is empty or does not exist on Steam Cloud.");
                 return;
             }
-            requestNextChunk(fileName, 0, size, listener);
-        } catch (RuntimeException e) {
-            warn("Failed to begin reading Steam Cloud world archive \"" + fileName + "\": " + e);
-            listener.onFailed("Failed to begin reading world archive: " + e);
-        }
-    }
 
-    private void requestNextChunk(String fileName, int offset, int totalSize, AsyncReadListener listener) {
-        int toRead = Math.min(READ_CHUNK_BYTES, totalSize - offset);
-        SteamAPICall call = remoteStorage.fileReadAsync(fileName, offset, toRead);
-        if (call == null || !call.isValid()) {
-            listener.onFailed("Steam Cloud rejected the read request for \"" + fileName + "\".");
-            return;
-        }
-        pendingReads.put(call, new PendingRead(fileName, offset, totalSize, listener));
-    }
-
-    @Override
-    public void onFileReadAsyncComplete(SteamAPICall call, SteamResult result, int offset, int read) {
-        PendingRead pending = pendingReads.remove(call);
-        if (pending == null) {
-            // Not a call this instance issued (or already handled); ignore.
-            return;
-        }
-        if (result != SteamResult.OK || read <= 0) {
-            pending.listener.onFailed("Steam Cloud read failed (" + result + ") for \"" + pending.fileName + "\".");
-            return;
-        }
-        try {
-            ByteBuffer buffer = ByteBuffer.allocateDirect(read);
-            boolean completed = remoteStorage.fileReadAsyncComplete(call, buffer, read);
-            if (!completed) {
-                pending.listener.onFailed("Failed to complete Steam Cloud read for \"" + pending.fileName + "\".");
+            ByteBuffer buffer = ByteBuffer.allocateDirect(size);
+            int read;
+            try {
+                read = remoteStorage.fileRead(fileName, buffer);
+            } catch (SteamException e) {
+                warn("Steam Cloud read failed for \"" + fileName + "\": " + e);
+                listener.onFailed("Steam Cloud read failed for \"" + fileName + "\": " + e);
                 return;
             }
-            byte[] chunk = new byte[read];
-            buffer.rewind();
-            buffer.get(chunk);
-            pending.listener.onChunk(chunk);
-
-            int nextOffset = pending.offset + read;
-            if (nextOffset >= pending.totalSize) {
-                pending.listener.onComplete();
-            } else {
-                requestNextChunk(pending.fileName, nextOffset, pending.totalSize, pending.listener);
+            if (read <= 0) {
+                listener.onFailed("Steam Cloud returned no data for \"" + fileName + "\".");
+                return;
             }
+
+            buffer.rewind();
+            int delivered = 0;
+            while (delivered < read) {
+                int length = Math.min(READ_CHUNK_BYTES, read - delivered);
+                byte[] chunk = new byte[length];
+                buffer.get(chunk);
+                listener.onChunk(chunk);
+                delivered += length;
+            }
+            listener.onComplete();
         } catch (RuntimeException e) {
-            warn("Unexpected failure completing Steam Cloud read for \"" + pending.fileName + "\": " + e);
-            pending.listener.onFailed("Unexpected failure completing Steam Cloud read: " + e);
+            warn("Failed to read Steam Cloud world archive \"" + fileName + "\": " + e);
+            listener.onFailed("Failed to read world archive: " + e);
         }
     }
 
@@ -249,8 +245,5 @@ public final class SteamRemoteStorageWorldArchiveStore implements WorldArchiveCl
 
     private void warn(String message) {
         warningLogger.accept(message);
-    }
-
-    private record PendingRead(String fileName, int offset, int totalSize, AsyncReadListener listener) {
     }
 }
