@@ -24,6 +24,8 @@ import de.lazuli.cloudsync.WorldConflictScreen;
 import de.lazuli.cloudsync.WorldRestoreScreen;
 import de.lazuli.features.mainmenu.services.MainMenuStateMachine;
 
+import net.fabricmc.loader.api.FabricLoader;
+
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.gui.DrawContext;
@@ -36,6 +38,10 @@ import net.minecraft.util.Identifier;
 import net.minecraft.world.level.storage.LevelStorage;
 import net.minecraft.world.level.storage.LevelSummary;
 
+import java.io.IOException;
+import java.nio.file.DirectoryStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -375,10 +381,7 @@ public final class WorldsPanel {
             cloudOnlyWorlds = List.of();
             return;
         }
-        List<String> localFolderNames = new ArrayList<>();
-        for (WorldListWidget.WorldEntry entry : entries) {
-            localFolderNames.add(entry.getLevel().getName());
-        }
+        List<String> localFolderNames = listRealLocalSaveFolderNames();
         try {
             cloudOnlyWorlds = hook.listCloudOnlyWorlds(localFolderNames);
             LazuliMod.LOGGER.info("refreshCloudOnlyWorlds: {} local folder(s) {}, {} cloud-only world(s) found",
@@ -387,6 +390,43 @@ public final class WorldsPanel {
             LazuliMod.LOGGER.warn("Failed to list cloud-only worlds: " + e);
             cloudOnlyWorlds = List.of();
         }
+    }
+
+    /**
+     * Bug fix ("Play Cloud-Only World" never clears after a successful
+     * download of a world from a newer Minecraft data version): {@code
+     * localFolderNames} previously came from {@code entries}, which is
+     * populated only from {@code LevelStorage.loadSummaries(...)} -- a world
+     * whose {@code level.dat} is genuinely present but written by a newer
+     * Minecraft version fails to *parse* under this older client and is
+     * silently skipped by that vanilla summary loader, wrongly leaving its
+     * real, fully-downloaded folder out of this set and making it look
+     * permanently cloud-only forever after a successful download.
+     *
+     * <p>"Is this a real local save folder" for cloud-only-detection purposes
+     * must only mean "the folder exists and has a {@code level.dat}" --
+     * version-compatibility (can {@code LevelStorage} fully load/parse it) is
+     * irrelevant here and is intentionally not checked. {@code entries}
+     * itself (used to render the normal, non-cloud-only world list) is left
+     * exactly as-is: a world that can't be parsed still can't be rendered as
+     * a summary card, so it is correctly excluded from {@code entries}.
+     */
+    private static List<String> listRealLocalSaveFolderNames() {
+        List<String> names = new ArrayList<>();
+        Path savesDirectory = FabricLoader.getInstance().getGameDir().resolve("saves");
+        if (!Files.isDirectory(savesDirectory)) {
+            return names;
+        }
+        try (DirectoryStream<Path> stream = Files.newDirectoryStream(savesDirectory)) {
+            for (Path candidate : stream) {
+                if (Files.isDirectory(candidate) && Files.isRegularFile(candidate.resolve("level.dat"))) {
+                    names.add(candidate.getFileName().toString());
+                }
+            }
+        } catch (IOException e) {
+            LazuliMod.LOGGER.warn("Failed to scan saves directory for local world folder names: " + e);
+        }
+        return names;
     }
 
     private static String formatSyncedAt(long syncedAtTimestamp) {
