@@ -59,7 +59,6 @@ public final class WorldRestoreScreen extends Screen {
     private volatile boolean completed;
     private RestoreHandle handle;
     private DownloadProgressPresenter presenter;
-    private long lastDebugRetryLogMs;
 
     /**
      * @param summary     the cloud-only world being downloaded
@@ -101,66 +100,37 @@ public final class WorldRestoreScreen extends Screen {
                 .build());
 
         String worldSlug = summary.worldSlug();
-        LazuliMod.LOGGER.info("[DEBUG-RETRY] WorldRestoreScreen.init() entered for worldSlug=\"" + worldSlug
-                + "\", statusHook=" + (statusHook != null)
-                + ", isDownloadInProgress(before markDownloadPending)="
-                + (statusHook != null ? statusHook.isDownloadInProgress(worldSlug) : "n/a")
-                + ", completed(field)=" + completed + ", latestProgress(field)=" + latestProgress.get()
-                + ", failureReason(field)=" + failureReason.get());
         if (statusHook != null) {
             statusHook.markDownloadPending(worldSlug);
-            LazuliMod.LOGGER.info("[DEBUG-RETRY] WorldRestoreScreen.init(): markDownloadPending called for \"" + worldSlug
-                    + "\"; isDownloadInProgress(after)=" + statusHook.isDownloadInProgress(worldSlug));
         }
 
         handle = restoreHook.beginRestore(worldSlug, summary.displayName(), new RestoreProgressListener() {
             @Override
             public void onProgress(RestoreProgress progress) {
-                LazuliMod.LOGGER.info("[DEBUG-RETRY] WorldRestoreScreen listener.onProgress for \"" + worldSlug
-                        + "\": phase=" + progress.phase() + ", processed=" + progress.processedBytes()
-                        + ", total=" + progress.totalBytes());
                 latestProgress.set(progress);
             }
 
             @Override
             public void onComplete(String worldSlug) {
-                LazuliMod.LOGGER.info("[DEBUG-RETRY] WorldRestoreScreen listener.onComplete for \"" + worldSlug + "\"");
                 if (statusHook != null) {
                     statusHook.markDownloadFinished(worldSlug);
-                    LazuliMod.LOGGER.info("[DEBUG-RETRY] WorldRestoreScreen listener.onComplete: markDownloadFinished called for \""
-                            + worldSlug + "\"; isDownloadInProgress(after)=" + statusHook.isDownloadInProgress(worldSlug));
                 }
                 completed = true;
             }
 
             @Override
             public void onFailed(String worldSlug, String reason) {
-                LazuliMod.LOGGER.info("[DEBUG-RETRY] WorldRestoreScreen listener.onFailed for \"" + worldSlug
-                        + "\", reason=\"" + reason + "\"");
                 if (statusHook != null) {
                     statusHook.markDownloadFinished(worldSlug);
-                    LazuliMod.LOGGER.info("[DEBUG-RETRY] WorldRestoreScreen listener.onFailed: markDownloadFinished called for \""
-                            + worldSlug + "\"; isDownloadInProgress(after)=" + statusHook.isDownloadInProgress(worldSlug));
                 }
                 failureReason.set(reason);
             }
         });
-        LazuliMod.LOGGER.info("[DEBUG-RETRY] WorldRestoreScreen.init(): beginRestore call returned handle for \"" + worldSlug
-                + "\"; completed(field, right after call)=" + completed + ", failureReason(field, right after call)=" + failureReason.get());
     }
 
     @Override
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
         super.render(context, mouseX, mouseY, delta);
-
-        long nowMs = System.currentTimeMillis();
-        boolean shouldLogDebugRetryThisFrame = nowMs - lastDebugRetryLogMs >= 1000L;
-        if (shouldLogDebugRetryThisFrame) {
-            lastDebugRetryLogMs = nowMs;
-            LazuliMod.LOGGER.info("[DEBUG-RETRY] WorldRestoreScreen.render() for worldSlug=\"" + summary.worldSlug()
-                    + "\": completed=" + completed + ", failureReason=" + failureReason.get()
-                    + ", latestProgress=" + latestProgress.get() + ", presenter=" + (presenter != null));
-        }
 
         if (completed) {
             if (onCompleted != null) {
@@ -200,14 +170,6 @@ public final class WorldRestoreScreen extends Screen {
                     stats.currentSizeText() + " / " + stats.totalSizeText(), width / 2, barY + 26, 0xFFFFFF);
             context.drawCenteredTextWithShadow(textRenderer, stats.etaText(), width / 2, barY + 38, 0xFFFFFF);
         } else {
-            // [DEBUG-RETRY] This is the "no progress bar / stuck on Calculating..."
-            // branch -- reached whenever latestProgress is still null (no
-            // onProgress callback has arrived yet, e.g. beginRestore never
-            // actually started a new download this attempt).
-            if (shouldLogDebugRetryThisFrame) {
-                LazuliMod.LOGGER.info("[DEBUG-RETRY] WorldRestoreScreen.render(): presenter==null branch hit (drawing \"Calculating...\") for worldSlug=\""
-                        + summary.worldSlug() + "\" -- latestProgress=" + latestProgress.get());
-            }
             context.drawCenteredTextWithShadow(textRenderer, "Calculating...", width / 2, barY + 14, 0xFFFFFF);
         }
     }

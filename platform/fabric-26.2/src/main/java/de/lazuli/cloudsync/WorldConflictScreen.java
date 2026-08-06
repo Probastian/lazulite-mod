@@ -1,8 +1,6 @@
 package de.lazuli.cloudsync;
 
-import de.lazuli.api.cloudsync.RestoreHandle;
-import de.lazuli.api.cloudsync.RestoreProgress;
-import de.lazuli.api.cloudsync.RestoreProgressListener;
+import de.lazuli.api.cloudsync.CloudOnlyWorldSummary;
 import de.lazuli.api.cloudsync.WorldConflictResolutionHook;
 import de.lazuli.api.cloudsync.WorldConflictResolutionHook.ConflictDetail;
 import de.lazuli.api.cloudsync.WorldConflictResolutionHook.ConflictDetail.CloudDetail;
@@ -24,7 +22,6 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.FormatStyle;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * FR-V's true-two-sided-conflict resolution screen on Minecraft 26.2
@@ -81,11 +78,7 @@ public final class WorldConflictScreen extends Screen {
     private final Runnable onReturn;
 
     private ConflictDetail detail;
-    private final AtomicReference<RestoreProgress> latestProgress = new AtomicReference<>();
-    private final AtomicReference<String> failureReason = new AtomicReference<>();
-    private volatile boolean keepCloudCompleted;
     private volatile boolean keepLocalStarted;
-    private RestoreHandle restoreHandle;
 
     private int boxTop;
     private int boxBottom;
@@ -185,15 +178,6 @@ public final class WorldConflictScreen extends Screen {
 
         Font font = Minecraft.getInstance().font;
 
-        if (keepCloudCompleted) {
-            resolutionHook.recordKeepCloudResolution(worldSlug, detail.cloud().deviceLabel(), detail.cloud().syncedAtTimestamp());
-            onKeepCloudCompleted.run();
-            return;
-        }
-        String failure = failureReason.get();
-        if (failure != null) {
-            guiGraphics.centeredText(font, Component.literal("Restore failed: " + failure), width / 2, 16, 0xFF5555);
-        }
         if (keepLocalStarted) {
             guiGraphics.centeredText(font, Component.literal("Re-uploading local copy to Steam Cloud..."), width / 2, 16, 0xFFFFFF);
             return;
@@ -234,15 +218,6 @@ public final class WorldConflictScreen extends Screen {
                 drawFieldRow(guiGraphics, font, leftX + BOX_PADDING, rowY, row[0], row[1], COLOR_DEFAULT_TEXT, COLOR_DEFAULT_TEXT);
                 rowY += ROW_HEIGHT;
             }
-        }
-
-        RestoreProgress progress = latestProgress.get();
-        if (progress != null) {
-            String statusText = switch (progress.phase()) {
-                case READING_FROM_CLOUD -> "Restoring world from Steam Cloud...";
-                case EXTRACTING -> "Extracting world files...";
-            };
-            guiGraphics.centeredText(font, Component.literal(statusText), width / 2, boxBottom + 40, 0xFFFFFF);
         }
     }
 
@@ -316,34 +291,34 @@ public final class WorldConflictScreen extends Screen {
     }
 
     private void onKeepCloud() {
-        // cloud-sync-status-ui-simplify FR-3.2: marked before beginRestore,
-        // cleared in both onComplete and onFailed so a failed restore
-        // doesn't leave the flag stuck true.
-        if (statusHook != null) {
-            statusHook.markDownloadPending(worldSlug);
-        }
-        restoreHandle = restoreHook.beginRestore(worldSlug, displayName, new RestoreProgressListener() {
-            @Override
-            public void onProgress(RestoreProgress progress) {
-                latestProgress.set(progress);
-            }
+        // FR: "Keep Cloud" now hands off to the same WorldRestoreScreen used
+        // by WorldsPanel.downloadAndPlay(), instead of restoring in place on
+        // this screen -- staying on WorldConflictScreen only ever showed a
+        // small inline progress line, easily missed by the player.
+        //
+        // The resolution decision is made at click time (the player picked
+        // "keep the Cloud copy"), so record it here synchronously rather
+        // than waiting for the hand-off screen's restore to complete --
+        // recordKeepCloudResolution just persists which fingerprint was
+        // adopted, independent of when the actual download finishes.
+        CloudDetail cloud = detail.cloud();
+        resolutionHook.recordKeepCloudResolution(worldSlug, cloud.deviceLabel(), cloud.syncedAtTimestamp());
 
-            @Override
-            public void onComplete(String slug) {
-                if (statusHook != null) {
-                    statusHook.markDownloadFinished(worldSlug);
-                }
-                keepCloudCompleted = true;
-            }
+        CloudOnlyWorldSummary summary = new CloudOnlyWorldSummary(
+                worldSlug,
+                displayName,
+                cloud.deviceLabel(),
+                cloud.syncedAtTimestamp(),
+                cloud.lastPlayedMillis(),
+                cloud.minecraftVersion(),
+                cloud.seed(),
+                cloud.gameMode(),
+                cloud.difficulty(),
+                cloud.hardcore(),
+                null);
 
-            @Override
-            public void onFailed(String slug, String reason) {
-                if (statusHook != null) {
-                    statusHook.markDownloadFinished(worldSlug);
-                }
-                failureReason.set(reason);
-            }
-        });
+        Minecraft.getInstance().setScreenAndShow(
+                new WorldRestoreScreen(summary, restoreHook, statusHook, onKeepCloudCompleted, onReturn));
     }
 
     private static String formatInstant(long epochMillis) {

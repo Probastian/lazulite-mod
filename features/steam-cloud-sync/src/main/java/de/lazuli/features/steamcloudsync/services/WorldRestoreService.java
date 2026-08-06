@@ -106,60 +106,42 @@ public final class WorldRestoreService implements WorldRestoreHook {
         Objects.requireNonNull(displayName, "displayName");
         Objects.requireNonNull(listener, "listener");
 
-        infoLogger.accept("[DEBUG-RETRY] WorldRestoreService.beginRestore called for worldSlug=\"" + worldSlug
-                + "\", activeRestores.containsKey=" + activeRestores.containsKey(worldSlug)
-                + ", activeRestores.keySet=" + activeRestores.keySet());
-
         Path targetWorldFolder = savesDirectory.resolve(worldSlug);
-        boolean targetExists = Files.exists(targetWorldFolder);
-        infoLogger.accept("[DEBUG-RETRY] beginRestore: targetWorldFolder=" + targetWorldFolder
-                + ", exists=" + targetExists);
-        if (targetExists) {
+        if (Files.exists(targetWorldFolder)) {
+            // cloud-sync-uuid-identity FR5.2/FR5.4: worldSlug is always the
+            // cloudWorldId (a UUID string) and the local folder is named
+            // directly with it, so a pre-existing folder at exactly this path
+            // can only be a leftover from a previous restore of this same
+            // cloud world -- nobody names a real, unrelated local save as a
+            // raw UUID. Blocking here (as an earlier version of this guard
+            // did) would permanently strand the player on retry after any
+            // post-extraction failure (e.g. this device failing to load the
+            // restored level.dat), even though a fresh download would fix it.
+            // Always safe to clear and re-download, whether the folder is a
+            // genuine (if unloadable-here) save or an incomplete/stale one.
             boolean realSave = StaleSaveFolderHealer.isRealSaveFolder(targetWorldFolder);
-            infoLogger.accept("[DEBUG-RETRY] beginRestore: targetWorldFolder exists, isRealSaveFolder=" + realSave
-                    + " (has readable level.dat=" + realSave + ")");
-            if (realSave) {
-                infoLogger.accept("[DEBUG-RETRY] beginRestore: EARLY-RETURN onFailed \"already exists\" branch hit for worldSlug=\""
-                        + worldSlug + "\" -- this is the branch that would fire on a retry after a first"
-                        + " attempt downloaded/moved the folder into place, even if that folder is corrupted/incomplete.");
-                listener.onFailed(worldSlug, "A local world folder named \"" + displayName
-                        + "\" already exists; restore aborted before any extraction began.");
-                return new RestoreHandle(worldSlug);
-            }
-            // The folder has no level.dat (or is empty) -- it is a stale
-            // leftover, not a real save (e.g. from an earlier aborted restore
-            // via this exact codepath, which never cleaned up after itself,
-            // or a stray folder created some other way). Safe to clear so the
-            // world isn't permanently and silently blocked from ever being
-            // downloaded again.
-            infoLogger.accept("Clearing stale, non-save local folder \"" + worldSlug
-                    + "\" (no level.dat) before restoring from Steam Cloud.");
+            infoLogger.accept((realSave
+                    ? "Replacing existing local folder \"" + worldSlug + "\" (from a previous restore of this world)"
+                    : "Clearing stale, non-save local folder \"" + worldSlug + "\" (no level.dat)")
+                    + " before restoring from Steam Cloud.");
             StaleSaveFolderHealer.deleteRecursively(targetWorldFolder);
         }
 
         String archiveFileName = WorldSaveSyncService.archiveFileName(worldSlug);
         int totalSize = archiveStore.fileSize(archiveFileName);
-        infoLogger.accept("[DEBUG-RETRY] beginRestore: archiveFileName=\"" + archiveFileName
-                + "\", archiveStore.fileSize()=" + totalSize);
         if (totalSize <= 0) {
-            infoLogger.accept("[DEBUG-RETRY] beginRestore: EARLY-RETURN onFailed \"not found on Steam Cloud\" branch hit for worldSlug=\""
-                    + worldSlug + "\" (totalSize=" + totalSize + ")");
             listener.onFailed(worldSlug, "World archive for \"" + displayName + "\" was not found on Steam Cloud.");
             return new RestoreHandle(worldSlug);
         }
 
         RestoreContext context = new RestoreContext(worldSlug, displayName, listener, totalSize);
-        RestoreContext previousContext = activeRestores.put(worldSlug, context);
-        infoLogger.accept("[DEBUG-RETRY] beginRestore: registered new RestoreContext for \"" + worldSlug
-                + "\" in activeRestores; previousContext for this slug was " + (previousContext == null ? "null (no stale entry)" : "NON-NULL (a stale entry existed and was just overwritten -- possible leak from a prior failed/incomplete attempt)"));
+        activeRestores.put(worldSlug, context);
 
         infoLogger.accept("Downloading world \"" + displayName + "\" (" + totalSize + " bytes) from Steam Cloud.");
-        infoLogger.accept("[DEBUG-RETRY] beginRestore: calling archiveStore.beginAsyncRead for \"" + archiveFileName + "\"");
         archiveStore.beginAsyncRead(archiveFileName, new WorldArchiveCloudStore.AsyncReadListener() {
             @Override
             public void onChunk(byte[] chunk) {
                 if (context.cancelled) {
-                    infoLogger.accept("[DEBUG-RETRY] onChunk: context.cancelled=true for \"" + worldSlug + "\", ignoring chunk of size " + chunk.length);
                     return;
                 }
                 context.archiveBuffer.writeBytes(chunk);
@@ -173,48 +155,35 @@ public final class WorldRestoreService implements WorldRestoreHook {
 
             @Override
             public void onComplete() {
-                infoLogger.accept("[DEBUG-RETRY] onComplete: archiveStore finished reading \"" + worldSlug
-                        + "\", context.cancelled=" + context.cancelled + "; buffered bytes=" + context.archiveBuffer.size());
                 if (context.cancelled) {
-                    infoLogger.accept("[DEBUG-RETRY] onComplete: cancelled=true, calling finishCancelled for \"" + worldSlug + "\"");
                     finishCancelled(context);
                     return;
                 }
-                infoLogger.accept("[DEBUG-RETRY] onComplete: submitting extractAndFinish to background worker for \"" + worldSlug + "\"");
                 worker.submitBackgroundWork(() -> extractAndFinish(targetWorldFolder, context));
             }
 
             @Override
             public void onFailed(String reason) {
-                infoLogger.accept("[DEBUG-RETRY] onFailed: archiveStore read failed for \"" + worldSlug
-                        + "\", reason=\"" + reason + "\"; removing from activeRestores");
                 activeRestores.remove(worldSlug);
                 listener.onFailed(worldSlug, reason);
             }
         });
 
-        infoLogger.accept("[DEBUG-RETRY] beginRestore: returning RestoreHandle for \"" + worldSlug + "\" (beginAsyncRead call has returned -- note it may be synchronous and already complete by this point)");
         return new RestoreHandle(worldSlug);
     }
 
     @Override
     public void cancelRestore(RestoreHandle handle) {
         RestoreContext context = activeRestores.get(handle.worldSlug());
-        infoLogger.accept("[DEBUG-RETRY] cancelRestore called for worldSlug=\"" + handle.worldSlug()
-                + "\", found context=" + (context != null));
         if (context != null) {
             context.cancelled = true;
-            infoLogger.accept("[DEBUG-RETRY] cancelRestore: set context.cancelled=true for \"" + handle.worldSlug() + "\"");
         }
     }
 
     private void extractAndFinish(Path targetWorldFolder, RestoreContext context) {
-        infoLogger.accept("[DEBUG-RETRY] extractAndFinish entered for worldSlug=\"" + context.worldSlug
-                + "\", targetWorldFolder=" + targetWorldFolder + ", cancelled=" + context.cancelled);
         Path stagingDirectory = savesDirectory.resolve(".tmp-restore-" + context.worldSlug);
         try {
             if (context.cancelled) {
-                infoLogger.accept("[DEBUG-RETRY] extractAndFinish: cancelled=true at entry for \"" + context.worldSlug + "\", calling finishCancelled");
                 finishCancelled(context);
                 return;
             }
@@ -281,18 +250,11 @@ public final class WorldRestoreService implements WorldRestoreHook {
             migratePostRestoreIfOldStyleKey(context.worldSlug);
 
             activeRestores.remove(context.worldSlug);
-            infoLogger.accept("[DEBUG-RETRY] extractAndFinish: Files.move succeeded, targetWorldFolder now exists="
-                    + Files.exists(targetWorldFolder) + ", isRealSaveFolder="
-                    + StaleSaveFolderHealer.isRealSaveFolder(targetWorldFolder)
-                    + " -- THIS is the on-disk state a retried beginRestore() will see for \"" + context.worldSlug + "\".");
             infoLogger.accept("Downloaded and restored world \"" + context.displayName + "\" from Steam Cloud.");
             context.listener.onComplete(context.worldSlug);
         } catch (IOException | RuntimeException e) {
             StaleSaveFolderHealer.deleteRecursively(stagingDirectory);
             activeRestores.remove(context.worldSlug);
-            infoLogger.accept("[DEBUG-RETRY] extractAndFinish: failed with exception, activeRestores entry removed for \""
-                    + context.worldSlug + "\", stagingDirectory deleted, targetWorldFolder exists="
-                    + Files.exists(targetWorldFolder));
             warningLogger.accept("Failed to restore world \"" + context.displayName + "\": " + e);
             context.listener.onFailed(context.worldSlug, "Failed to restore world: " + e.getMessage());
         }
@@ -356,8 +318,6 @@ public final class WorldRestoreService implements WorldRestoreHook {
     }
 
     private void finishCancelled(RestoreContext context) {
-        infoLogger.accept("[DEBUG-RETRY] finishCancelled: removing activeRestores entry and calling onFailed(\"Restore cancelled.\") for \""
-                + context.worldSlug + "\"");
         activeRestores.remove(context.worldSlug);
         context.listener.onFailed(context.worldSlug, "Restore cancelled.");
     }

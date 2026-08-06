@@ -1131,16 +1131,9 @@ public final class WorldsPanel {
         int playX = bounds[0], playW = bounds[1], editX = bounds[2], editW = bounds[3];
         WorldSyncStatusHook statusHook = WorldSyncStatusHookHolder.getOrNull();
         boolean blocked = statusHook != null && statusHook.isDownloadInProgress(cloudOnly.worldSlug());
-        de.lazuli.LazuliMod.LOGGER.info("[DEBUG-RETRY] handleCloudOnlyPillClick: worldSlug=\"" + cloudOnly.worldSlug()
-                + "\", statusHook=" + (statusHook != null) + ", isDownloadInProgress=" + blocked);
         if (mouseX >= playX && mouseX <= playX + playW && mouseY >= buttonY && mouseY <= buttonY + 18) {
-            de.lazuli.LazuliMod.LOGGER.info("[DEBUG-RETRY] handleCloudOnlyPillClick: \"Download & Play\" pill clicked for \""
-                    + cloudOnly.worldSlug() + "\", blocked=" + blocked);
             if (!blocked) {
                 downloadAndPlay(cloudOnly);
-            } else {
-                de.lazuli.LazuliMod.LOGGER.info("[DEBUG-RETRY] handleCloudOnlyPillClick: click SUPPRESSED (blocked=true) for \""
-                        + cloudOnly.worldSlug() + "\" -- downloadAndPlay() was NOT called.");
             }
             return true;
         }

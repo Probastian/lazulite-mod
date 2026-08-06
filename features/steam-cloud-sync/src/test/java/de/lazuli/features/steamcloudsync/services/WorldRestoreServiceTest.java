@@ -164,13 +164,15 @@ class WorldRestoreServiceTest {
     }
 
     @Test
-    void collisionWithExistingLocalWorldAbortsBeforeExtraction(@TempDir Path tempDir) throws IOException {
+    void retryAfterPriorRestoreReplacesExistingLocalFolderInsteadOfBlocking(@TempDir Path tempDir) throws IOException {
+        // cloud-sync-uuid-identity FR5.2/FR5.4: worldSlug is always the
+        // cloudWorldId, so a folder already present at exactly that path can
+        // only be a leftover from an earlier restore of this same cloud
+        // world (e.g. one that extracted fine but this device then failed to
+        // load, per the retry bug this guard used to cause) -- it must never
+        // permanently block a fresh re-download, even though it looks like a
+        // real, readable save (has a level.dat).
         Path savesDirectory = Files.createDirectory(tempDir.resolve("saves"));
-        // FR6.13: only a folder containing a readable level.dat counts as a
-        // real, previously-created save that must never be touched -- an
-        // empty directory at the same slug is a stale leftover instead (see
-        // staleNonSaveLocalFolderIsAutoHealedAndRestoreProceeds below), so
-        // this collision fixture must actually look like a real save.
         Path existingWorld = Files.createDirectory(savesDirectory.resolve("existing_world"));
         Files.writeString(existingWorld.resolve("level.dat"), "real save data");
 
@@ -184,10 +186,15 @@ class WorldRestoreServiceTest {
         RecordingListener listener = new RecordingListener();
         service.beginRestore("existing_world", "existing_world", listener);
 
+        // No archive was registered on the (fake) Cloud store for this slug,
+        // so the retry still fails overall -- but critically, it fails via
+        // the ordinary "not found on Steam Cloud" path (having already
+        // cleared the stale local folder to make way for a fresh download),
+        // never via the old "already exists" guard.
         assertThat(listener.failedSlug).isEqualTo("existing_world");
-        assertThat(listener.failureReason).contains("already exists");
+        assertThat(listener.failureReason).contains("was not found on Steam Cloud");
         assertThat(listener.completedSlug).isNull();
-        assertThat(existingWorld.resolve("level.dat")).exists();
+        assertThat(existingWorld.resolve("level.dat")).doesNotExist();
 
         worker.shutdown();
     }
