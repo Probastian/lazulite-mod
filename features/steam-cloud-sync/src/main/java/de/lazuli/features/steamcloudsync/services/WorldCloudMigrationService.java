@@ -358,11 +358,29 @@ public class WorldCloudMigrationService {
         }
     }
 
-    /** FR4.2: every {@code cloudWorldId} with {@code cloudMigrated=true} right now (renamed or not). */
+    /**
+     * FR4.2: every {@code cloudWorldId} with {@code cloudMigrated=true} right
+     * now (renamed or not) whose local save folder still actually exists on
+     * disk.
+     *
+     * <p>The breadcrumb file accumulates one entry per world this install has
+     * ever migrated and is never pruned when the corresponding local folder
+     * is later deleted (e.g. the player deletes the world, or it was only
+     * ever a stale/orphaned entry from earlier local testing). Without this
+     * existence check, such a stale entry permanently excludes its
+     * {@code cloudWorldId} from {@link CloudOnlyWorldsFacade}'s cloud-only
+     * list on this install forever, even though the world has no local
+     * presence at all anymore -- a false "known locally" signal.
+     */
     public synchronized Set<UUID> knownLocalCloudWorldIds() {
         Set<UUID> result = new java.util.LinkedHashSet<>();
-        for (BreadcrumbState state : breadcrumbs.values()) {
-            if (state.cloudMigrated) {
+        for (Map.Entry<String, BreadcrumbState> entry : breadcrumbs.entrySet()) {
+            BreadcrumbState state = entry.getValue();
+            if (!state.cloudMigrated) {
+                continue;
+            }
+            String expectedFolderName = state.renamed ? state.cloudWorldId.toString() : entry.getKey();
+            if (Files.exists(savesDirectory.resolve(expectedFolderName))) {
                 result.add(state.cloudWorldId);
             }
         }

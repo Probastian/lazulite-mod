@@ -37,18 +37,29 @@ class WorldSaveSyncServiceTest {
      * compute the expected key via this same {@code fakeMigrationService()}.
      */
     private static WorldCloudMigrationService fakeMigrationService() {
+        // Mirrors the real service's breadcrumb bookkeeping: once
+        // resolveCloudWorldId(slug) has minted a cloudWorldId for a slug,
+        // existingCloudWorldId(slug) finds that same breadcrumb and returns
+        // it, just as the real (persisted-to-disk) breadcrumb map would --
+        // this fake keeps that same breadcrumb in memory instead.
+        Map<String, java.util.UUID> resolved = new HashMap<>();
         return Mockito.mock(WorldCloudMigrationService.class, invocation -> {
             String methodName = invocation.getMethod().getName();
             if ("resolveCloudWorldId".equals(methodName)) {
                 String slug = invocation.getArgument(0);
-                return java.util.UUID.nameUUIDFromBytes(slug.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                try {
+                    return java.util.UUID.fromString(slug);
+                } catch (IllegalArgumentException e) {
+                    return resolved.computeIfAbsent(slug,
+                            s -> java.util.UUID.nameUUIDFromBytes(s.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+                }
             }
             if ("existingCloudWorldId".equals(methodName)) {
                 String slug = invocation.getArgument(0);
                 try {
                     return Optional.of(java.util.UUID.fromString(slug));
                 } catch (IllegalArgumentException e) {
-                    return Optional.empty();
+                    return Optional.ofNullable(resolved.get(slug));
                 }
             }
             if ("knownLocalCloudWorldIds".equals(methodName)) {
@@ -56,6 +67,25 @@ class WorldSaveSyncServiceTest {
             }
             return Mockito.RETURNS_DEFAULTS.answer(invocation);
         });
+    }
+
+    /**
+     * Mirrors {@link #fakeMigrationService()}'s {@code resolveCloudWorldId}
+     * stand-in (name-derived UUID from the raw slug), so assertions can
+     * compute the actual Cloud key a slug resolves to under the
+     * cloud-sync-uuid-identity feature instead of asserting the old,
+     * pre-migration slug-keyed literal.
+     */
+    private static String resolvedCloudWorldId(String slug) {
+        return java.util.UUID.nameUUIDFromBytes(slug.getBytes(java.nio.charset.StandardCharsets.UTF_8)).toString();
+    }
+
+    private static String cloudArchiveFileName(String slug) {
+        return WorldSaveSyncService.archiveFileName(resolvedCloudWorldId(slug));
+    }
+
+    private static String cloudMetadataFileName(String slug) {
+        return WorldSaveSyncService.metadataFileName(resolvedCloudWorldId(slug));
     }
 
     /**
@@ -230,12 +260,12 @@ class WorldSaveSyncServiceTest {
         service.syncWorldNow("my_world", worldFolder, "My World");
         worker.pumpTickWork();
 
-        assertThat(archiveStore.archives).containsKey("lazuli-world-my_world.zip");
+        assertThat(archiveStore.archives).containsKey(cloudArchiveFileName("my_world"));
         assertThat(cloudFileStore.files).containsKey("lazuli-world-fingerprints.json");
         // The fingerprint update is now RAM-only (never persisted to disk, per the
         // no-on-disk-cloud-state-cache design) -- verify via the in-memory cache
         // instead of a local file.
-        assertThat(fingerprintCache.entries()).anyMatch(entry -> entry.worldSlug().equals("my_world"));
+        assertThat(fingerprintCache.entries()).anyMatch(entry -> entry.worldSlug().equals(resolvedCloudWorldId("my_world")));
     }
 
     @Test
@@ -336,7 +366,7 @@ class WorldSaveSyncServiceTest {
         service.syncWorldNow("my_world", worldFolder, "My World");
         worker.pumpTickWork();
 
-        assertThat(warnings).anyMatch(message -> message.contains("Steam Cloud quota check failed") && message.contains("my_world"));
+        assertThat(warnings).anyMatch(message -> message.contains("Steam Cloud quota check failed") && message.contains(resolvedCloudWorldId("my_world")));
     }
 
     @Test
@@ -363,7 +393,7 @@ class WorldSaveSyncServiceTest {
         worker.pumpTickWork();
 
         assertThat(warnings).anyMatch(message -> message.contains("Cloud quota still insufficient")
-                && message.contains("new_world") && message.contains("evicting 0 older world(s)"));
+                && message.contains(resolvedCloudWorldId("new_world")) && message.contains("evicting 0 older world(s)"));
     }
 
     @Test
@@ -421,7 +451,7 @@ class WorldSaveSyncServiceTest {
         worker.pumpTickWork();
 
         assertThat(archiveStore.archives).doesNotContainKey("lazuli-world-old_world.zip");
-        assertThat(archiveStore.archives).containsKey("lazuli-world-new_world.zip");
+        assertThat(archiveStore.archives).containsKey(cloudArchiveFileName("new_world"));
         assertThat(notifications).anyMatch(message -> message.contains("Old World"));
     }
 
@@ -603,7 +633,7 @@ class WorldSaveSyncServiceTest {
         service.syncWorldNow("my_world", worldFolder, "My World");
         worker.pumpTickWork();
 
-        byte[] level9Archive = archiveStore.archives.get("lazuli-world-my_world.zip");
+        byte[] level9Archive = archiveStore.archives.get(cloudArchiveFileName("my_world"));
         assertThat(level9Archive).isNotNull();
 
         // Equivalent archive built at the previous default Deflater level (6), for comparison.
@@ -623,7 +653,10 @@ class WorldSaveSyncServiceTest {
                 new WorldRestoreService(archiveStore, preferenceService, worker, savesDirectory, w -> { }, m -> { }, fakeMigrationService());
         java.util.concurrent.CountDownLatch done = new java.util.concurrent.CountDownLatch(1);
         String[] failureReason = new String[1];
-        restoreService.beginRestore("my_world", "My World", new de.lazuli.api.cloudsync.RestoreProgressListener() {
+        // cloud-sync-uuid-identity FR5.2/FR5.4: WorldRestoreService#beginRestore's
+        // worldSlug parameter is always the already-resolved cloudWorldId (a UUID
+        // string), not the raw local folder slug -- see its Javadoc.
+        restoreService.beginRestore(resolvedCloudWorldId("my_world"), "My World", new de.lazuli.api.cloudsync.RestoreProgressListener() {
             @Override
             public void onProgress(de.lazuli.api.cloudsync.RestoreProgress progress) {
             }
@@ -642,7 +675,7 @@ class WorldSaveSyncServiceTest {
 
         assertThat(done.await(5, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
         assertThat(failureReason[0]).isNull();
-        assertThat(Files.readString(savesDirectory.resolve("my_world").resolve("level.dat"))).isEqualTo(content);
+        assertThat(Files.readString(savesDirectory.resolve(resolvedCloudWorldId("my_world")).resolve("level.dat"))).isEqualTo(content);
 
         worker.shutdown();
     }
@@ -934,7 +967,7 @@ class WorldSaveSyncServiceTest {
         Files.setLastModifiedTime(file, java.nio.file.attribute.FileTime.fromMillis(1_000L));
         WorldFingerprintCache fingerprintCache = new WorldFingerprintCache();
         WorldFingerprintCacheTestHelper.seed(fingerprintCache,
-                "my_world", "My World", "test-device", 5_000L);
+                resolvedCloudWorldId("my_world"), "My World", "test-device", 5_000L);
 
         FakeWorldArchiveCloudStore archiveStore = new FakeWorldArchiveCloudStore();
         FakeCloudFileStore cloudFileStore = new FakeCloudFileStore();
@@ -963,7 +996,7 @@ class WorldSaveSyncServiceTest {
         Files.setLastModifiedTime(file, java.nio.file.attribute.FileTime.fromMillis(10_000L));
         WorldFingerprintCache fingerprintCache = new WorldFingerprintCache();
         WorldFingerprintCacheTestHelper.seed(fingerprintCache,
-                "my_world", "My World", "test-device", 5_000L);
+                resolvedCloudWorldId("my_world"), "My World", "test-device", 5_000L);
 
         FakeWorldArchiveCloudStore archiveStore = new FakeWorldArchiveCloudStore();
         FakeCloudFileStore cloudFileStore = new FakeCloudFileStore();
@@ -1259,7 +1292,7 @@ class WorldSaveSyncServiceTest {
         service.syncWorldNow("my_world", worldFolder, "My World");
         worker.pumpTickWork();
 
-        assertThat(Files.readString(ancestorCachePath)).contains("my_world").contains("test-device");
+        assertThat(Files.readString(ancestorCachePath)).contains(resolvedCloudWorldId("my_world")).contains("test-device");
     }
 
     @Test
@@ -1512,7 +1545,7 @@ class WorldSaveSyncServiceTest {
 
         assertThat(statusTracker.hasPendingConflict("my_world")).isFalse();
         assertThat(statusTracker.isConflictCheckPending("my_world")).isFalse();
-        assertThat(archiveStore.archives).containsKey("lazuli-world-my_world.zip");
+        assertThat(archiveStore.archives).containsKey(cloudArchiveFileName("my_world"));
     }
 
     @Test
@@ -1687,10 +1720,10 @@ class WorldSaveSyncServiceTest {
         service.syncWorldNow("my_world", worldFolder, "My World", batch);
         worker.pumpTickWork();
 
-        assertThat(cloudFileStore.files).containsKey(WorldSaveSyncService.metadataFileName("my_world"));
+        assertThat(cloudFileStore.files).containsKey(cloudMetadataFileName("my_world"));
         Optional<de.lazuli.features.steamcloudsync.api.WorldCloudMetadata> metadata = service.cloudMetadataFor("my_world");
         assertThat(metadata).isPresent();
-        assertThat(metadata.get().worldSlug()).isEqualTo("my_world");
+        assertThat(metadata.get().worldSlug()).isEqualTo(resolvedCloudWorldId("my_world"));
         assertThat(metadata.get().minecraftVersion()).isEqualTo("1.21.11");
         assertThat(metadata.get().seed()).isEqualTo(42L);
         assertThat(metadata.get().difficulty()).isEqualTo("Normal");
@@ -1718,9 +1751,9 @@ class WorldSaveSyncServiceTest {
         service.syncWorldNow("big_world", worldFolder, "Big World");
         worker.pumpTickWork();
 
-        assertThat(archiveStore.archives).doesNotContainKey("lazuli-world-big_world.zip");
+        assertThat(archiveStore.archives).doesNotContainKey(cloudArchiveFileName("big_world"));
         // Requirement 3: the metadata file uploads even though the archive itself was SKIPPED.
-        assertThat(cloudFileStore.files).containsKey(WorldSaveSyncService.metadataFileName("big_world"));
+        assertThat(cloudFileStore.files).containsKey(cloudMetadataFileName("big_world"));
         Optional<de.lazuli.features.steamcloudsync.api.WorldCloudMetadata> metadata = service.cloudMetadataFor("big_world");
         assertThat(metadata).isPresent();
         // Resolved decision: contentSignature is computed unconditionally, even for a

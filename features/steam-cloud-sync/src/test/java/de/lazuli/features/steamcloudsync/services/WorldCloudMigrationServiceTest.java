@@ -254,6 +254,59 @@ class WorldCloudMigrationServiceTest {
         assertThat(service.knownLocalCloudWorldIds()).containsExactly(cloudWorldId);
     }
 
+    @Test
+    void knownLocalCloudWorldIdsExcludesStaleEntryWhoseLocalFolderNoLongerExists(@TempDir Path tempDir) throws Exception {
+        Path oldFolder = Files.createDirectory(tempDir.resolve("New World"));
+        Files.writeString(oldFolder.resolve("level.dat"), "data");
+        FakeWorldArchiveCloudStore archiveStore = new FakeWorldArchiveCloudStore();
+        FakeCloudFileStore cloudFileStore = new FakeCloudFileStore();
+        WorldFingerprintCache fingerprintCache = new WorldFingerprintCache();
+        WorldSyncPreferenceService preferenceService = newPreferenceService(tempDir);
+        WorldCloudMigrationService service = newService(tempDir, archiveStore, cloudFileStore, fingerprintCache, preferenceService);
+
+        UUID cloudWorldId = service.resolveCloudWorldId("New World");
+        service.runPendingRenames();
+        assertThat(service.knownLocalCloudWorldIds()).containsExactly(cloudWorldId);
+
+        // The renamed local folder (named after cloudWorldId) is deleted --
+        // e.g. the player deleted the world -- but the breadcrumb entry
+        // itself is never pruned.
+        Files.delete(tempDir.resolve(cloudWorldId.toString()).resolve("level.dat"));
+        Files.delete(tempDir.resolve(cloudWorldId.toString()));
+
+        assertThat(service.knownLocalCloudWorldIds()).isEmpty();
+    }
+
+    /**
+     * Reproduces the confirmed live-test cross-install bug report: two
+     * separate installs (simulated here by two independent temp directories,
+     * each with its own breadcrumb file and saves directory) must never leak
+     * "known locally migrated" state to each other. Install A resolving/
+     * migrating a world must not cause install B's
+     * {@link WorldCloudMigrationService#knownLocalCloudWorldIds()} to report
+     * that same {@code cloudWorldId} -- install B never downloaded or
+     * touched that world locally at all.
+     */
+    @Test
+    void knownLocalCloudWorldIdsDoesNotLeakBetweenSeparateInstalls(@TempDir Path installADir, @TempDir Path installBDir) throws Exception {
+        Path oldFolderA = Files.createDirectory(installADir.resolve("New World"));
+        Files.writeString(oldFolderA.resolve("level.dat"), "data");
+        WorldCloudMigrationService serviceA = newService(installADir, new FakeWorldArchiveCloudStore(), new FakeCloudFileStore(),
+                new WorldFingerprintCache(), newPreferenceService(installADir));
+
+        UUID cloudWorldId = serviceA.resolveCloudWorldId("New World");
+        serviceA.runPendingRenames();
+        assertThat(serviceA.knownLocalCloudWorldIds()).containsExactly(cloudWorldId);
+
+        // Install B: entirely separate directories, never touched this world.
+        WorldCloudMigrationService serviceB = newService(installBDir, new FakeWorldArchiveCloudStore(), new FakeCloudFileStore(),
+                new WorldFingerprintCache(), newPreferenceService(installBDir));
+        serviceB.load();
+
+        assertThat(serviceB.knownLocalCloudWorldIds()).doesNotContain(cloudWorldId);
+        assertThat(serviceB.knownLocalCloudWorldIds()).isEmpty();
+    }
+
     private static WorldSyncPreferenceService newPreferenceService(Path tempDir) {
         WorldSyncPreferenceService service =
                 new WorldSyncPreferenceService(tempDir.resolve("world-sync-preferences.json"), w -> { });

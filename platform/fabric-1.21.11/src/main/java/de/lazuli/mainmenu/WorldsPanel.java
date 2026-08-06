@@ -504,10 +504,26 @@ public final class WorldsPanel {
     }
 
     /** FX3.1: "+ Create New World" is only visible while the Worlds tab is the active one. */
+    /**
+     * Bug fix (worlds-tab-refresh-on-sync-completion): a download or upload
+     * can finish entirely in the background -- e.g. an auto-upload triggered
+     * while the player is browsing another tab, or a cloud-only "Download"
+     * pill's screen-less restore -- with nothing else forcing this panel's
+     * per-world sync/freshness caches to catch up before the player next
+     * looks at this tab. Refreshing them here, every time this tab becomes
+     * the active one, is the cheapest existing hook that guarantees the row
+     * the player is about to see is never stale, without paying
+     * {@link #reload()}'s full icon-cache invalidation and level-summary
+     * reload cost on every tab switch.
+     */
     public void setTabActive(boolean active) {
         this.tabActive = active;
         if (createButton != null) {
             createButton.visible = active;
+        }
+        if (active) {
+            refreshFreshnessCache();
+            refreshCloudOnlyWorlds();
         }
     }
 
@@ -535,7 +551,7 @@ public final class WorldsPanel {
         // device had zero local saves (exactly the "different instance, no
         // worlds appear" report this fixes). Only the local-entries loop
         // itself is skipped now; cloud-only rendering always still runs.
-        if (entries.isEmpty()) {
+        if (entries.isEmpty() && cloudOnlyWorlds.isEmpty()) {
             context.drawText(font, Text.literal("No saved worlds yet."), leftX, rowY, 0xFF908C7F, false);
             rowY += 14;
         }
@@ -1286,6 +1302,12 @@ public final class WorldsPanel {
                 LazuliMod.LOGGER.warn("Background-only download of cloud-only world \"" + worldSlug + "\" failed: " + reason);
                 downloadOnlyStatusMessage = "Download failed: " + RestoreFailureMessages.toPlayerMessage(reason);
                 downloadOnlyStatusSetAtMillis = System.currentTimeMillis();
+                // Bug fix (worlds-tab-refresh-on-sync-completion): the
+                // success branch above already reload()s; the failure branch
+                // previously only set a transient status line and left the
+                // stale download-in-progress row state uncleared from the
+                // list's perspective until some unrelated reload happened.
+                reload();
             }
         });
     }

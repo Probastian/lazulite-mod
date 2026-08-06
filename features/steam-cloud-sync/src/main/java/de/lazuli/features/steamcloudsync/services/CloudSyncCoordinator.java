@@ -165,7 +165,8 @@ public final class CloudSyncCoordinator {
         this.worldRestoreService = new WorldRestoreService(
                 archiveStore, worldSyncPreferenceService, worker, savesDirectory, warningLogger, playerNotifier,
                 worldCloudMigrationService);
-        this.cloudOnlyWorldsFacade = new CloudOnlyWorldsFacade(fingerprintCache, worldSaveSyncService, worldCloudMigrationService);
+        this.cloudOnlyWorldsFacade = new CloudOnlyWorldsFacade(fingerprintCache, worldSaveSyncService, worldCloudMigrationService,
+                playerNotifier);
         this.cloudSyncableUploadGate = new CloudSyncableUploadGate(
                 featureConfigDir.resolve("cloudsyncable-upload-state.json"), warningLogger);
 

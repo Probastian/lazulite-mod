@@ -785,9 +785,11 @@ public final class WorldSaveSyncService implements WorldFreshnessHook, WorldConf
     public void pullFingerprints() {
         Optional<byte[]> bytesRead = cloudFileStore.read(FINGERPRINT_CLOUD_FILE_NAME);
         if (bytesRead.isEmpty()) {
-            warningLogger.accept("pullFingerprints: no \"" + FINGERPRINT_CLOUD_FILE_NAME
-                    + "\" found on Steam Cloud (or it read as empty) -- cloud-only-world detection will see 0 entries "
-                    + "this process lifetime until a successful pull.");
+            // No fingerprint file on Cloud yet (fresh installation, Steam
+            // unavailable, or nothing has ever been synced) is an expected,
+            // routine state -- not an internal failure -- so warningLogger
+            // (reserved for actual failures; see the constructor Javadoc)
+            // stays silent here.
             return;
         }
         WorldFingerprintIO.ParseResult result = fingerprintIO.parse(new String(bytesRead.get(), StandardCharsets.UTF_8));
@@ -795,8 +797,6 @@ public final class WorldSaveSyncService implements WorldFreshnessHook, WorldConf
             warningLogger.accept(result.warning());
         }
         fingerprintCache.replaceAll(result.entries());
-        warningLogger.accept("pullFingerprints: loaded " + result.entries().size() + " fingerprint(s) from Steam Cloud: "
-                + result.entries().stream().map(WorldFingerprint::worldSlug).toList());
     }
 
     /**
@@ -973,7 +973,8 @@ public final class WorldSaveSyncService implements WorldFreshnessHook, WorldConf
      *         that failed independently of the archive upload) -- never throws
      */
     public Optional<WorldCloudMetadata> cloudMetadataFor(String worldSlug) {
-        return cloudFileStore.read(metadataFileName(worldSlug)).flatMap(bytes -> {
+        String cloudWorldId = resolveForRead(worldSlug);
+        return cloudFileStore.read(metadataFileName(cloudWorldId)).flatMap(bytes -> {
             WorldCloudMetadataIO.ParseResult result = metadataIO.parse(new String(bytes, StandardCharsets.UTF_8));
             if (result.warning() != null) {
                 warningLogger.accept(result.warning());

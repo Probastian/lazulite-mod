@@ -90,7 +90,8 @@ class CloudOnlyWorldsFacadeTest {
 
         WorldCloudMigrationService migrationService = newMigrationService(tempDir, cloudFileStore, fingerprintCache);
         WorldSaveSyncService worldSaveSyncService = newService(tempDir, cloudFileStore, fingerprintCache, migrationService);
-        CloudOnlyWorldsFacade facade = new CloudOnlyWorldsFacade(fingerprintCache, worldSaveSyncService, migrationService);
+        CloudOnlyWorldsFacade facade = new CloudOnlyWorldsFacade(fingerprintCache, worldSaveSyncService, migrationService,
+                message -> { });
 
         List<CloudOnlyWorldSummary> result = facade.listCloudOnlyWorlds(List.of());
 
@@ -114,7 +115,8 @@ class CloudOnlyWorldsFacadeTest {
         FakeCloudFileStore cloudFileStore = new FakeCloudFileStore();
         WorldCloudMigrationService migrationService = newMigrationService(tempDir, cloudFileStore, fingerprintCache);
         WorldSaveSyncService worldSaveSyncService = newService(tempDir, cloudFileStore, fingerprintCache, migrationService);
-        CloudOnlyWorldsFacade facade = new CloudOnlyWorldsFacade(fingerprintCache, worldSaveSyncService, migrationService);
+        CloudOnlyWorldsFacade facade = new CloudOnlyWorldsFacade(fingerprintCache, worldSaveSyncService, migrationService,
+                message -> { });
 
         List<CloudOnlyWorldSummary> result = facade.listCloudOnlyWorlds(List.of());
 
