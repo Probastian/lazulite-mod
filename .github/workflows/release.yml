@@ -133,7 +133,7 @@ jobs:
 
       - name: build
         if: steps.version.outputs.bump_detected == 'true'
-        run: ./gradlew build
+        run: ./gradlew build -Pmod_version=${{ steps.version.outputs.version }}
 
       - name: stage release jars
         if: steps.version.outputs.bump_detected == 'true'
