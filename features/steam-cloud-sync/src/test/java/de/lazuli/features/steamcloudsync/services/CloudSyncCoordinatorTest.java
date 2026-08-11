@@ -118,5 +118,17 @@ class CloudSyncCoordinatorTest {
         assertThat(coordinator.notesService().list()).hasSize(1);
         assertThat(coordinator.worldSyncPreferenceService().isSyncEnabled("my_world")).isTrue();
         assertThat(coordinator.cloudOnlyWorldsFacade().listCloudOnlyWorlds(List.of())).isEmpty();
+
+        // toggleSync("my_world") above fires the onSyncEnabledListener, which
+        // submits work to CloudSyncCoordinator's background CloudSyncWorker
+        // (handleSyncReenabled -> resolveCloudWorldId -> persistLocked(),
+        // writing world-cloud-migration.json under tempDir). Without waiting
+        // for that worker to finish, this write can race JUnit's @TempDir
+        // cleanup after the test method returns, intermittently surfacing as
+        // a JUnitException wrapping an IOException. syncOnShutdown() calls
+        // CloudSyncWorker#shutdown(), which awaits in-flight background work
+        // before returning -- matching every other test in this class that
+        // exercises the background worker.
+        coordinator.syncOnShutdown();
     }
 }
