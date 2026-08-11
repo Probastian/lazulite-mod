@@ -88,12 +88,12 @@ the exact Fabric API event names for FR4.2/FR6.2, and the exact steamworks4j
 - steamworks4j 1.10.0 is already the pinned version repo-wide
   (`gradle.properties:41`, `services/build.gradle`), already resolved in this
   repo's Gradle cache
-  (`C:\Users\duckb\.gradle\caches\modules-2\files-2.1\com.code-disaster.steamworks4j\steamworks4j\1.10.0\...\steamworks4j-1.10.0.jar`,
+  (`C:\Users\<username>\.gradle\caches\modules-2\files-2.1\com.code-disaster.steamworks4j\steamworks4j\1.10.0\...\steamworks4j-1.10.0.jar`,
   plus its `-sources.jar`/`-javadoc.jar`). This plan introduces **no new
   external Maven dependency** — see Dependencies.
 - The real, resolved Minecraft jars for all three supported versions are
   already present in this machine's Gradle/Loom cache (confirmed via `Glob`,
-  not assumed): `C:\Users\duckb\.gradle\caches\fabric-loom\minecraftMaven\net\minecraft\minecraft-merged-deobf\26.2\minecraft-merged-deobf-26.2.jar`
+  not assumed): `C:\Users\<username>\.gradle\caches\fabric-loom\minecraftMaven\net\minecraft\minecraft-merged-deobf\26.2\minecraft-merged-deobf-26.2.jar`
   and the `26.1` equivalent (Mojang-mapped, unobfuscated), and
   `...\minecraft-merged\1.21.11-net.fabricmc.yarn.1_21_11.1.21.11+build.6-v2\...jar`
   (Yarn-mapped) for 1.21.11. **This planning pass had no Bash/decompiler/`javap`

@@ -32,19 +32,39 @@ and cloud features.
 - `platform/fabric-26.1`
 - `platform/fabric-1.21.11`
 
+## Requirements
+
+- JDK 21 (root project toolchain) — the `platform/fabric-26.1` and
+  `platform/fabric-26.2` modules additionally require JDK 25, resolved
+  automatically via the Gradle toolchain resolver as long as a JDK 25 is
+  available (Gradle will provision one if none is found locally).
+- The Foojay toolchain resolver plugin (declared in `settings.gradle`)
+  handles JDK provisioning, so a manually installed matching JDK isn't
+  required.
+
 ## Quick start
 
-Build the project:
+Build the whole project:
 
 ```powershell
 ./gradlew build
 ```
 
-Run the Fabric client:
+Run the Fabric client for a specific supported Minecraft version:
 
 ```powershell
 ./gradlew :platform:fabric-26.2:runClient
+./gradlew :platform:fabric-26.1:runClient
+./gradlew :platform:fabric-1.21.11:runClient
 ```
+
+This launches a development Minecraft client with the mod loaded. First run
+downloads and deobfuscates the relevant Minecraft/Fabric artifacts, so it
+will take longer than subsequent runs.
+
+Each platform module also has a matching `runServer` task (e.g.
+`./gradlew :platform:fabric-26.2:runServer`) for launching a development
+dedicated server with the mod loaded.
 
 ## License
 

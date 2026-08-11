@@ -21,7 +21,7 @@ and the first to touch Minecraft's own networking stack (`Connection`,
 
 **Prior art.** A working, single-Minecraft-version (Mojang-mapped only)
 prototype of this exact mechanism exists at
-`C:\Users\duckb\Documents\Coding\Minecraft Modding\steamshare_client_mod`
+`C:\Users\<username>\Documents\Coding\Minecraft Modding\steamshare_client_mod`
 (package `com.example.steamshare`, mod id `steamshare`), later broken by an
 in-progress refactor. This spec reverse-engineers that prototype's proven
 design (Architecture, Networking) and explicitly calls out where this
