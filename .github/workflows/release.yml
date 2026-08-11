@@ -160,7 +160,7 @@ jobs:
                   continue
                   ;;
               esac
-              cp "$jar" "release-staging/${module}-${base}"
+              cp "$jar" "release-staging/${base}"
             done
           done
 
