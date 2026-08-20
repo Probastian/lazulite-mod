@@ -276,6 +276,21 @@ public final class WorldsPanel {
 
     /** Package-private so a completed/cancelled {@code WorldRestoreScreen} (FR-E.5) can refresh this tab's list on return. */
     void reload() {
+        // Join/keepalive-timeout diagnosis fix: vanilla's own
+        // levelSource.loadLevelSummaries() below spawns ForkJoinPool workers
+        // that call DirectoryLock.isLocked() on every save folder, including
+        // whichever one the integrated server currently owns -- throwing
+        // OverlappingFileLockException and contending for disk I/O right as
+        // a world is joined. Same class of bug as the leaked-LevelStorageAccess
+        // fix in editWorld() below (a still-held lock racing this same
+        // reload() call); the fix here is to simply not reload while a
+        // world is currently loaded/loading, since this panel isn't visible
+        // during an active session anyway -- the next real return-to-main-menu
+        // reload() picks up whatever changed.
+        if (Minecraft.getInstance().hasSingleplayerServer()) {
+            loading = false;
+            return;
+        }
         // Proactive-stale-save-folder-healing FR3: scans the whole saves
         // directory (not just one restore's target slug) before the async
         // summary load kicks off, so a freshly-healed folder never renders a

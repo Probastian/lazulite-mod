@@ -274,6 +274,19 @@ public final class WorldSaveSyncService implements WorldFreshnessHook, WorldConf
             if (statusTracker.hasPendingConflict(world.worldSlug())) {
                 continue;
             }
+            // Join/keepalive-timeout diagnosis fix: don't race the
+            // integrated server for this world's session.lock -- if it's
+            // already held, the player is (or is about to be) actively
+            // loading this exact world right now. Skip this checkpoint's
+            // scan of it entirely rather than contending for disk I/O
+            // during the join; a future startup (or the normal
+            // onWorldSaved/onWorldUnload triggers once this session ends)
+            // will pick it up.
+            if (isWorldFolderLocked(world.worldFolder())) {
+                warningLogger.accept("Skipping FR-T.2 startup stale-upload check for world \"" + world.worldSlug()
+                        + "\": its session.lock is currently held (likely being loaded).");
+                continue;
+            }
             if (isLocallyStale(world.worldSlug(), world.worldFolder())) {
                 statusTracker.markUploadPending(world.worldSlug());
                 // cloud-world-metadata-file gap fix: left on the sentinel
@@ -925,7 +938,7 @@ public final class WorldSaveSyncService implements WorldFreshnessHook, WorldConf
         }
         List<Path> files = new ArrayList<>();
         try (Stream<Path> stream = Files.walk(worldFolder)) {
-            stream.filter(Files::isRegularFile).forEach(files::add);
+            stream.filter(Files::isRegularFile).filter(WorldSaveSyncService::isNotSessionLock).forEach(files::add);
         }
         files.sort(Comparator.comparing(Path::toString));
         for (Path file : files) {
@@ -1082,7 +1095,8 @@ public final class WorldSaveSyncService implements WorldFreshnessHook, WorldConf
         try (ZipOutputStream zip = new ZipOutputStream(buffer)) {
             zip.setLevel(Deflater.BEST_COMPRESSION);
             try (Stream<Path> stream = Files.walk(worldFolder)) {
-                for (Path path : (Iterable<Path>) stream.filter(Files::isRegularFile)::iterator) {
+                for (Path path : (Iterable<Path>) stream.filter(Files::isRegularFile)
+                        .filter(WorldSaveSyncService::isNotSessionLock)::iterator) {
                     addZipEntry(zip, worldFolder, path);
                 }
             }
@@ -1095,6 +1109,67 @@ public final class WorldSaveSyncService implements WorldFreshnessHook, WorldConf
         zip.putNextEntry(new ZipEntry(entryName));
         Files.copy(file, zip);
         zip.closeEntry();
+    }
+
+    /**
+     * Join/keepalive-timeout diagnosis fix: {@code session.lock} is the
+     * integrated server's own live directory-lock file, rewritten every time
+     * a world is loaded -- it is never meaningful world content, so it must
+     * be excluded from both the content-identity hash
+     * ({@link #computeContentSignature}) and the backup archive
+     * ({@link #buildWholeArchive}), same as any standard Minecraft world
+     * backup tool already does. Reading its bytes via {@code
+     * Files.readAllBytes}/{@code Files.copy} while the integrated server
+     * holds its own exclusive OS-level lock on this same file is exactly the
+     * disk I/O contention that was racing a world join.
+     */
+    private static boolean isNotSessionLock(Path file) {
+        return !file.getFileName().toString().equals("session.lock");
+    }
+
+    /**
+     * Join/keepalive-timeout diagnosis fix: a best-effort, non-blocking probe
+     * for whether {@code worldFolder}'s {@code session.lock} is currently
+     * held -- mirrors vanilla's own {@code DirectoryLock} probe (open the
+     * file, attempt a non-blocking {@code tryLock()}) using only {@code
+     * java.nio.channels} so this Minecraft-type-free service never needs a
+     * dependency on {@code LevelStorageSource}/{@code DirectoryLock}. Used
+     * only by {@link #checkAndUploadStaleWorldsAtStartup} -- the one
+     * checkpoint where the world being scanned might, at that exact moment,
+     * already be the one the player just started loading. Deliberately not
+     * used by {@link #syncWorldNow}'s other callers ({@code onWorldSaved}
+     * legitimately runs against this same session's own held lock on the
+     * currently loaded world; {@code onWorldUnload} only fires once that
+     * lock has already been released).
+     *
+     * @return {@code true} if the lock could not be acquired (held by this
+     *         or another process) or its state could not be determined;
+     *         {@code false} if no {@code session.lock} exists yet or it was
+     *         acquired and immediately released
+     */
+    private static boolean isWorldFolderLocked(Path worldFolder) {
+        Path lockFile = worldFolder.resolve("session.lock");
+        if (!Files.isRegularFile(lockFile)) {
+            return false;
+        }
+        try (java.nio.channels.FileChannel channel =
+                java.nio.channels.FileChannel.open(lockFile, java.nio.file.StandardOpenOption.WRITE)) {
+            java.nio.channels.FileLock lock = channel.tryLock();
+            if (lock == null) {
+                return true;
+            }
+            lock.release();
+            return false;
+        } catch (java.nio.channels.OverlappingFileLockException e) {
+            // Java file locks are JVM-wide, not per-FileChannel -- this is
+            // the common case for the integrated server's own lock, held by
+            // a different FileChannel in this same client process.
+            return true;
+        } catch (IOException e) {
+            // Unreadable/unlockable is treated the same as locked: safer to
+            // skip this world's sync than to race whatever is holding it.
+            return true;
+        }
     }
 
     private void checkFingerprintForConflict(String worldSlug, String displayName) {
