@@ -57,7 +57,7 @@ abstract class ClientPlayerEntityFreecamKeepPositionSyncMixin {
 
     @Redirect(method = "sendMovementPackets", at = @At(value = "INVOKE",
             target = "Lnet/minecraft/client/network/ClientPlayerEntity;isCamera()Z"))
-    private boolean lazuli$forcePositionSyncDuringFreecam() {
+    private boolean lazuli$forcePositionSyncDuringFreecam(ClientPlayerEntity player) {
         return this.isCamera() || TweakEngineHandoff.require().isFreecamActive();
     }
 }
