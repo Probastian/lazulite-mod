@@ -52,6 +52,7 @@ public final class TweaksClientInitializer implements ClientModInitializer {
         de.lazuli.tweaks.TweakEngineHandoff.publish(hooks);
         de.lazuli.tweaks.ZoomTicker.register(keyBindings, hooks);
         de.lazuli.tweaks.TweaksToggleTicker.register(keyBindings, registry);
+        de.lazuli.tweaks.FreecamTicker.register(keyBindings, hooks, registry);
 
         TweakRegistryHandoff.publish(new TweaksBundle(registry, keyBindings));
     }

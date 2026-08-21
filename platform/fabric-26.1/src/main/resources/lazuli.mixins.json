@@ -23,7 +23,10 @@
 		"WaterFogEnvironmentClearWaterMixin",
 		"BossHealthOverlayDisableBossBarsMixin",
 		"GuiCustomCrosshairMixin",
-		"ChatComponentChatFilterMixin"
+		"ChatComponentChatFilterMixin",
+		"WeatherEffectRendererNoRainMixin",
+		"LevelRendererFreecamShowBodyMixin",
+		"MinecraftFreecamSuppressInteractionMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1

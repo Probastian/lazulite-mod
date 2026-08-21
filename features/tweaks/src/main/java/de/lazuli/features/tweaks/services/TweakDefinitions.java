@@ -109,10 +109,18 @@ public final class TweakDefinitions {
             "Hides boss bars, either entirely or for a whitelist/blacklist.",
             map("mode", "ALL", "list", List.of()), false);
 
+    public static final TweakDefinition NO_RAIN = of(TweakId.NO_RAIN,
+            "Suppresses rain/snow precipitation rendering and its ambient sound, leaving lightning untouched.",
+            map("includeSnow", true, "includeSound", true), false);
+
+    public static final TweakDefinition FREECAM = of(TweakId.FREECAM,
+            "Toggles a detached, free-flying spectator-style camera with configurable speed and block noclip.",
+            map("moveSpeed", 1.0, "sprintMultiplier", 2.0, "noclip", true, "showOwnBody", true), false);
+
     public static final List<TweakDefinition> ALL = List.of(
             ANTI_DROP, FORCE_BRIGHTNESS, CHAT_FILTER, CHAT_PLAYER_HEADS, CUSTOM_CROSSHAIR,
             DISABLE_ANIMATIONS, DISABLE_PARTICLES, HIDE_PLAYER_NAMES, CLEAR_WATER,
-            DISABLE_COSMETICS, ZOOM, DISABLE_BOSS_BARS);
+            DISABLE_COSMETICS, ZOOM, DISABLE_BOSS_BARS, NO_RAIN, FREECAM);
 
     public static TweakDefinition byId(TweakId id) {
         for (TweakDefinition def : ALL) {

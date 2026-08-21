@@ -48,9 +48,9 @@ class TweakRegistryTest {
     }
 
     @Test
-    void allReturnsAllTwelveDefinitions() {
+    void allReturnsAllDefinitions() {
         TweakRegistry registry = new TweakRegistry(TweaksConfig.DEFAULT, config -> { });
 
-        assertThat(registry.all()).hasSize(12);
+        assertThat(registry.all()).hasSize(TweakDefinitions.ALL.size());
     }
 }

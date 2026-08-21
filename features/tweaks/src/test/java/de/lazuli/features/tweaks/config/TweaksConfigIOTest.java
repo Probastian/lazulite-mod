@@ -22,6 +22,50 @@ class TweaksConfigIOTest {
         assertThat(result.warning()).isNull();
         assertThat(result.config().stateOf(TweakId.ZOOM).configurables().get("magnification")).isEqualTo(4.0);
         assertThat(result.config().stateOf(TweakId.ANTI_DROP).enabled()).isFalse();
+        assertThat(result.config().stateOf(TweakId.NO_RAIN).enabled()).isFalse();
+        assertThat(result.config().stateOf(TweakId.NO_RAIN).configurables().get("includeSnow")).isEqualTo(true);
+        assertThat(result.config().stateOf(TweakId.NO_RAIN).configurables().get("includeSound")).isEqualTo(true);
+        assertThat(result.config().stateOf(TweakId.FREECAM).enabled()).isFalse();
+        assertThat(result.config().stateOf(TweakId.FREECAM).configurables().get("moveSpeed")).isEqualTo(1.0);
+        assertThat(result.config().stateOf(TweakId.FREECAM).configurables().get("sprintMultiplier")).isEqualTo(2.0);
+        assertThat(result.config().stateOf(TweakId.FREECAM).configurables().get("noclip")).isEqualTo(true);
+        assertThat(result.config().stateOf(TweakId.FREECAM).configurables().get("showOwnBody")).isEqualTo(true);
+    }
+
+    @Test
+    void noRainNonDefaultConfigurablesRoundTrip() {
+        String json = """
+                {
+                  "tweaks": {
+                    "NO_RAIN": { "enabled": true, "configurables": { "includeSnow": false, "includeSound": true } }
+                  }
+                }
+                """;
+        TweaksConfigIO.ParseResult result = io.parse(json);
+
+        assertThat(result.warning()).isNull();
+        assertThat(result.config().stateOf(TweakId.NO_RAIN).enabled()).isTrue();
+        assertThat(result.config().stateOf(TweakId.NO_RAIN).configurables().get("includeSnow")).isEqualTo(false);
+        assertThat(result.config().stateOf(TweakId.NO_RAIN).configurables().get("includeSound")).isEqualTo(true);
+    }
+
+    @Test
+    void freecamNonDefaultConfigurablesRoundTrip() {
+        String json = """
+                {
+                  "tweaks": {
+                    "FREECAM": { "enabled": true, "configurables": { "moveSpeed": 2.5, "sprintMultiplier": 3.0, "noclip": false, "showOwnBody": false } }
+                  }
+                }
+                """;
+        TweaksConfigIO.ParseResult result = io.parse(json);
+
+        assertThat(result.warning()).isNull();
+        assertThat(result.config().stateOf(TweakId.FREECAM).enabled()).isTrue();
+        assertThat(result.config().stateOf(TweakId.FREECAM).configurables().get("moveSpeed")).isEqualTo(2.5);
+        assertThat(result.config().stateOf(TweakId.FREECAM).configurables().get("sprintMultiplier")).isEqualTo(3.0);
+        assertThat(result.config().stateOf(TweakId.FREECAM).configurables().get("noclip")).isEqualTo(false);
+        assertThat(result.config().stateOf(TweakId.FREECAM).configurables().get("showOwnBody")).isEqualTo(false);
     }
 
     @Test

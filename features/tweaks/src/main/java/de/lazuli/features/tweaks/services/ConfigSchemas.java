@@ -97,13 +97,25 @@ public final class ConfigSchemas {
                 ConfigFieldSpec.bool("holdToZoom", "Hold To Zoom"),
                 ConfigFieldSpec.bool("transition", "Transition"),
                 ConfigFieldSpec.numeric("transitionDurationMs", "Transition Duration (ms)", 0.0, 1000.0, 50.0),
-                ConfigFieldSpec.numeric("magnification", "Magnification", 2.0, 10.0, 0.5),
+                ConfigFieldSpec.numeric("magnification", "Magnification", 1.5, 10.0, 0.5),
                 ConfigFieldSpec.bool("scrollToAdjust", "Scroll To Adjust")
         ));
 
         ALL.put(TweakId.DISABLE_BOSS_BARS, List.of(
                 ConfigFieldSpec.enumField("mode", "Mode", List.of("ALL", "WHITELIST", "BLACKLIST")),
                 ConfigFieldSpec.stringList("list", "List")
+        ));
+
+        ALL.put(TweakId.NO_RAIN, List.of(
+                ConfigFieldSpec.bool("includeSnow", "Include Snow"),
+                ConfigFieldSpec.bool("includeSound", "Include Sound")
+        ));
+
+        ALL.put(TweakId.FREECAM, List.of(
+                ConfigFieldSpec.numeric("moveSpeed", "Move Speed", 0.1, 10.0, 0.1),
+                ConfigFieldSpec.numeric("sprintMultiplier", "Sprint Multiplier", 1.0, 5.0, 0.5),
+                ConfigFieldSpec.bool("noclip", "Noclip"),
+                ConfigFieldSpec.bool("showOwnBody", "Show Own Body")
         ));
     }
 

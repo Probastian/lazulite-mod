@@ -23,7 +23,7 @@ public record TweaksConfig(Map<TweakId, TweakState> tweaks) {
         tweaks = new EnumMap<>(tweaks);
     }
 
-    /** All 12 tweaks at their spec-stated default state (spec Requirements T1-T12). */
+    /** All tweaks at their spec-stated default state (spec Requirements T1-T12). */
     public static final TweaksConfig DEFAULT = defaults();
 
     private static TweaksConfig defaults() {

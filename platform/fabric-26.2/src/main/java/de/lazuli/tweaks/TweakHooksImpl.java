@@ -12,7 +12,9 @@ import de.lazuli.features.tweaks.services.DisableBossBarsHook;
 import de.lazuli.features.tweaks.services.DisableCosmeticsHook;
 import de.lazuli.features.tweaks.services.DisableParticlesHook;
 import de.lazuli.features.tweaks.services.ForceBrightnessHook;
+import de.lazuli.features.tweaks.services.FreecamHook;
 import de.lazuli.features.tweaks.services.HidePlayerNamesHook;
+import de.lazuli.features.tweaks.services.NoRainHook;
 import de.lazuli.features.tweaks.services.TweakRegistry;
 import de.lazuli.features.tweaks.services.ZoomHook;
 
@@ -21,7 +23,7 @@ import java.util.Locale;
 import java.util.Set;
 
 /**
- * A single platform-side class implementing all 12 Minecraft-agnostic hook
+ * A single platform-side class implementing all Minecraft-agnostic hook
  * interfaces (Architecture Decision 2 in the implementation plan), reading
  * live state straight off {@link TweakRegistry} on every call (no caching,
  * matching spec F6/Events' "no stale copy" requirement).
@@ -44,7 +46,7 @@ import java.util.Set;
  */
 public final class TweakHooksImpl implements AntiDropHook, ForceBrightnessHook, ChatFilterHook, ChatPlayerHeadsHook,
         CustomCrosshairHook, DisableAnimationsHook, DisableParticlesHook, HidePlayerNamesHook, ClearWaterHook,
-        DisableCosmeticsHook, ZoomHook, DisableBossBarsHook {
+        DisableCosmeticsHook, ZoomHook, DisableBossBarsHook, NoRainHook, FreecamHook {
 
     private final TweakRegistry registry;
     private boolean zoomActive;
@@ -284,5 +286,47 @@ public final class TweakHooksImpl implements AntiDropHook, ForceBrightnessHook, 
     @Override
     public boolean shouldHideBossBar(String bossBarName) {
         return modeExcludes(state(TweakId.DISABLE_BOSS_BARS), bossBarName);
+    }
+
+    @Override
+    public boolean isNoRainActive() {
+        return state(TweakId.NO_RAIN).enabled();
+    }
+
+    @Override
+    public boolean noRainIncludesSnow() {
+        return Boolean.TRUE.equals(state(TweakId.NO_RAIN).configurable("includeSnow"));
+    }
+
+    @Override
+    public boolean noRainIncludesSound() {
+        return Boolean.TRUE.equals(state(TweakId.NO_RAIN).configurable("includeSound"));
+    }
+
+    @Override
+    public boolean isFreecamActive() {
+        return state(TweakId.FREECAM).enabled();
+    }
+
+    @Override
+    public float freecamMoveSpeed() {
+        Object raw = state(TweakId.FREECAM).configurable("moveSpeed");
+        return raw instanceof Number n ? n.floatValue() : 1.0f;
+    }
+
+    @Override
+    public float freecamSprintMultiplier() {
+        Object raw = state(TweakId.FREECAM).configurable("sprintMultiplier");
+        return raw instanceof Number n ? n.floatValue() : 2.0f;
+    }
+
+    @Override
+    public boolean freecamNoclip() {
+        return Boolean.TRUE.equals(state(TweakId.FREECAM).configurable("noclip"));
+    }
+
+    @Override
+    public boolean freecamShowOwnBody() {
+        return Boolean.TRUE.equals(state(TweakId.FREECAM).configurable("showOwnBody"));
     }
 }

@@ -24,5 +24,7 @@ public enum TweakId {
     CLEAR_WATER,
     DISABLE_COSMETICS,
     ZOOM,
-    DISABLE_BOSS_BARS
+    DISABLE_BOSS_BARS,
+    NO_RAIN,
+    FREECAM
 }

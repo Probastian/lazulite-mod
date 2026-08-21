@@ -23,7 +23,10 @@
 		"InGameHudClearWaterMixin",
 		"BossBarHudDisableBossBarsMixin",
 		"InGameHudCustomCrosshairMixin",
-		"ChatHudChatFilterMixin"
+		"ChatHudChatFilterMixin",
+		"WeatherRenderingNoRainMixin",
+		"WorldRendererFreecamShowBodyMixin",
+		"MinecraftClientFreecamSuppressInteractionMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1
