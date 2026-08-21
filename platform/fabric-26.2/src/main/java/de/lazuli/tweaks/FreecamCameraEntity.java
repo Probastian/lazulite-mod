@@ -71,13 +71,36 @@ public final class FreecamCameraEntity extends Entity {
      * interpolation ("old" position/rotation) fields to the pre-move state
      * so {@code Camera.update}'s per-frame partial-tick lerp is smooth
      * rather than jumping once per client tick.
+     *
+     * <p><strong>Real bug fix, confirmed via {@code javap -c}:</strong> a
+     * prior version of this method manually assigned only {@code xOld}/
+     * {@code yOld}/{@code zOld} (public fields at {@code Entity} lines
+     * 151-155), assuming those were "the" old-position fields {@code
+     * Camera}'s render interpolation reads. They are NOT -- {@code Entity}
+     * separately declares a second, lowercase {@code xo}/{@code yo}/{@code
+     * zo} field trio (lines 99-103), and {@code Camera.alignWithEntity(float)}
+     * interpolates the render position via {@code Mth.lerp(partialTick,
+     * entity.xo, entity.getX())} (confirmed via {@code javap -c} on {@code
+     * Camera.class}) -- it never reads {@code xOld}/{@code yOld}/{@code
+     * zOld} at all. Since this phantom camera is never added to the world
+     * and never goes through {@code Entity}'s own tick loop (the only place
+     * vanilla normally keeps both field trios in sync together, via {@code
+     * Entity.setOldPos(Vec3)} -- confirmed via {@code javap -c} to assign
+     * both {@code xOld} and {@code xo} from the same value in one call),
+     * {@code xo}/{@code yo}/{@code zo} were permanently stuck at {@code 0.0}
+     * (the {@code Entity} constructor default) for this camera's entire
+     * lifetime, so every frame interpolated between world origin and the
+     * camera's real position -- observed in-game as the camera rapidly
+     * flickering between the player's actual position and {@code (0, 0, 0)}.
+     * Fix: call {@code Entity}'s own public {@code setOldPosAndRot()}
+     * (confirmed {@code public final}, callable directly, no mixin needed),
+     * which correctly seeds {@code xOld}/{@code yOld}/{@code zOld} AND
+     * {@code xo}/{@code yo}/{@code zo} AND {@code yRotO}/{@code xRotO}
+     * together from the current (pre-move) position/rotation, exactly the
+     * same mechanism vanilla's own per-tick entity bookkeeping uses.
      */
     void lazuli$integrate(Vec3 desiredDelta, float yaw, float pitch, boolean noclip) {
-        this.xOld = this.getX();
-        this.yOld = this.getY();
-        this.zOld = this.getZ();
-        this.yRotO = this.getYRot();
-        this.xRotO = this.getXRot();
+        this.setOldPosAndRot();
         this.setYRot(yaw);
         this.setXRot(pitch);
 

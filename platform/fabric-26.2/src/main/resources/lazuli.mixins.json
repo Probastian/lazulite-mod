@@ -27,7 +27,8 @@
 		"WeatherEffectRendererNoRainMixin",
 		"ClientLevelNoRainMixin",
 		"LevelExtractorFreecamShowBodyMixin",
-		"MinecraftFreecamSuppressInteractionMixin"
+		"MinecraftFreecamSuppressInteractionMixin",
+		"LocalPlayerFreecamKeepPositionSyncMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1

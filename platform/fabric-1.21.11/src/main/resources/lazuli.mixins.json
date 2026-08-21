@@ -26,7 +26,8 @@
 		"ChatHudChatFilterMixin",
 		"WeatherRenderingNoRainMixin",
 		"WorldRendererFreecamShowBodyMixin",
-		"MinecraftClientFreecamSuppressInteractionMixin"
+		"MinecraftClientFreecamSuppressInteractionMixin",
+		"ClientPlayerEntityFreecamKeepPositionSyncMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1

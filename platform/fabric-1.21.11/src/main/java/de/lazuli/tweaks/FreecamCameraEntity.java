@@ -89,13 +89,37 @@ public final class FreecamCameraEntity extends Entity {
      * than jumping once per client tick (spec Architecture: mouse-look reuse
      * needs no new code, but position/rotation interpolation for a
      * manually-driven, never-ticked entity does).
+     *
+     * <p><strong>Real bug fix, confirmed via {@code javap -c} against this
+     * module's own resolved merged Minecraft jar:</strong> a prior version
+     * of this method manually assigned only {@code lastRenderX}/{@code
+     * lastRenderY}/{@code lastRenderZ}, assuming those were "the"
+     * old-position fields {@code Camera} reads for render interpolation.
+     * They are NOT -- {@code Entity} separately declares a second field
+     * trio, {@code lastX}/{@code lastY}/{@code lastZ}, and {@code
+     * Camera}'s per-frame position update interpolates via {@code
+     * Mth.lerp(tickProgress, entity.lastX, entity.getX())} (confirmed via
+     * {@code javap -c} on {@code Camera.class}) -- it never reads {@code
+     * lastRenderX}/{@code lastRenderY}/{@code lastRenderZ} at all. Since
+     * this phantom camera is never added to the world and never goes
+     * through {@code Entity}'s own tick loop (the only place vanilla
+     * normally keeps both field trios in sync together, via the private
+     * {@code Entity.setLastPosition(Vec3d)}, reached through the public
+     * {@code Entity.resetPosition()}), {@code lastX}/{@code lastY}/{@code
+     * lastZ} were permanently stuck at {@code 0.0} for this camera's entire
+     * lifetime, so every frame interpolated between world origin and the
+     * camera's real position -- observed in-game as the camera rapidly
+     * flickering between the player's actual position and {@code (0, 0,
+     * 0)}. Fix: call {@code Entity}'s own public {@code resetPosition()}
+     * (confirmed {@code public final}, callable directly, no mixin needed),
+     * which correctly seeds {@code lastRenderX}/{@code lastRenderY}/{@code
+     * lastRenderZ} AND {@code lastX}/{@code lastY}/{@code lastZ} AND {@code
+     * lastYaw}/{@code lastPitch} together from the current (pre-move)
+     * position/rotation, exactly the same mechanism vanilla's own per-tick
+     * entity bookkeeping uses.
      */
     void lazuli$integrate(Vec3d desiredDelta, float yaw, float pitch, boolean noclip) {
-        this.lastRenderX = this.getX();
-        this.lastRenderY = this.getY();
-        this.lastRenderZ = this.getZ();
-        this.lastYaw = this.getYaw();
-        this.lastPitch = this.getPitch();
+        this.resetPosition();
         this.setYaw(yaw);
         this.setPitch(pitch);
 

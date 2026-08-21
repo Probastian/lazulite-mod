@@ -26,7 +26,8 @@
 		"ChatComponentChatFilterMixin",
 		"WeatherEffectRendererNoRainMixin",
 		"LevelRendererFreecamShowBodyMixin",
-		"MinecraftFreecamSuppressInteractionMixin"
+		"MinecraftFreecamSuppressInteractionMixin",
+		"LocalPlayerFreecamKeepPositionSyncMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1
