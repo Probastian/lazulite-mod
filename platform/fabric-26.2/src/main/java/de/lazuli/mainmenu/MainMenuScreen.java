@@ -15,6 +15,7 @@ import de.lazuli.friends.FriendContextMenuWidget;
 import de.lazuli.friends.FriendSidebarWidget;
 import de.lazuli.services.steamworks.SteamAchievementsGateway;
 import de.lazuli.tweaks.TweaksBundle;
+import de.lazuli.waypoints.WaypointsBundle;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -107,7 +108,7 @@ public final class MainMenuScreen extends Screen {
                            SteamAchievementsGateway steamAchievementsGateway,
                            de.lazuli.features.mainmenu.config.MainMenuJoinHistoryConfig joinHistoryConfig,
                            Consumer<java.util.Map<de.lazuli.api.mainmenu.WardrobeSlot, String>> onWardrobeEquipChanged,
-                           TweaksBundle tweaksBundle) {
+                           TweaksBundle tweaksBundle, WaypointsBundle waypointsBundle) {
         super(Component.literal("Stonebound"));
         this.context = context;
         this.state = new MainMenuStateMachine(context == MainMenuContext.PAUSE ? MainMenuTab.PAUSE : MainMenuTab.HOME);
@@ -136,7 +137,7 @@ public final class MainMenuScreen extends Screen {
         this.tweaksPanel = new TweaksPanel(tweaksBundle);
         // main-menu-pause-integration FR5.3/FR3.3.1: both Esc and this
         // button must go through the exact same resume path.
-        this.pausePanel = new PausePanel(this::onClose);
+        this.pausePanel = new PausePanel(this::onClose, waypointsBundle);
     }
 
     /**
@@ -175,6 +176,7 @@ public final class MainMenuScreen extends Screen {
         worldsPanel.init(this::addRenderableWidget, panelX(), panelY(), panelWidth());
         serversPanel.init(this::addRenderableWidget, panelX(), panelY(), panelWidth());
         tweaksPanel.init(this::addRenderableWidget, this::removeWidget, panelX(), panelY(), panelWidth());
+        pausePanel.init(this::addRenderableWidget, this::removeWidget, panelX(), panelY(), panelWidth());
         worldsPanel.setTabActive(state.activeTab() == MainMenuTab.WORLDS);
         serversPanel.setTabActive(state.activeTab() == MainMenuTab.SERVERS);
     }
@@ -385,6 +387,9 @@ public final class MainMenuScreen extends Screen {
                 if (state.activeTab() != MainMenuTab.TWEAKS) {
                     tweaksPanel.leaveConfigScreen();
                 }
+                if (state.activeTab() != MainMenuTab.PAUSE) {
+                    pausePanel.leaveWaypointManager();
+                }
                 return true;
             }
         }
@@ -458,6 +463,8 @@ public final class MainMenuScreen extends Screen {
             return statisticsPanel.mouseScrolled(panelX(), panelY(), panelWidth(), h, mouseX, mouseY, verticalAmount);
         } else if (state.activeTab() == MainMenuTab.TWEAKS) {
             return tweaksPanel.mouseScrolled(panelX(), panelY(), panelWidth(), h, mouseX, mouseY, verticalAmount);
+        } else if (state.activeTab() == MainMenuTab.PAUSE) {
+            return pausePanel.mouseScrolled(panelX(), panelY(), panelWidth(), h, mouseX, mouseY, verticalAmount);
         }
         return false;
     }
@@ -466,6 +473,7 @@ public final class MainMenuScreen extends Screen {
     public void onClose() {
         serversPanel.deactivateBrowser();
         tweaksPanel.leaveConfigScreen();
+        pausePanel.leaveWaypointManager();
         super.onClose();
     }
 
@@ -473,6 +481,7 @@ public final class MainMenuScreen extends Screen {
     public void removed() {
         serversPanel.deactivateBrowser();
         tweaksPanel.leaveConfigScreen();
+        pausePanel.leaveWaypointManager();
         super.removed();
     }
 }

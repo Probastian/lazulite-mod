@@ -16,6 +16,7 @@ import de.lazuli.mainmenu.MainMenuStoreOwnershipChecker;
 import de.lazuli.services.steamworks.SteamAchievementsGateway;
 import de.lazuli.services.steamworks.SteamworksService;
 import de.lazuli.tweaks.TweaksBundle;
+import de.lazuli.waypoints.WaypointsBundle;
 
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
@@ -71,6 +72,9 @@ public final class MainMenuClientInitializer implements ClientModInitializer {
         // Tweaks feature: TweaksClientInitializer runs before this one
         // (fabric.mod.json entrypoint order), so the bundle is already published.
         TweaksBundle tweaksBundle = TweakRegistryHandoff.require();
+        // Waypoints feature: WaypointsClientInitializer runs before this one
+        // (fabric.mod.json entrypoint order), so the bundle is already published.
+        WaypointsBundle waypointsBundle = WaypointRegistryHandoff.require();
         boolean steamAvailable = steamworksService.isSteamAvailable();
 
         Path configDir = FabricLoader.getInstance().getConfigDir();
@@ -133,7 +137,7 @@ public final class MainMenuClientInitializer implements ClientModInitializer {
         java.util.function.Function<MainMenuContext, Screen> screenFactory = ctx -> buildScreen(ctx, background, friendsSidebarFacade,
                 serverBrowserSessionFactory, steamAvailable, storeCatalog, ownershipChecker, wardrobeResult,
                 wardrobeConfigIO, wardrobeConfigPath, richPresenceFacade, friendServerPresenceReader,
-                steamAchievementsGateway, joinHistoryResult.config(), tweaksBundle);
+                steamAchievementsGateway, joinHistoryResult.config(), tweaksBundle, waypointsBundle);
         MainMenuScreenFactoryHandoff.publish(screenFactory);
 
         ClientLifecycleEvents.CLIENT_STARTED.register(client ->
@@ -147,7 +151,8 @@ public final class MainMenuClientInitializer implements ClientModInitializer {
                                        Path wardrobeConfigPath, RichPresenceFacade richPresenceFacade,
                                        FriendServerPresenceReader friendServerPresenceReader,
                                        SteamAchievementsGateway steamAchievementsGateway,
-                                       MainMenuJoinHistoryConfig joinHistoryConfig, TweaksBundle tweaksBundle) {
+                                       MainMenuJoinHistoryConfig joinHistoryConfig, TweaksBundle tweaksBundle,
+                                       WaypointsBundle waypointsBundle) {
         return new MainMenuScreen(context, background, friendsSidebarFacade, serverBrowserSessionFactory,
                 steamAvailable, storeCatalog, ownershipChecker, wardrobeResult.config(), richPresenceFacade,
                 friendServerPresenceReader, steamAchievementsGateway, joinHistoryConfig,
@@ -159,6 +164,6 @@ public final class MainMenuClientInitializer implements ClientModInitializer {
                     } catch (java.io.IOException e) {
                         LazuliMod.LOGGER.warn("Failed to persist main-menu-wardrobe config: " + e);
                     }
-                }, tweaksBundle);
+                }, tweaksBundle, waypointsBundle);
     }
 }

@@ -3,6 +3,8 @@ package de.lazuli;
 import de.lazuli.api.cloudsync.CloudSyncable;
 import de.lazuli.cloudsync.CrossWorldStatsOfflineBucketFilter;
 import de.lazuli.cloudsync.FabricBookmarkToggleInjector;
+import de.lazuli.cloudsync.WaypointsDirectoryBundleMerger;
+import de.lazuli.common.config.MainMenuJson;
 import de.lazuli.features.crossworldstats.config.AccountStats;
 import de.lazuli.features.crossworldstats.config.CrossWorldStatsConfigIO;
 import de.lazuli.features.steamcloudsync.api.SteamCloudSyncConfig;
@@ -66,7 +68,8 @@ public final class SteamCloudSyncClientInitializer implements ClientModInitializ
                 new OptionsTxtCloudSyncAdapter(gameDir.resolve("options.txt")),
                 new ServersDatCloudSyncAdapter(gameDir.resolve("servers.dat")),
                 new CrossWorldStatsCloudSyncAdapter(configDir.resolve("cross-world-stats.json")),
-                new TweaksJsonCloudSyncAdapter(configDir.resolve("tweaks.json")));
+                new TweaksJsonCloudSyncAdapter(configDir.resolve("tweaks.json")),
+                new WaypointsJsonCloudSyncAdapter(configDir.resolve("waypoints")));
 
         CloudSyncCoordinator coordinator = new CloudSyncCoordinator(
                 steamworksService,
@@ -318,6 +321,133 @@ public final class SteamCloudSyncClientInitializer implements ClientModInitializ
                 LazuliMod.LOGGER.warn(loaded.warning());
             }
             return loaded.accounts();
+        }
+    }
+
+    /**
+     * Waypoints spec R23: {@code config/waypoints/} is synced as one
+     * bundled envelope enumerating every scope-keyed file currently present
+     * (scope file name -&gt; raw JSON text), rather than wrapping one fixed
+     * path the way every other adapter in this class does -- {@link
+     * CloudSyncable}/{@link CloudSyncCoordinator} expect one fixed,
+     * mod-init-time-known file per adapter, while Waypoints' files are
+     * one-per-scope-key and only exist locally once a given scope has
+     * actually been visited on this device (spec Architecture). The
+     * risk-critical merge rule -- an import must never delete/clobber a
+     * local-only scope's file the incoming envelope simply doesn't mention
+     * -- is a separate, directly-unit-tested pure function, {@link
+     * WaypointsDirectoryBundleMerger}, mirroring {@link
+     * CrossWorldStatsOfflineBucketFilter}'s own precedent for the identical
+     * reason (implementation plan Risk #3).
+     */
+    private static final class WaypointsJsonCloudSyncAdapter implements CloudSyncable {
+        private final Path waypointsDir;
+
+        private WaypointsJsonCloudSyncAdapter(Path waypointsDir) {
+            this.waypointsDir = waypointsDir;
+        }
+
+        @Override
+        public String cloudSyncId() {
+            return "waypoints";
+        }
+
+        @Override
+        public byte[] exportState() {
+            return encodeEnvelope(readLocalFiles());
+        }
+
+        @Override
+        public void importState(byte[] data) {
+            Map<String, String> incoming = decodeEnvelope(data);
+            Map<String, String> local = readLocalFiles();
+            Map<String, String> merged = WaypointsDirectoryBundleMerger.mergeForImport(local, incoming);
+            writeLocalFiles(merged);
+        }
+
+        @Override
+        public long localLastModifiedMillis() {
+            if (!Files.isDirectory(waypointsDir)) {
+                return -1L;
+            }
+            try (java.util.stream.Stream<Path> stream = Files.list(waypointsDir)) {
+                return stream.filter(p -> p.toString().endsWith(".json"))
+                        .mapToLong(p -> {
+                            try {
+                                return Files.getLastModifiedTime(p).toMillis();
+                            } catch (IOException e) {
+                                return -1L;
+                            }
+                        })
+                        .max()
+                        .orElse(-1L);
+            } catch (IOException e) {
+                return -1L;
+            }
+        }
+
+        private Map<String, String> readLocalFiles() {
+            Map<String, String> result = new java.util.LinkedHashMap<>();
+            if (!Files.isDirectory(waypointsDir)) {
+                return result;
+            }
+            try (java.util.stream.Stream<Path> stream = Files.list(waypointsDir)) {
+                for (Path path : (Iterable<Path>) stream.filter(p -> p.toString().endsWith(".json"))::iterator) {
+                    try {
+                        result.put(path.getFileName().toString(), Files.readString(path, StandardCharsets.UTF_8));
+                    } catch (IOException e) {
+                        LazuliMod.LOGGER.warn("Failed to read waypoints file for Cloud export: {}", e.toString());
+                    }
+                }
+            } catch (IOException e) {
+                LazuliMod.LOGGER.warn("Failed to list config/waypoints/ for Cloud export: {}", e.toString());
+            }
+            return result;
+        }
+
+        private void writeLocalFiles(Map<String, String> files) {
+            try {
+                Files.createDirectories(waypointsDir);
+            } catch (IOException e) {
+                LazuliMod.LOGGER.warn("Failed to create config/waypoints/ for Cloud import: {}", e.toString());
+                return;
+            }
+            for (Map.Entry<String, String> entry : files.entrySet()) {
+                try {
+                    Files.writeString(waypointsDir.resolve(entry.getKey()), entry.getValue());
+                } catch (IOException e) {
+                    LazuliMod.LOGGER.warn("Failed to write waypoints file \"" + entry.getKey() + "\" from Cloud import: " + e);
+                }
+            }
+        }
+
+        private static byte[] encodeEnvelope(Map<String, String> files) {
+            MainMenuJson.JsonObject root = new MainMenuJson.JsonObject();
+            for (Map.Entry<String, String> entry : files.entrySet()) {
+                root.putString(entry.getKey(), entry.getValue());
+            }
+            return MainMenuJson.write(root).getBytes(StandardCharsets.UTF_8);
+        }
+
+        private static Map<String, String> decodeEnvelope(byte[] data) {
+            Map<String, String> result = new java.util.LinkedHashMap<>();
+            if (data == null || data.length == 0) {
+                return result;
+            }
+            try {
+                MainMenuJson.JsonValue value = MainMenuJson.parse(new String(data, StandardCharsets.UTF_8));
+                if (!(value instanceof MainMenuJson.JsonObject root)) {
+                    return result;
+                }
+                for (Map.Entry<String, MainMenuJson.JsonValue> entry : root.members().entrySet()) {
+                    if (entry.getValue() instanceof MainMenuJson.JsonString s) {
+                        result.put(entry.getKey(), s.value());
+                    }
+                }
+            } catch (RuntimeException e) {
+                LazuliMod.LOGGER.warn("Malformed Waypoints Cloud payload, ignoring: {}", e.toString());
+            }
+            return result;
         }
     }
 

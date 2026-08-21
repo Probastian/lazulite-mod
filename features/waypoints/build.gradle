@@ -1,0 +1,18 @@
+dependencies {
+	// Waypoint/WaypointScopeResolver/WaypointCompassHook (api-module types)
+	// appear in this feature's own public service signatures
+	// (WaypointRegistry), so it must leak to consumers -- hence `api`, not
+	// `implementation`. Mirrors features/tweaks/build.gradle's identical line.
+	api project(':api')
+
+	// MainMenuJson (hand-rolled JSON value model/parser/writer, relocated
+	// from features/main-menu to common) is consumed internally by
+	// WaypointsConfigIO only, never re-exposed on this feature's own public
+	// surface -- `implementation`. Same dependency edge features/tweaks
+	// already established: features/waypoints -> common, deliberately not
+	// features/waypoints -> features/steam-cloud-sync (Feature -> Feature
+	// ban, architecture.md).
+	implementation project(':common')
+
+	// JUnit 5/AssertJ/Mockito are provided to every subproject by the root build.gradle.
+}

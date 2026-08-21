@@ -23,6 +23,7 @@
 		"WaterFogEnvironmentClearWaterMixin",
 		"BossHealthOverlayDisableBossBarsMixin",
 		"HudCustomCrosshairMixin",
+		"HudWaypointCompassBarMixin",
 		"ChatComponentChatFilterMixin",
 		"WeatherEffectRendererNoRainMixin",
 		"ClientLevelNoRainMixin",
