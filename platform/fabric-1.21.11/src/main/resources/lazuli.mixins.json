@@ -28,7 +28,8 @@
 		"WorldRendererFreecamShowBodyMixin",
 		"MinecraftClientFreecamSuppressInteractionMixin",
 		"ClientPlayerEntityFreecamKeepPositionSyncMixin",
-		"MouseFreecamLookRedirectMixin"
+		"MouseFreecamLookRedirectMixin",
+		"PlayerEntityFreecamSuppressSneakMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1

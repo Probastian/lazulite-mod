@@ -30,7 +30,8 @@
 		"LevelExtractorFreecamShowBodyMixin",
 		"MinecraftFreecamSuppressInteractionMixin",
 		"LocalPlayerFreecamKeepPositionSyncMixin",
-		"MouseHandlerFreecamLookRedirectMixin"
+		"MouseHandlerFreecamLookRedirectMixin",
+		"PlayerFreecamSuppressSneakMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1
