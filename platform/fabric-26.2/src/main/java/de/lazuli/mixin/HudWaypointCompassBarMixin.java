@@ -108,7 +108,12 @@ abstract class HudWaypointCompassBarMixin {
         private static final int DOT_MAX_SIZE = 6;
         private static final double DOT_MIN_SIZE_DISTANCE = 128.0;
         private static final double DOT_MAX_SIZE_DISTANCE = 8.0;
-        private static final double NAME_LABEL_HALF_DEGREES = 5.0;
+        // Live-refinement pass 4 (in-game feedback): the near-center window
+        // for showing a waypoint's name label felt too narrow at the
+        // original R14 default -- widened from 5.0 to 9.0 (~80% larger) so
+        // names stay visible through more of the player's minor turning
+        // without needing to be dead-center on the bar.
+        private static final double NAME_LABEL_HALF_DEGREES = 9.0;
 
         // Fix #3: bearing-ruler background (battle-royale-compass style).
         // Live-refinement pass 2: the old two-tier tick system (10-degree
@@ -164,13 +169,6 @@ abstract class HudWaypointCompassBarMixin {
                 return;
             }
 
-            List<Waypoint> waypoints = WaypointEngineHandoff.require().waypointsForCurrentDimension();
-            if (waypoints.isEmpty()) {
-                // R17: zero-waypoint dimensions add no meaningful per-frame cost
-                // beyond this early-return guard.
-                return;
-            }
-
             int guiWidth = extractor.guiWidth();
             int guiHeight = extractor.guiHeight();
             int barLeft = (guiWidth - BAR_WIDTH) / 2;
@@ -191,6 +189,12 @@ abstract class HudWaypointCompassBarMixin {
             }
 
             if (Boolean.TRUE.equals(hooks.compassConfigurable("showWaypoints"))) {
+                List<Waypoint> waypoints = WaypointEngineHandoff.require().waypointsForCurrentDimension();
+                // R17: zero-waypoint dimensions add no meaningful per-frame cost
+                // beyond the for-loop below trivially iterating zero elements --
+                // this no longer early-returns the whole paint() method (fix
+                // post-live-refinement: the ruler/ticks/cardinals/border/heading
+                // readout above must always render regardless of waypoint count).
                 double px = player.getX();
                 double py = player.getY();
                 double pz = player.getZ();
