@@ -1,5 +1,6 @@
 package de.lazuli.mixin;
 
+import de.lazuli.tweaks.FreecamTicker;
 import de.lazuli.tweaks.TweakEngineHandoff;
 
 import net.minecraft.client.MinecraftClient;
@@ -12,22 +13,21 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Redirect;
 
 /**
- * Tweaks spec T14 (Freecam) {@code showOwnBody} configurable.
+ * Tweaks spec T14 (Freecam) "show own body" behavior.
  *
  * <p><strong>Real, load-bearing correction to the spec's own Architecture
  * assumption, found via {@code javap -c} bytecode trace against this
- * module's own resolved merged Minecraft jar:</strong> the spec assumed
- * {@code showOwnBody = true} (the default) falls out of {@code
- * setCameraEntity} "for free" and only {@code showOwnBody = false} needs a
- * mixin. The real vanilla logic in {@code WorldRenderer.fillEntityRenderStates}
- * is the OPPOSITE: once the camera's focused entity is not {@code
- * client.player}, vanilla's own {@code entity instanceof ClientPlayerEntity
- * && camera.getFocusedEntity() != entity} check unconditionally SKIPS
+ * module's own resolved merged Minecraft jar:</strong> the spec originally
+ * assumed showing the player's own body falls out of {@code
+ * setCameraEntity} "for free" and only hiding it needs a mixin. The real
+ * vanilla logic in {@code WorldRenderer.fillEntityRenderStates} is the
+ * OPPOSITE: once the camera's focused entity is not {@code client.player},
+ * vanilla's own {@code entity instanceof ClientPlayerEntity &&
+ * camera.getFocusedEntity() != entity} check unconditionally SKIPS
  * rendering the real player's body (this is the same code path that keeps a
- * spectated player invisible while spectating someone else) -- so {@code
- * showOwnBody = false} is what already happens for free once Freecam
- * detaches the camera, and {@code showOwnBody = true} is the one direction
- * that needs this mixin.
+ * spectated player invisible while spectating someone else) -- so hiding
+ * the body is what already happens for free once Freecam detaches the
+ * camera, and showing it is the one direction that needs this mixin.
  *
  * <p>Targets the 4th (0-indexed 3rd) of {@code fillEntityRenderStates}'s
  * four {@code Camera.getFocusedEntity()} call sites -- the one feeding that
@@ -39,8 +39,14 @@ import org.spongepowered.asm.mixin.injection.Redirect;
  * loop that can ever satisfy {@code instanceof ClientPlayerEntity} is
  * {@code client.player} itself (there is exactly one per client), so
  * spoofing the return value to {@code client.player} whenever Freecam is
- * active and {@code showOwnBody} is true makes that equality check always
- * pass, without needing to know which entity the loop is currently on.
+ * active and the body should show makes that equality check always pass,
+ * without needing to know which entity the loop is currently on.
+ *
+ * <p><strong>Addendum AD-2:</strong> the manual {@code showOwnBody}
+ * configurable is removed -- the body now shows automatically whenever the
+ * freecam camera's live position is outside the player's own (inflated)
+ * live bounding box, computed once per tick by {@link FreecamTicker} and
+ * read here in place of the removed {@code FreecamHook.freecamShowOwnBody()}.
  */
 @Mixin(WorldRenderer.class)
 abstract class WorldRendererFreecamShowBodyMixin {
@@ -51,7 +57,7 @@ abstract class WorldRendererFreecamShowBodyMixin {
     private Entity lazuli$spoofFocusedEntityForOwnBody(Camera camera) {
         Entity real = camera.getFocusedEntity();
         var hooks = TweakEngineHandoff.require();
-        if (hooks.isFreecamActive() && hooks.freecamShowOwnBody()) {
+        if (hooks.isFreecamActive() && !FreecamTicker.isCameraInsidePlayerBounds()) {
             MinecraftClient client = MinecraftClient.getInstance();
             if (client.player != null) {
                 return client.player;

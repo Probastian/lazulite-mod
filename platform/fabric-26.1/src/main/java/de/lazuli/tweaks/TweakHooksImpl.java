@@ -324,9 +324,4 @@ public final class TweakHooksImpl implements AntiDropHook, ForceBrightnessHook, 
     public boolean freecamNoclip() {
         return Boolean.TRUE.equals(state(TweakId.FREECAM).configurable("noclip"));
     }
-
-    @Override
-    public boolean freecamShowOwnBody() {
-        return Boolean.TRUE.equals(state(TweakId.FREECAM).configurable("showOwnBody"));
-    }
 }

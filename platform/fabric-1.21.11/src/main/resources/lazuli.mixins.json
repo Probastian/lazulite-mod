@@ -27,7 +27,8 @@
 		"WeatherRenderingNoRainMixin",
 		"WorldRendererFreecamShowBodyMixin",
 		"MinecraftClientFreecamSuppressInteractionMixin",
-		"ClientPlayerEntityFreecamKeepPositionSyncMixin"
+		"ClientPlayerEntityFreecamKeepPositionSyncMixin",
+		"MouseFreecamLookRedirectMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1

@@ -29,7 +29,12 @@ class TweaksConfigIOTest {
         assertThat(result.config().stateOf(TweakId.FREECAM).configurables().get("moveSpeed")).isEqualTo(1.0);
         assertThat(result.config().stateOf(TweakId.FREECAM).configurables().get("sprintMultiplier")).isEqualTo(2.0);
         assertThat(result.config().stateOf(TweakId.FREECAM).configurables().get("noclip")).isEqualTo(true);
-        assertThat(result.config().stateOf(TweakId.FREECAM).configurables().get("showOwnBody")).isEqualTo(true);
+        assertThat(result.config().stateOf(TweakId.FREECAM).configurables().get("moveSpeedRescaled")).isEqualTo(true);
+        assertThat(result.config().stateOf(TweakId.COMPASS).enabled()).isTrue();
+        assertThat(result.config().stateOf(TweakId.COMPASS).configurables().get("showWaypoints")).isEqualTo(true);
+        assertThat(result.config().stateOf(TweakId.COMPASS).configurables().get("showCardinals")).isEqualTo(true);
+        assertThat(result.config().stateOf(TweakId.COMPASS).configurables().get("showHeadingReadout")).isEqualTo(false);
+        assertThat(result.config().stateOf(TweakId.COMPASS).configurables().get("showBorder")).isEqualTo(true);
     }
 
     @Test
@@ -54,7 +59,7 @@ class TweaksConfigIOTest {
         String json = """
                 {
                   "tweaks": {
-                    "FREECAM": { "enabled": true, "configurables": { "moveSpeed": 2.5, "sprintMultiplier": 3.0, "noclip": false, "showOwnBody": false } }
+                    "FREECAM": { "enabled": true, "configurables": { "moveSpeed": 2.5, "sprintMultiplier": 3.0, "noclip": false, "moveSpeedRescaled": true } }
                   }
                 }
                 """;
@@ -65,7 +70,136 @@ class TweaksConfigIOTest {
         assertThat(result.config().stateOf(TweakId.FREECAM).configurables().get("moveSpeed")).isEqualTo(2.5);
         assertThat(result.config().stateOf(TweakId.FREECAM).configurables().get("sprintMultiplier")).isEqualTo(3.0);
         assertThat(result.config().stateOf(TweakId.FREECAM).configurables().get("noclip")).isEqualTo(false);
-        assertThat(result.config().stateOf(TweakId.FREECAM).configurables().get("showOwnBody")).isEqualTo(false);
+        assertThat(result.config().stateOf(TweakId.FREECAM).configurables().get("moveSpeedRescaled")).isEqualTo(true);
+    }
+
+    // Addendum AD-3: moveSpeed rescale + config migration.
+
+    @Test
+    void freecamMoveSpeedNoMigrationWhenKeyAbsent() {
+        String json = """
+                {
+                  "tweaks": {
+                    "FREECAM": { "enabled": false, "configurables": {} }
+                  }
+                }
+                """;
+        TweaksConfigIO.ParseResult result = io.parse(json);
+
+        assertThat(result.warning()).isNull();
+        assertThat(result.config().stateOf(TweakId.FREECAM).configurables().get("moveSpeed")).isEqualTo(1.0);
+        assertThat(result.config().stateOf(TweakId.FREECAM).configurables().get("moveSpeedRescaled")).isEqualTo(true);
+    }
+
+    @Test
+    void freecamMoveSpeedMigratesOldScaleWhenMarkerAbsent() {
+        String json = """
+                {
+                  "tweaks": {
+                    "FREECAM": { "enabled": false, "configurables": { "moveSpeed": 10.0 } }
+                  }
+                }
+                """;
+        TweaksConfigIO.ParseResult result = io.parse(json);
+
+        assertThat(result.warning()).isNull();
+        assertThat(result.config().stateOf(TweakId.FREECAM).configurables().get("moveSpeed")).isEqualTo(1.0);
+        assertThat(result.config().stateOf(TweakId.FREECAM).configurables().get("moveSpeedRescaled")).isEqualTo(true);
+    }
+
+    @Test
+    void freecamMoveSpeedNotReMigratedWhenMarkerPresent() {
+        String json = """
+                {
+                  "tweaks": {
+                    "FREECAM": { "enabled": false, "configurables": { "moveSpeed": 0.5, "moveSpeedRescaled": true } }
+                  }
+                }
+                """;
+        TweaksConfigIO.ParseResult result = io.parse(json);
+
+        assertThat(result.warning()).isNull();
+        assertThat(result.config().stateOf(TweakId.FREECAM).configurables().get("moveSpeed")).isEqualTo(0.5);
+        assertThat(result.config().stateOf(TweakId.FREECAM).configurables().get("moveSpeedRescaled")).isEqualTo(true);
+    }
+
+    @Test
+    void freecamMoveSpeedMigrationIsIdempotentAcrossSerializeParseRoundTrip() {
+        String json = """
+                {
+                  "tweaks": {
+                    "FREECAM": { "enabled": false, "configurables": { "moveSpeed": 10.0 } }
+                  }
+                }
+                """;
+        TweaksConfigIO.ParseResult firstParse = io.parse(json);
+        assertThat(firstParse.config().stateOf(TweakId.FREECAM).configurables().get("moveSpeed")).isEqualTo(1.0);
+
+        String reserialized = io.serialize(firstParse.config());
+        TweaksConfigIO.ParseResult secondParse = io.parse(reserialized);
+
+        assertThat(secondParse.warning()).isNull();
+        assertThat(secondParse.config().stateOf(TweakId.FREECAM).configurables().get("moveSpeed")).isEqualTo(1.0);
+        assertThat(secondParse.config().stateOf(TweakId.FREECAM).configurables().get("moveSpeedRescaled")).isEqualTo(true);
+    }
+
+    @Test
+    void freecamMoveSpeedClampsOutOfRangeValueRegardlessOfPath() {
+        String json = """
+                {
+                  "tweaks": {
+                    "FREECAM": { "enabled": false, "configurables": { "moveSpeed": 99.0, "moveSpeedRescaled": true } }
+                  }
+                }
+                """;
+        TweaksConfigIO.ParseResult result = io.parse(json);
+
+        assertThat(result.warning()).isNull();
+        assertThat(result.config().stateOf(TweakId.FREECAM).configurables().get("moveSpeed")).isEqualTo(5.0);
+    }
+
+    @Test
+    void compassNonDefaultConfigurablesRoundTrip() {
+        String json = """
+                {
+                  "tweaks": {
+                    "COMPASS": { "enabled": false, "configurables": { "showWaypoints": false, "showCardinals": false, "showHeadingReadout": true, "showBorder": false } }
+                  }
+                }
+                """;
+        TweaksConfigIO.ParseResult result = io.parse(json);
+
+        assertThat(result.warning()).isNull();
+        assertThat(result.config().stateOf(TweakId.COMPASS).enabled()).isFalse();
+        assertThat(result.config().stateOf(TweakId.COMPASS).configurables().get("showWaypoints")).isEqualTo(false);
+        assertThat(result.config().stateOf(TweakId.COMPASS).configurables().get("showCardinals")).isEqualTo(false);
+        assertThat(result.config().stateOf(TweakId.COMPASS).configurables().get("showHeadingReadout")).isEqualTo(true);
+        assertThat(result.config().stateOf(TweakId.COMPASS).configurables().get("showBorder")).isEqualTo(false);
+    }
+
+    @Test
+    void compassMissingFromFileBackfillsToEnabledDefault() {
+        // Compass tweak (spec Configuration Migration note / plan Planning
+        // Prerequisite 2): a tweaks.json written before COMPASS existed has
+        // no "COMPASS" key at all -- confirms the missing-TweakId fallback
+        // really does default to TweakDefinitions.COMPASS.defaultState()
+        // (enabled=true), not enabled=false like every other tweak's
+        // fallback would be.
+        String json = """
+                {
+                  "tweaks": {
+                    "NO_RAIN": { "enabled": true, "configurables": { "includeSnow": false, "includeSound": true } }
+                  }
+                }
+                """;
+        TweaksConfigIO.ParseResult result = io.parse(json);
+
+        assertThat(result.warning()).isNull();
+        assertThat(result.config().stateOf(TweakId.COMPASS).enabled()).isTrue();
+        assertThat(result.config().stateOf(TweakId.COMPASS).configurables().get("showWaypoints")).isEqualTo(true);
+        assertThat(result.config().stateOf(TweakId.COMPASS).configurables().get("showCardinals")).isEqualTo(true);
+        assertThat(result.config().stateOf(TweakId.COMPASS).configurables().get("showHeadingReadout")).isEqualTo(false);
+        assertThat(result.config().stateOf(TweakId.COMPASS).configurables().get("showBorder")).isEqualTo(true);
     }
 
     @Test

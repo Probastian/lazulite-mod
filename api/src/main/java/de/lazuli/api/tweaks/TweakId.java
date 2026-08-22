@@ -26,5 +26,6 @@ public enum TweakId {
     ZOOM,
     DISABLE_BOSS_BARS,
     NO_RAIN,
-    FREECAM
+    FREECAM,
+    COMPASS
 }

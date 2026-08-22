@@ -1,6 +1,8 @@
 package de.lazuli.mixin;
 
 import de.lazuli.api.waypoints.Waypoint;
+import de.lazuli.tweaks.TweakEngineHandoff;
+import de.lazuli.tweaks.TweakHooksImpl;
 import de.lazuli.waypoints.WaypointEngineHandoff;
 
 import net.minecraft.client.DeltaTracker;
@@ -76,7 +78,8 @@ abstract class HudWaypointCompassBarMixin {
             // active/fading rather than drawing both on top of each other.
             return;
         }
-        CompassBarPainter.paint(extractor);
+        TweakHooksImpl hooks = TweakEngineHandoff.require();
+        CompassBarPainter.paint(extractor, hooks);
     }
 
     @Unique
@@ -117,9 +120,9 @@ abstract class HudWaypointCompassBarMixin {
         private static final int COLOR_CARDINAL_LABEL = 0xFFFFFFFF;
         // Live-refinement pass 2: cardinal letters (N/E/S/W) are now drawn
         // inline in the tick row itself, replacing the tick at that exact
-        // 15-degree position, instead of a separate label row above the bar
-        // -- gated behind this toggle so they can be turned off entirely.
-        private static final boolean SHOW_CARDINALS = true;
+        // 15-degree position, instead of a separate label row above the bar.
+        // Compass tweak (spec C6): this used to be a hardcoded constant --
+        // now read live every frame via hooks.compassConfigurable("showCardinals").
         // Live-refinement pass 3 (post-5b3dc97 in-game test): vanilla's font
         // renders roughly FONT_GLYPH_HEIGHT px tall, which is now taller than
         // the bar itself (BAR_HEIGHT=6) since the previous pass shrank the
@@ -134,11 +137,27 @@ abstract class HudWaypointCompassBarMixin {
         // alpha, plus a thin light-grey border around the bar's rectangle.
         private static final int COLOR_BAR_BG = 0x80000000;
         private static final int COLOR_BAR_BORDER = 0xFFC8C8C8;
-        // Live-refinement pass 2: gate the border behind a toggle (default
-        // unchanged -- still on) instead of drawing it unconditionally.
-        private static final boolean SHOW_BORDER = true;
+        // Live-refinement pass 2: the border is gated behind a toggle
+        // (default unchanged -- still on) instead of drawing it
+        // unconditionally. Compass tweak (spec C7): now read live every
+        // frame via hooks.compassConfigurable("showBorder") instead of this
+        // hardcoded constant.
 
-        static void paint(GuiGraphicsExtractor extractor) {
+        // Compass tweak (spec C8): small fixed gap between the heading
+        // readout text and the bar's left edge so it never overlaps the
+        // border when both are on.
+        private static final int HEADING_READOUT_GAP = 4;
+
+        static void paint(GuiGraphicsExtractor extractor, TweakHooksImpl hooks) {
+            if (!hooks.isCompassActive()) {
+                // Compass tweak (spec C4): master enable/disable short-circuit,
+                // placed before the player/level null-check and the
+                // zero-waypoint check so a disabled tweak suppresses
+                // everything (background, border, ruler, waypoints, heading
+                // readout) even when waypoints exist.
+                return;
+            }
+
             Minecraft client = Minecraft.getInstance();
             LocalPlayer player = client.player;
             if (player == null || client.level == null) {
@@ -160,60 +179,68 @@ abstract class HudWaypointCompassBarMixin {
             int barCenterX = barLeft + BAR_WIDTH / 2;
 
             extractor.fill(barLeft, barTop, barLeft + BAR_WIDTH, barBottom, COLOR_BAR_BG);
-            if (SHOW_BORDER) {
+            if (Boolean.TRUE.equals(hooks.compassConfigurable("showBorder"))) {
                 drawBorder(extractor, barLeft, barTop, barLeft + BAR_WIDTH, barBottom);
             }
 
             double yaw = player.getYRot();
-            drawRuler(extractor, client, barTop, barCenterX, yaw);
+            drawRuler(extractor, client, hooks, barTop, barCenterX, yaw);
 
-            double px = player.getX();
-            double py = player.getY();
-            double pz = player.getZ();
-            double yawRad = Math.toRadians(yaw);
-            double sinYaw = Math.sin(yawRad);
-            double cosYaw = Math.cos(yawRad);
-
-            Waypoint nearestCentered = null;
-            double nearestCenteredAbsTheta = Double.MAX_VALUE;
-
-            for (Waypoint waypoint : waypoints) {
-                double wx = waypoint.x() + 0.5;
-                double wy = waypoint.y() + 0.5;
-                double wz = waypoint.z() + 0.5;
-                double dx = wx - px;
-                double dz = wz - pz;
-                double forward = -dx * sinYaw + dz * cosYaw;
-                double right = -dx * cosYaw - dz * sinYaw;
-                double thetaDeg = Math.toDegrees(Math.atan2(right, forward));
-                if (Math.abs(thetaDeg) > FOV_HALF_DEGREES) {
-                    // R11/R16: outside the represented angular window (including
-                    // fully behind the player) -- not drawn, no edge-clamping.
-                    continue;
-                }
-
-                int dotX = barCenterX + (int) Math.round((thetaDeg / FOV_HALF_DEGREES) * (BAR_WIDTH / 2.0));
-                int dotY = barTop + BAR_HEIGHT / 2;
-
-                double dy = waypoint.y() - py;
-                double distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
-                int dotSize = dotSizeFor(distance);
-
-                drawDot(extractor, dotX, dotY, dotSize, waypoint.color());
-
-                int elevationDirection = elevationDirection(client, wx, wy, wz);
-                if (elevationDirection != 0) {
-                    drawElevationChevron(extractor, dotX, dotY, dotSize, elevationDirection > 0, waypoint.color());
-                }
-
-                if (Math.abs(thetaDeg) <= NAME_LABEL_HALF_DEGREES && Math.abs(thetaDeg) < nearestCenteredAbsTheta) {
-                    nearestCenteredAbsTheta = Math.abs(thetaDeg);
-                    nearestCentered = waypoint;
-                }
+            if (Boolean.TRUE.equals(hooks.compassConfigurable("showHeadingReadout"))) {
+                drawHeadingReadout(extractor, client, barLeft, barTop, yaw);
             }
 
-            if (nearestCentered != null) {
-                drawNameLabel(extractor, client, barCenterX, barTop, nearestCentered);
+            if (Boolean.TRUE.equals(hooks.compassConfigurable("showWaypoints"))) {
+                double px = player.getX();
+                double py = player.getY();
+                double pz = player.getZ();
+                double yawRad = Math.toRadians(yaw);
+                double sinYaw = Math.sin(yawRad);
+                double cosYaw = Math.cos(yawRad);
+
+                Waypoint nearestCentered = null;
+                double nearestCenteredAbsTheta = Double.MAX_VALUE;
+                int nearestCenteredDotX = barCenterX;
+
+                for (Waypoint waypoint : waypoints) {
+                    double wx = waypoint.x() + 0.5;
+                    double wy = waypoint.y() + 0.5;
+                    double wz = waypoint.z() + 0.5;
+                    double dx = wx - px;
+                    double dz = wz - pz;
+                    double forward = -dx * sinYaw + dz * cosYaw;
+                    double right = -dx * cosYaw - dz * sinYaw;
+                    double thetaDeg = Math.toDegrees(Math.atan2(right, forward));
+                    if (Math.abs(thetaDeg) > FOV_HALF_DEGREES) {
+                        // R11/R16: outside the represented angular window (including
+                        // fully behind the player) -- not drawn, no edge-clamping.
+                        continue;
+                    }
+
+                    int dotX = barCenterX + (int) Math.round((thetaDeg / FOV_HALF_DEGREES) * (BAR_WIDTH / 2.0));
+                    int dotY = barTop + BAR_HEIGHT / 2;
+
+                    double dy = waypoint.y() - py;
+                    double distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+                    int dotSize = dotSizeFor(distance);
+
+                    drawDot(extractor, dotX, dotY, dotSize, waypoint.color());
+
+                    int elevationDirection = elevationDirection(client, wx, wy, wz);
+                    if (elevationDirection != 0) {
+                        drawElevationChevron(extractor, dotX, dotY, dotSize, elevationDirection > 0, waypoint.color());
+                    }
+
+                    if (Math.abs(thetaDeg) <= NAME_LABEL_HALF_DEGREES && Math.abs(thetaDeg) < nearestCenteredAbsTheta) {
+                        nearestCenteredAbsTheta = Math.abs(thetaDeg);
+                        nearestCentered = waypoint;
+                        nearestCenteredDotX = dotX;
+                    }
+                }
+
+                if (nearestCentered != null) {
+                    drawNameLabel(extractor, client, nearestCenteredDotX, barTop, nearestCentered);
+                }
             }
         }
 
@@ -236,10 +263,11 @@ abstract class HudWaypointCompassBarMixin {
          * matching {@code Entity.getLookAngle()}'s {@code (-sin(yaw),
          * cos(yaw))} forward vector), the letter is drawn inline in place of
          * that position's tick -- not as a separate row above the bar --
-         * when {@link #SHOW_CARDINALS} is enabled; otherwise that position
-         * just renders a normal tick like any other.
+         * when {@code showCardinals} (Compass tweak, spec C6) is enabled;
+         * otherwise that position just renders a normal tick like any other.
          */
-        private static void drawRuler(GuiGraphicsExtractor extractor, Minecraft client, int barTop, int barCenterX, double yaw) {
+        private static void drawRuler(GuiGraphicsExtractor extractor, Minecraft client, TweakHooksImpl hooks, int barTop, int barCenterX, double yaw) {
+            boolean showCardinals = Boolean.TRUE.equals(hooks.compassConfigurable("showCardinals"));
             int startBearing = (int) (Math.floor((yaw - FOV_HALF_DEGREES) / TICK_STEP_DEGREES) * TICK_STEP_DEGREES);
             int endBearing = (int) (Math.ceil((yaw + FOV_HALF_DEGREES) / TICK_STEP_DEGREES) * TICK_STEP_DEGREES);
             int tickCenterY = barTop + BAR_HEIGHT / 2;
@@ -251,7 +279,7 @@ abstract class HudWaypointCompassBarMixin {
 
                 int tickX = barCenterX + (int) Math.round((theta / FOV_HALF_DEGREES) * (BAR_WIDTH / 2.0));
                 int normalizedBearing = ((worldBearing % 360) + 360) % 360;
-                String cardinal = SHOW_CARDINALS ? cardinalLabelFor(normalizedBearing) : null;
+                String cardinal = showCardinals ? cardinalLabelFor(normalizedBearing) : null;
                 if (cardinal != null) {
                     drawScaledCardinal(extractor, client, cardinal, tickX, tickCenterY);
                 } else {
@@ -307,6 +335,33 @@ abstract class HudWaypointCompassBarMixin {
                 deg += 360.0;
             }
             return deg;
+        }
+
+        /**
+         * Compass tweak (spec C8): a live numeric bearing readout drawn to
+         * the left of the bar, using the everyday compass-heading convention
+         * (N=0deg, E=90deg, S=180deg, W=270deg) rather than this mixin's own
+         * internal world-bearing convention (S=0, W=90, N=180, E=270, see
+         * {@link #drawRuler}'s own Javadoc) -- converted via {@code yaw +
+         * 180}, folded into {@code [0, 360)}, per the spec's exact formula.
+         * Drawn via {@code extractor.centeredText(...)} only (Planning
+         * Prerequisite 1 -- the only text-draw method this class's {@code
+         * GuiGraphicsExtractor} call sites use anywhere), right-aligned
+         * visually by precomputing a center-x so the text's right edge lands
+         * at {@code barLeft - HEADING_READOUT_GAP}.
+         */
+        private static void drawHeadingReadout(GuiGraphicsExtractor extractor, Minecraft client, int barLeft, int barTop, double yaw) {
+            double headingDeg = normalizeAngle0To360(yaw + 180.0);
+            String headingText = Math.round(headingDeg) + "°";
+            int textWidth = client.font.width(headingText);
+            int readoutCenterX = barLeft - HEADING_READOUT_GAP - textWidth / 2;
+            int readoutY = barTop + BAR_HEIGHT / 2 - FONT_GLYPH_HEIGHT / 2;
+            extractor.centeredText(client.font, headingText, readoutCenterX, readoutY, COLOR_CARDINAL_LABEL);
+        }
+
+        /** Folds a degree value into {@code [0, 360)}, unlike {@link #normalizeAngle}'s {@code [-180, 180]} range. */
+        private static double normalizeAngle0To360(double deg) {
+            return ((deg % 360.0) + 360.0) % 360.0;
         }
 
         /** R12: linear interpolation between {@link #DOT_MAX_SIZE} (close) and {@link #DOT_MIN_SIZE} (far), clamped. */
@@ -365,10 +420,17 @@ abstract class HudWaypointCompassBarMixin {
             return 0;
         }
 
-        /** R14/R15: only the nearest near-center waypoint's name, drawn above the bar in its own color. */
-        private static void drawNameLabel(GuiGraphicsExtractor extractor, Minecraft client, int barCenterX, int barTop, Waypoint waypoint) {
+        /**
+         * R14/R15: only the nearest near-center waypoint's name, drawn above
+         * the bar in its own color. Compass tweak (spec C9 bug fix): the x
+         * position now tracks the waypoint's own {@code dotX} (captured by
+         * the caller alongside {@code nearestCentered}), not a fixed
+         * {@code barCenterX} -- the label now visibly moves with the dot
+         * instead of staying pinned to the bar's exact horizontal center.
+         */
+        private static void drawNameLabel(GuiGraphicsExtractor extractor, Minecraft client, int dotX, int barTop, Waypoint waypoint) {
             int argb = 0xFF000000 | (waypoint.color() & 0xFFFFFF);
-            extractor.centeredText(client.font, Component.literal(waypoint.name()), barCenterX, barTop - 10, argb);
+            extractor.centeredText(client.font, Component.literal(waypoint.name()), dotX, barTop - 10, argb);
         }
     }
 }

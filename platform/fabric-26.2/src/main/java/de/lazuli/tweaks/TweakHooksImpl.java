@@ -6,6 +6,7 @@ import de.lazuli.features.tweaks.services.AntiDropHook;
 import de.lazuli.features.tweaks.services.ChatFilterHook;
 import de.lazuli.features.tweaks.services.ChatPlayerHeadsHook;
 import de.lazuli.features.tweaks.services.ClearWaterHook;
+import de.lazuli.features.tweaks.services.CompassHook;
 import de.lazuli.features.tweaks.services.CustomCrosshairHook;
 import de.lazuli.features.tweaks.services.DisableAnimationsHook;
 import de.lazuli.features.tweaks.services.DisableBossBarsHook;
@@ -46,7 +47,7 @@ import java.util.Set;
  */
 public final class TweakHooksImpl implements AntiDropHook, ForceBrightnessHook, ChatFilterHook, ChatPlayerHeadsHook,
         CustomCrosshairHook, DisableAnimationsHook, DisableParticlesHook, HidePlayerNamesHook, ClearWaterHook,
-        DisableCosmeticsHook, ZoomHook, DisableBossBarsHook, NoRainHook, FreecamHook {
+        DisableCosmeticsHook, ZoomHook, DisableBossBarsHook, NoRainHook, FreecamHook, CompassHook {
 
     private final TweakRegistry registry;
     private boolean zoomActive;
@@ -326,7 +327,12 @@ public final class TweakHooksImpl implements AntiDropHook, ForceBrightnessHook, 
     }
 
     @Override
-    public boolean freecamShowOwnBody() {
-        return Boolean.TRUE.equals(state(TweakId.FREECAM).configurable("showOwnBody"));
+    public boolean isCompassActive() {
+        return state(TweakId.COMPASS).enabled();
+    }
+
+    @Override
+    public Object compassConfigurable(String key) {
+        return state(TweakId.COMPASS).configurable(key);
     }
 }

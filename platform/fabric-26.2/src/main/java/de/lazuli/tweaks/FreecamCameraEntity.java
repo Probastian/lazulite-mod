@@ -4,7 +4,9 @@ import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntityDimensions;
 import net.minecraft.world.entity.EntityTypes;
+import net.minecraft.world.entity.Pose;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.storage.ValueInput;
 import net.minecraft.world.level.storage.ValueOutput;
@@ -37,12 +39,52 @@ import java.util.List;
  * delegate only to {@code getBlockCollisionsFromContext}, never to {@code
  * getEntityCollisions} -- so entity collision is excluded by construction,
  * matching spec T14 regardless of {@code noPhysics}'s value.
+ *
+ * <p><strong>Addendum AD-1:</strong> this class no longer receives yaw/pitch
+ * from {@link FreecamTicker} every tick -- it inherits {@code
+ * Entity.turn(double, double)} directly (same method vanilla's own mouse
+ * handling calls on the real player), and {@code
+ * MouseHandlerFreecamLookRedirectMixin} redirects that per-frame call to
+ * this entity instead of {@code client.player} while Freecam is active, so
+ * this camera's rotation is driven directly and exclusively by mouse input,
+ * never copied from the player.
+ *
+ * <p><strong>Addendum AD-4, confirmed via {@code javap -c} against this
+ * module's own resolved merged Minecraft jar:</strong> {@code
+ * EntityTypes.MARKER}'s zero-size bounding box (previously a deliberate v1
+ * simplification, see the removed passage this Javadoc replaces) made the
+ * block-collision sweep below act on a point with nothing to collide
+ * against. Fixed with a fixed, non-zero, ~0.45-block "head-sized" cube: this
+ * class overrides {@link #getDimensions(Pose)}, but that override alone is
+ * NOT live for a manually-driven, never-ticked entity -- {@code Entity}'s
+ * own constructor sets its {@code dimensions} field directly from {@code
+ * EntityType.getDimensions()}, bypassing this class's override entirely,
+ * and nothing in this class's own tick path (driven solely by {@link
+ * #lazuli$integrate}, never by vanilla's own tick loop) would otherwise
+ * trigger a refresh. This class therefore also calls {@code
+ * this.refreshDimensions()} once in the constructor (confirmed {@code
+ * public}, callable directly) -- that call reads {@link #getDimensions(Pose)}
+ * once, writes the result into the {@code dimensions} field, and calls
+ * {@code reapplyPosition()}, which recomputes the bounding box from that
+ * field via {@code makeBoundingBox()} -- so the box is correctly sized from
+ * that point on, and every subsequent {@code setPos(...)} call in {@link
+ * #lazuli$integrate} keeps recomputing the box from the same (now-correct)
+ * {@code dimensions} field automatically.
  */
 public final class FreecamCameraEntity extends Entity {
+
+    /** Addendum AD-4: "roughly the width/height of a player head hitbox" -- see spec AD-4 derivation. */
+    private static final float BOUNDING_BOX_SIZE = 0.45F;
 
     public FreecamCameraEntity(Level level) {
         super(EntityTypes.MARKER, level);
         this.noPhysics = true;
+        this.refreshDimensions();
+    }
+
+    @Override
+    public EntityDimensions getDimensions(Pose pose) {
+        return EntityDimensions.fixed(BOUNDING_BOX_SIZE, BOUNDING_BOX_SIZE);
     }
 
     @Override
@@ -98,11 +140,14 @@ public final class FreecamCameraEntity extends Entity {
      * {@code xo}/{@code yo}/{@code zo} AND {@code yRotO}/{@code xRotO}
      * together from the current (pre-move) position/rotation, exactly the
      * same mechanism vanilla's own per-tick entity bookkeeping uses.
+     *
+     * <p><strong>Addendum AD-1:</strong> no longer takes/sets yaw/pitch --
+     * this entity's rotation is now mutated exclusively by the inherited
+     * {@code Entity.turn(double, double)}, called directly by {@code
+     * MouseHandlerFreecamLookRedirectMixin} while Freecam is active.
      */
-    void lazuli$integrate(Vec3 desiredDelta, float yaw, float pitch, boolean noclip) {
+    void lazuli$integrate(Vec3 desiredDelta, boolean noclip) {
         this.setOldPosAndRot();
-        this.setYRot(yaw);
-        this.setXRot(pitch);
 
         Vec3 delta = desiredDelta;
         if (!noclip && desiredDelta.lengthSqr() > 0.0) {

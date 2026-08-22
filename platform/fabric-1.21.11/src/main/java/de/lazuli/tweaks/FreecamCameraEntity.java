@@ -1,6 +1,8 @@
 package de.lazuli.tweaks;
 
 import net.minecraft.entity.Entity;
+import net.minecraft.entity.EntityDimensions;
+import net.minecraft.entity.EntityPose;
 import net.minecraft.entity.EntityType;
 import net.minecraft.entity.damage.DamageSource;
 import net.minecraft.entity.data.DataTracker;
@@ -27,14 +29,7 @@ import java.util.List;
  * {@code initDataTracker}, {@code damage}, {@code readCustomData}/{@code
  * writeCustomData} -- a small, contained no-op surface (spec Open Question
  * 4, resolved: no other overrides were needed for this to construct and
- * drive safely). {@code EntityType.MARKER} is reused as the backing type
- * (never registered as its own type -- this entity is never spawned into the
- * world or synced to anything that would care about its real type), which
- * incidentally also gives it {@code MarkerEntity}'s own zero-size bounding
- * box; the block-collision sweep below therefore acts on a point rather than
- * a body-sized box, a deliberate v1 simplification (a real body-sized box is
- * a natural, isolated follow-up, not a blocker for this feature's core
- * behavior).
+ * drive safely).
  *
  * <p><strong>Block collision for {@code noclip = false}</strong> reuses
  * {@code Entity}'s own public static {@code adjustMovementForCollisions}
@@ -52,12 +47,54 @@ import java.util.List;
  * by extra suppression code. (The now-unused {@code Entity.findCollisions}
  * static helper was rejected here specifically because {@code javap -c}
  * showed it merges in {@code World.getEntityCollisions} internally.)
+ *
+ * <p><strong>Addendum AD-1:</strong> this class no longer receives yaw/pitch
+ * from {@link FreecamTicker} every tick -- it inherits {@code
+ * Entity.changeLookDirection(double, double)} directly (the same method
+ * vanilla's own mouse handling calls on the real player, confirmed via
+ * {@code javap -c} on {@code Mouse.updateMouse(double)}), and {@code
+ * MouseFreecamLookRedirectMixin} redirects that per-frame call to this
+ * entity instead of {@code client.player} while Freecam is active, so this
+ * camera's rotation is driven directly and exclusively by mouse input,
+ * never copied from the player.
+ *
+ * <p><strong>Addendum AD-4, confirmed via {@code javap -c} against this
+ * module's own resolved merged Minecraft jar:</strong> {@code
+ * EntityType.MARKER}'s zero-size bounding box (previously a deliberate v1
+ * simplification, see the removed passage this Javadoc replaces) made the
+ * block-collision sweep below act on a point with nothing to collide
+ * against. Fixed with a fixed, non-zero, ~0.45-block "head-sized" cube: this
+ * class overrides {@link #getDimensions(EntityPose)}, but that override
+ * alone is NOT live for a manually-driven, never-ticked entity -- {@code
+ * Entity}'s own constructor sets its {@code dimensions} field directly from
+ * {@code EntityType.getDimensions()}, bypassing this class's override
+ * entirely, and nothing in this class's own tick path (driven solely by
+ * {@link #lazuli$integrate}, never by vanilla's own tick loop) would
+ * otherwise trigger a refresh. This class therefore also calls {@code
+ * this.calculateDimensions()} once in the constructor (confirmed {@code
+ * public}, callable directly) -- that call reads {@link
+ * #getDimensions(EntityPose)} once, writes the result into the {@code
+ * dimensions} field, and calls {@code refreshPosition()}, which recomputes
+ * the bounding box from that field via {@code calculateBoundingBox()} -- so
+ * the box is correctly sized from that point on, and every subsequent
+ * {@code setPosition(...)} call in {@link #lazuli$integrate} keeps
+ * recomputing the box from the same (now-correct) {@code dimensions} field
+ * automatically.
  */
 public final class FreecamCameraEntity extends Entity {
+
+    /** Addendum AD-4: "roughly the width/height of a player head hitbox" -- see spec AD-4 derivation. */
+    private static final float BOUNDING_BOX_SIZE = 0.45F;
 
     public FreecamCameraEntity(World world) {
         super(EntityType.MARKER, world);
         this.noClip = true;
+        this.calculateDimensions();
+    }
+
+    @Override
+    public EntityDimensions getDimensions(EntityPose pose) {
+        return EntityDimensions.fixed(BOUNDING_BOX_SIZE, BOUNDING_BOX_SIZE);
     }
 
     @Override
@@ -86,9 +123,7 @@ public final class FreecamCameraEntity extends Entity {
      * collision when {@code noclip == false}. Also seeds the interpolation
      * ("last render"/"last rotation") fields to the pre-move state so {@code
      * Camera.update}'s per-frame {@code tickProgress} lerp is smooth rather
-     * than jumping once per client tick (spec Architecture: mouse-look reuse
-     * needs no new code, but position/rotation interpolation for a
-     * manually-driven, never-ticked entity does).
+     * than jumping once per client tick.
      *
      * <p><strong>Real bug fix, confirmed via {@code javap -c} against this
      * module's own resolved merged Minecraft jar:</strong> a prior version
@@ -117,11 +152,14 @@ public final class FreecamCameraEntity extends Entity {
      * lastYaw}/{@code lastPitch} together from the current (pre-move)
      * position/rotation, exactly the same mechanism vanilla's own per-tick
      * entity bookkeeping uses.
+     *
+     * <p><strong>Addendum AD-1:</strong> no longer takes/sets yaw/pitch --
+     * this entity's rotation is now mutated exclusively by the inherited
+     * {@code Entity.changeLookDirection(double, double)}, called directly
+     * by {@code MouseFreecamLookRedirectMixin} while Freecam is active.
      */
-    void lazuli$integrate(Vec3d desiredDelta, float yaw, float pitch, boolean noclip) {
+    void lazuli$integrate(Vec3d desiredDelta, boolean noclip) {
         this.resetPosition();
-        this.setYaw(yaw);
-        this.setPitch(pitch);
 
         Vec3d delta = desiredDelta;
         if (!noclip && desiredDelta.lengthSquared() > 0.0) {

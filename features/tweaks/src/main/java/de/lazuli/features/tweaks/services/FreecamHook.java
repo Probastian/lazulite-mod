@@ -14,7 +14,4 @@ public interface FreecamHook {
 
     /** @return true if the camera's own flight should ignore block collision (T14's noclip). Entity collision is never applied to the camera regardless of this value. */
     boolean freecamNoclip();
-
-    /** @return true if the player's own body should render at its real position while detached (T14's showOwnBody). */
-    boolean freecamShowOwnBody();
 }

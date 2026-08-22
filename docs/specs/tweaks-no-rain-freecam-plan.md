@@ -1,431 +1,636 @@
 # Implementation Plan: No Rain (T13) and Freecam (T14)
 
-Ground truth: `docs/specs/tweaks-no-rain-freecam.md` (approved spec). That
-spec's own "Methodology limitation" note applies directly to this plan too:
-**no `javap` access was available while writing either the spec or this
-plan.** Every vanilla class/method name below is carried over from the
-spec's own confidence tiers (high/medium/low, see spec's "Methodology
-limitation" section) and is **not** independently re-verified here. Per this
-repo's established convention (`docs/specs/tweaks-hooks-wiring-plan.md`'s own
-opening note, and that plan's "Findings — javap verification pass" precedent
-in the prior spec), a real `javap -p`/`javap -c -p` pass against this repo's
-own resolved jars is a **mandatory first implementation step for both
-tweaks**, not an optional nice-to-have — several file names/targets below are
-explicitly marked provisional pending that pass.
+Ground truth: `docs/specs/tweaks-no-rain-freecam.md` (approved spec), read in
+full this pass including the **Addendum** section (AD-1 through AD-5) added
+after T13/T14 shipped and saw live use. **This revision of the plan
+supersedes the original T14 sections below only where a "Addendum"-labeled
+subsection says so** — the original plan content (No Rain in full; Freecam's
+camera-attachment/collision-sweep/entity-exclusion/movement-routing
+mechanisms, both already-shipped post-ship fixes rows 119/120, interaction
+suppression) is retained as-is below for historical/traceability value and is
+**unchanged, already implemented, already shipped** — do not re-implement it.
+This revision's own new work is entirely inside the "Addendum:
+AD-1..AD-5 corrective plan" section near the end.
 
 ## Existing Implementation
+
+### As of original T14 ship (unchanged, retained for context)
 
 Framework pieces this feature plugs into additively (spec Architecture —
 Framework Fit; confirmed by direct read this pass, not just cited from the
 spec):
 
-- `api/src/main/java/de/lazuli/api/tweaks/TweakId.java:15-28` — the 12
-  existing enum constants (`ANTI_DROP` … `DISABLE_BOSS_BARS`). No
-  `KeyBinding`/Minecraft dependency in this module (spec Public API).
-- `features/tweaks/src/main/java/de/lazuli/features/tweaks/services/TweakDefinitions.java` —
-  one `of(TweakId, description, defaultConfigurables, hasSecondaryKeyBinding)`
-  static field per tweak (lines 60-110) plus `ALL` (lines 112-115) and
-  `byId(TweakId)` (117-124). Adding a tweak is: one new `of(...)` field, one
-  new entry in the `ALL` list literal.
-- `features/tweaks/src/main/java/de/lazuli/features/tweaks/services/ConfigSchemas.java` —
-  a static `EnumMap<TweakId, List<ConfigFieldSpec>>` populated in a static
-  initializer (one `ALL.put(TweakId.X, List.of(ConfigFieldSpec...))` block per
-  tweak, lines 24-107), read via `fieldsFor(TweakId)` (line 110). Existing
-  factory methods in use elsewhere in this file: `ConfigFieldSpec.bool(key,
-  label)`, `.numeric(key, label, min, max, step)`, `.enumField(key, label,
-  List<String> options)`, `.stringList(key, label)`.
-- `features/tweaks/src/main/java/de/lazuli/features/tweaks/services/TweakRegistry.java` —
-  `stateOf(TweakId)`, `setEnabled(TweakId, boolean)`, `setConfigurable(TweakId,
-  String, Object)`. I/O-agnostic; construction iterates `TweakDefinitions.ALL`
-  (lines 49-52), so a newly added definition is automatically backed by a
-  default `TweakState` with no registry code changes.
-- `features/tweaks/src/main/java/de/lazuli/features/tweaks/config/TweaksConfigIO.java` —
-  per its own Javadoc (spec-cited lines 32-36, not re-read this pass since
-  spec already quotes it directly and no planning decision here turns on
-  re-verifying it) a newly added `TweakId` is backfilled with default state
-  automatically; unknown keys in the JSON file are ignored, not fatal
-  (confirmed independently via
-  `features/tweaks/src/test/java/de/lazuli/features/tweaks/config/TweaksConfigIOTest.java`'s
-  `unknownTweakIdInFileIsIgnoredNotFatal` test). No code changes needed.
-- `platform/fabric-1.21.11/src/main/java/de/lazuli/tweaks/TweakHooksImpl.java`
-  (byte-identical shape on `fabric-26.1`/`fabric-26.2`) — one class
-  implementing every hook interface, reading straight off
-  `TweakRegistry.stateOf(id)` with no caching, e.g. `isForceBrightnessActive()`/
-  `minBrightness()` at lines 86-94. `NoRainHook`/`FreecamHook` will be added
-  to this same class's `implements` clause plus their methods, same pattern.
-  Non-hook-interface helper methods already exist on this class beyond the
-  interface contract when a mixin needs extra state (e.g.
-  `crosshairConfigurable(String)` at line 161, `setZoomActive(boolean)` at
-  line 224) — precedent for Freecam needing a similar extra method for its
-  auto-disable safety net (see Files to Modify).
-- `platform/fabric-1.21.11/src/main/java/de/lazuli/tweaks/ZoomTicker.java` —
-  the direct precedent for `FreecamTicker`: a static `register(TweaksKeyBindings,
-  TweakHooksImpl)` method that registers one `ClientTickEvents.END_CLIENT_TICK`
-  callback. Byte-identical shape on 26.1/26.2 except `KeyBinding.wasPressed()`
-  (Yarn) vs `KeyMapping.consumeClick()` (Mojmap) — see
-  `.claude/context/minecraft.md`'s "Known Cross-Version API Differences"
-  table (cited, not re-read this pass).
-- `platform/fabric-1.21.11/src/main/java/de/lazuli/tweaks/TweaksToggleTicker.java` —
-  loops `TweakId.values()` except `ZOOM`, edge-triggering
-  `registry.setEnabled(id, !registry.stateOf(id).enabled())` per spec
-  Architecture — Framework Fit, `NO_RAIN` and `FREECAM` both get a working
-  on/off hotkey from this loop with **no change to this file** (`FREECAM`'s
-  continuous per-tick flight behavior is `FreecamTicker`'s separate concern,
-  same split Zoom already has between this ticker's toggle and
-  `ZoomTicker`'s hold/toggle state machine).
-- `platform/fabric-1.21.11/src/main/java/de/lazuli/TweaksClientInitializer.java`
-  — composition root; constructs `TweaksKeyBindings`, loads `tweaks.json`,
-  constructs `TweakRegistry`, constructs `TweakHooksImpl`, then
-  `TweakEngineHandoff.publish(hooks)`, `ZoomTicker.register(keyBindings,
-  hooks)` (line 53), `TweaksToggleTicker.register(keyBindings, registry)`
-  (line 54). `FreecamTicker.register(...)` is added here, same spot.
-  Byte-identical shape on 26.1/26.2.
-- `platform/fabric-1.21.11/src/main/java/de/lazuli/tweaks/TweakEngineHandoff.java` —
-  static `require()`/`publish(TweakHooksImpl)` accessor mixins use to reach
-  the live hooks instance (e.g. `ClientWorldDisableParticlesMixin`'s
-  `TweakEngineHandoff.require().shouldSpawnParticle(id)`). Same accessor No
-  Rain's mixins will use.
-- **Mixin registration**: `platform/<module>/src/main/resources/lazuli.mixins.json`,
-  one flat `mixins` array of simple class names, package fixed to
-  `de.lazuli.mixin`, `injectors.defaultRequire: 1`,
-  `overwrites.requireAnnotations: true`. Confirmed current lists on
-  1.21.11 (20 entries) and 26.2 (20 entries, `compatibilityLevel: JAVA_25` vs
-  1.21.11's `JAVA_21` — pre-existing, unrelated to this feature). Reference
-  mixin shape (`ClientWorldDisableParticlesMixin.java`, T7 Disable Particles):
-  package `de.lazuli.mixin`, `@Mixin(TargetClass.class) abstract class`,
-  `@Inject(method = "...", at = @At("HEAD"), cancellable = true)` reading
-  `TweakEngineHandoff.require().someHookMethod(...)` and calling `ci.cancel()`,
-  helper logic factored into a `@Unique private static` method. Both No
-  Rain's visual/sound mixins and Freecam's interaction/movement/show-body
-  mixins should follow this exact shape.
-- Jar paths for the mandatory `javap` pass (already resolved on disk, same
-  paths `tweaks-hooks-wiring-plan.md` used):
+- `api/src/main/java/de/lazuli/api/tweaks/TweakId.java` — `NO_RAIN`,
+  `FREECAM` constants already present (shipped).
+- `features/tweaks/src/main/java/de/lazuli/features/tweaks/services/TweakDefinitions.java`
+  lines 116-118 (confirmed read this pass): `FREECAM` definition currently
+  `map("moveSpeed", 1.0, "sprintMultiplier", 2.0, "noclip", true,
+  "showOwnBody", true)`, `hasSecondaryKeyBinding = false`; `ALL` list at
+  line 123 includes `FREECAM`.
+- `features/tweaks/src/main/java/de/lazuli/features/tweaks/services/ConfigSchemas.java`
+  lines 114-119 (confirmed read this pass): `FREECAM` field list currently
+  `numeric("moveSpeed", "Move Speed", 0.1, 10.0, 0.1)`,
+  `numeric("sprintMultiplier", "Sprint Multiplier", 1.0, 5.0, 0.5)`,
+  `bool("noclip", "Noclip")`, `bool("showOwnBody", "Show Own Body")`.
+- `features/tweaks/src/main/java/de/lazuli/features/tweaks/services/FreecamHook.java`
+  — confirmed read this pass, exact shape: `isFreecamActive()`,
+  `freecamMoveSpeed()` (returns `float`), `freecamSprintMultiplier()`,
+  `freecamNoclip()`, `freecamShowOwnBody()`.
+- `features/tweaks/src/main/java/de/lazuli/features/tweaks/config/TweaksConfigIO.java`
+  — confirmed read in full this pass. `parse(String content)` (lines 70-113):
+  for each `TweakId`, seeds `configurables` from
+  `TweaksConfig.DEFAULT.stateOf(id).configurables()` (a fresh
+  `LinkedHashMap`) then overlays every key present in the file's
+  `configurables` object (lines 102-106) — this is the exact seam AD-3's
+  migration branch must extend, gated on `id == TweakId.FREECAM`. The raw
+  per-tweak `MainMenuJson.JsonObject configurablesObject` (line 96) is
+  available at that point and has a `.has(String key)` method
+  (`common/src/main/java/de/lazuli/common/config/MainMenuJson.java:85-86`,
+  confirmed present, `containsKey`-backed) — exactly what AD-3's "does the
+  raw file contain a `moveSpeed`/`moveSpeedRescaled` key" check needs, no new
+  JSON-reading primitive required. `serialize(...)` (lines 115-130) writes
+  every key in a `TweakState`'s `configurables` map unconditionally, so once
+  `moveSpeedRescaled` is added to `TweakDefinitions.FREECAM`'s default map it
+  is written on every subsequent save with zero serializer changes.
+- `platform/<module>/src/main/java/de/lazuli/tweaks/TweakHooksImpl.java` (×3,
+  confirmed on 26.2 this pass, e.g. lines 49/158/221/307-333) — implements
+  `..., NoRainHook, FreecamHook`; the 5 `FreecamHook` methods are trivial
+  `TweakRegistry` reads at lines 307-333. Existing precedent for **extra
+  platform-only methods beyond a hook interface's contract**:
+  `crosshairConfigurable(String)` (line 158), `setZoomActive(boolean)` (line
+  221) — exactly the shape AD-2's new "is the camera inside the player's
+  AABB" method should follow (a package/module-visible method on this same
+  class, not on `FreecamHook`).
+- `platform/<module>/src/main/java/de/lazuli/tweaks/FreecamTicker.java` (×3,
+  confirmed near-identical on 26.2/1.21.11/26.1 this pass — 26.1/26.2 are
+  Mojmap-identical per the file's own Javadoc, 1.21.11 differs only in
+  Yarn-mapped types). Confirmed structure: `register(TweaksKeyBindings,
+  TweakHooksImpl, TweakRegistry)`; `lazuli$tick` drives
+  activate/deactivate/integrate + the 4-condition safety net
+  (`lazuli$safetyNetTripped`, already covers disconnect/respawn/dimension-
+  change/death, unaffected by this addendum); `lazuli$activate` seeds the
+  camera's start position/yaw/pitch from the player's eye position and live
+  yaw/pitch (`client.player.getYRot()/getXRot()`) — this seeding is
+  unchanged by AD-1, only the *ongoing per-tick* copy is removed;
+  `lazuli$integrate` (confirmed exact text on 26.2, lines 100-117) is the
+  **single file for AD-1, AD-3 (partial), and AD-5** — it computes
+  `strafe`/`forward`/`vertical` from `player.input.keyPresses`
+  (`rawInput`), computes `speed = baseSpeed * hooks.freecamMoveSpeed() *
+  (sprint ? sprintMultiplier : 1)`, and calls
+  `cameraEntity.lazuli$integrate(delta, player.getYRot(), player.getXRot(),
+  hooks.freecamNoclip())` — this last call is the confirmed AD-1 root cause
+  (copies the player's live, mouse-driven yaw/pitch into the camera every
+  tick unconditionally).
+- `platform/<module>/src/main/java/de/lazuli/tweaks/FreecamCameraEntity.java`
+  (×3, confirmed on 26.2 in full, 1.21.11 partially, this pass). Backed by
+  `EntityTypes.MARKER` (26.1/26.2) / `EntityType.MARKER` (1.21.11) purely as
+  a placeholder type — confirmed via each file's own Javadoc this is the
+  root cause of AD-4 (zero-size bounding box, nothing for the block-
+  collision sweep to act on). `lazuli$integrate(Vec3 desiredDelta, float
+  yaw, float pitch, boolean noclip)` (26.2 lines 102-115, confirmed) is where
+  AD-1's per-parameter yaw/pitch write (`this.setYRot(yaw);
+  this.setXRot(pitch);`) lives, and is also where AD-4's larger bounding box
+  actually gets swept against (`this.getBoundingBox().expandTowards(...)`,
+  `Entity.collideBoundingBox(...)`) — so AD-4's fix (give the entity a
+  non-zero box) requires no change to this method's own logic, only to
+  wherever the entity's dimensions/bounding box are established. No
+  `getDimensions`/`EntityDimensions` override exists yet on any platform
+  (confirmed absent this pass) — AD-4 is new code, not a bug in existing
+  code beyond the `EntityTypes.MARKER` choice itself.
+- **AD-5's confirmed-identical strafe line, exact locations** (independently
+  re-confirmed this pass, matching the spec's own citations exactly):
+  `platform/fabric-1.21.11/src/main/java/de/lazuli/tweaks/FreecamTicker.java:124`,
+  `platform/fabric-26.1/src/main/java/de/lazuli/tweaks/FreecamTicker.java:102`,
+  `platform/fabric-26.2/src/main/java/de/lazuli/tweaks/FreecamTicker.java:104`
+  — all three read `double strafe = (rawInput.right() ? 1.0 : 0.0) -
+  (rawInput.left() ? 1.0 : 0.0);` verbatim.
+- Show-body mixins (confirmed read in full for 26.2 this pass,
+  `LevelExtractorFreecamShowBodyMixin.java`; 1.21.11/26.1 counterparts
+  `WorldRendererFreecamShowBodyMixin.java`/`LevelRendererFreecamShowBodyMixin.java`
+  not re-read this pass but same `@Redirect`-on-`camera.entity()`/
+  `getFocusedEntity()` shape per `.claude/context/minecraft.md` row 113,
+  already cited by the spec). Current condition (26.2, line 40):
+  `hooks.isFreecamActive() && hooks.freecamShowOwnBody()`. AD-2 changes this
+  one line's second half only — same `@Redirect`, same target method/
+  ordinal, same fallback-to-`real`-entity shape, nothing else in this file
+  changes.
+- `TweaksPanel.java` (confirmed via grep this pass, 26.2): **zero** matches
+  for `Freecam`/`freecam`/`showOwnBody` — confirms the spec's claim that
+  config rows render entirely generically off `ConfigSchemas.fieldsFor(id)`
+  with no per-tweak code. AD-2's row removal and AD-3's range/step/default
+  change both need **zero changes to this file**.
+- `.claude/context/minecraft.md` rows 112-120 (read in full this pass) —
+  the already-`javap`-confirmed findings the spec's Addendum cites
+  throughout; **rows 112/115/116/119/120 are directly relevant to this
+  addendum's implementation** (movement-key routing gate, block-collision
+  primitive signature/name divergence, `EntityType`/`EntityTypes` constant
+  location divergence, the two old-position-field-trio and
+  `sendMovementPackets`/`sendPosition` gating bugs already fixed and NOT
+  reopened by this addendum). No existing row covers AD-1's mouse-look call
+  site or AD-4's `getDimensions`/`EntityDimensions` override point — both
+  are genuinely new `javap` targets, exactly as the spec's own "Addendum
+  methodology note" and "open items for planning" list say.
+- No existing platform-side unit tests for any tweak's mixin/ticker
+  behavior (unchanged finding from original plan). `features/tweaks`' plain-
+  Java layer (`TweaksConfigIOTest`) remains the only unit-tested layer and
+  is exactly where AD-3's migration-branch logic is testable without any
+  platform module at all.
+- Jar paths for the mandatory `javap` pass (unchanged from original plan,
+  still the correct paths):
   - 1.21.11 (Yarn): `.gradle/loom-cache/minecraftMaven/net/minecraft/minecraft-merged-6dd721cd7d/1.21.11-net.fabricmc.yarn.1_21_11.1.21.11+build.6-v2/minecraft-merged-6dd721cd7d-1.21.11-net.fabricmc.yarn.1_21_11.1.21.11+build.6-v2.jar`
   - 26.1 (Mojmap): `.gradle/loom-cache/minecraftMaven/net/minecraft/minecraft-merged-a26c9a9f3c/26.1/minecraft-merged-a26c9a9f3c-26.1.jar`
   - 26.2 (Mojmap): `.gradle/loom-cache/minecraftMaven/net/minecraft/minecraft-merged-043a8b3edf/26.2/minecraft-merged-043a8b3edf-26.2.jar`
-- No existing platform-side unit tests for any tweak's mixin/ticker behavior
-  (`platform/*/src/test/` has no `*Tweak*` test files, confirmed this pass) —
-  `tweaks-hooks-wiring-plan.md`'s "no unit-testable seam without a full
-  client environment" finding still holds; only `features/tweaks`' plain-Java
-  layer (`TweaksConfigIOTest`, `TweakRegistryTest`) is unit-tested today.
 
-## Files to Create
+## Addendum: AD-1..AD-5 corrective plan
 
-### Shared (`features/tweaks`, both tweaks, low risk — no javap needed)
+Sequencing/dependency note up front: **AD-2, AD-3, and AD-5 touch disjoint
+files from each other and from AD-1/AD-4**, so those three can be
+implemented and verified independently, in any order, with AD-5 first
+(zero `javap` risk, single-line, spec explicitly says so) and AD-3's
+plain-Java migration branch second (also zero `javap` risk, unit-testable in
+isolation). **AD-1 and AD-4 both require their own dedicated `javap` spike
+against a genuinely new vanilla target** (mouse-look call site; entity-
+dimensions override point) and should be sequenced after AD-5/AD-3 land, in
+either order relative to each other since they touch different files
+(`FreecamCameraEntity.java`+possibly a new mouse mixin for AD-1;
+`FreecamCameraEntity.java` again for AD-4 — **both AD-1 and AD-4 touch
+`FreecamCameraEntity.java` on all three platforms, so batch their
+`FreecamCameraEntity.java` edits together per platform to avoid two separate
+review/compile passes over the same file**). AD-2 also reads
+`FreecamCameraEntity`'s live position (via `FreecamTicker`) but only adds a
+new method to `TweakHooksImpl`/a new field read in `FreecamTicker` — it does
+not need to touch `FreecamCameraEntity.java` itself, so it is not part of
+that batch.
 
-- `features/tweaks/src/main/java/de/lazuli/features/tweaks/services/NoRainHook.java`
-  — interface, exact shape per spec Public API (`isNoRainActive()`,
-  `noRainIncludesSnow()`, `noRainIncludesSound()`).
+### AD-5 — Inverted strafe (implement first: zero risk, no javap)
+
+**Files to modify** (×3, one-line change each, exact locations confirmed
+this pass):
+
+- `platform/fabric-1.21.11/src/main/java/de/lazuli/tweaks/FreecamTicker.java:124`
+- `platform/fabric-26.1/src/main/java/de/lazuli/tweaks/FreecamTicker.java:102`
+- `platform/fabric-26.2/src/main/java/de/lazuli/tweaks/FreecamTicker.java:104`
+
+Change `(rawInput.right() ? 1.0 : 0.0) - (rawInput.left() ? 1.0 : 0.0)` to
+`(rawInput.left() ? 1.0 : 0.0) - (rawInput.right() ? 1.0 : 0.0)`. No other
+line in any file changes. No new files.
+
+### AD-3 — Move Speed rescale + config migration (implement second: no javap, unit-testable)
+
+**Files to modify:**
+
+- `features/tweaks/src/main/java/de/lazuli/features/tweaks/services/TweakDefinitions.java`
+  (line ~118 today) — `FREECAM` default configurables map becomes
+  `map("moveSpeed", 1.0, "sprintMultiplier", 2.0, "noclip", true,
+  "moveSpeedRescaled", true)` (drops `showOwnBody`, per AD-2 below — batch
+  this one edit to cover both addenda's changes to this same line rather
+  than editing it twice).
+- `features/tweaks/src/main/java/de/lazuli/features/tweaks/services/ConfigSchemas.java`
+  (lines 114-119 today) — `FREECAM` field list becomes
+  `numeric("moveSpeed", "Move Speed", 0.25, 5.0, 0.25)`,
+  `numeric("sprintMultiplier", "Sprint Multiplier", 1.0, 5.0, 0.5)`,
+  `bool("noclip", "Noclip")` (drops the `showOwnBody` bool row, per AD-2 —
+  same batching note).
+- `features/tweaks/src/main/java/de/lazuli/features/tweaks/config/TweaksConfigIO.java`
+  — inside `parse(...)`'s per-`TweakId` loop (lines 85-108 today), after
+  `configurablesObject` is resolved (line 96) and before `tweaks.put(id, new
+  TweakState(...))` (line 107), add a block gated on `id ==
+  TweakId.FREECAM`:
+  1. If `configurablesObject.has("moveSpeed")` and NOT
+     `configurablesObject.has("moveSpeedRescaled")`: divide the in-progress
+     `configurables.get("moveSpeed")` value by `10.0` before it's placed into
+     the final map (spec AD-3 mechanism step 3).
+  2. Unconditionally set `configurables.put("moveSpeedRescaled", true)` in
+     every case reached by this branch (spec AD-3 step 4) — already the
+     default-map value in the common case, forced true after a migration.
+  3. Defensive clamp: `configurables.put("moveSpeed", clamp(((Number)
+     configurables.get("moveSpeed")).doubleValue(), 0.25, 5.0))` (spec AD-3
+     step 5) — guards hand-edited/out-of-range JSON regardless of path taken.
+  - This block runs *after* the generic overlay loop (lines 104-106) already
+    populated `configurables` from the file, so it can inspect both the
+    overlaid in-memory value and the raw `configurablesObject.has(...)`
+    presence checks in one place — no restructuring of the existing generic
+    loop needed, this is purely additive code inserted right before the
+    `tweaks.put(...)` call, scoped with a single `if (id ==
+    TweakId.FREECAM)`.
+- `platform/<module>/src/main/java/de/lazuli/tweaks/FreecamTicker.java` (×3)
+  — add `private static final float MOVE_SPEED_RUNTIME_SCALE = 10.0f;` and
+  change `lazuli$integrate`'s speed computation to `speed = baseSpeed *
+  hooks.freecamMoveSpeed() * MOVE_SPEED_RUNTIME_SCALE * (rawInput.sprint() ?
+  hooks.freecamSprintMultiplier() : 1.0f)` (26.2 line 109-110 today; same
+  line/shape on 1.21.11/26.1). No other line in this file changes for AD-3
+  (AD-1/AD-5 touch adjacent lines in the same method — batch all three
+  addenda's edits to this one method per platform into a single pass over
+  the file, see sequencing note above).
+
+**Files to create:** none for AD-3.
+
+**Test strategy (AD-3-specific, unit-testable today):** extend
+`features/tweaks/src/test/java/de/lazuli/features/tweaks/config/TweaksConfigIOTest.java`
+with cases covering all three `TweaksConfigIO.parse` branches: (a) a
+`FREECAM.configurables` JSON object with no `moveSpeed` key at all → result
+has default `1.0`/`moveSpeedRescaled = true`, no division; (b) an object
+with `moveSpeed: 10.0` and no `moveSpeedRescaled` key → result has
+`moveSpeed = 1.0`, `moveSpeedRescaled = true` (the migration path); (c) an
+object with `moveSpeed: 0.5` and `moveSpeedRescaled: true` already present →
+result has `moveSpeed = 0.5` unchanged (already-migrated/idempotency path);
+(d) a re-`serialize`+`parse` round trip of case (b)'s *result* confirms the
+second parse does **not** divide again (idempotency, since the marker is now
+present) — this is the load-bearing regression test for the "never divide
+twice" requirement. (e) an out-of-range hand-edited value (e.g. `moveSpeed:
+99.0` with `moveSpeedRescaled: true` present) clamps to `5.0`.
+
+### AD-2 — Show Own Body becomes automatic (no javap needed — Entity.getBoundingBox()/AABB.inflate/contains are stable long-standing APIs, but exact overload names should still get a quick javap spot-check per platform per this repo's standing convention)
+
+**Files to modify:**
+
 - `features/tweaks/src/main/java/de/lazuli/features/tweaks/services/FreecamHook.java`
-  — interface, exact shape per spec Public API (`isFreecamActive()`,
-  `freecamMoveSpeed()`, `freecamSprintMultiplier()`, `freecamNoclip()`,
-  `freecamShowOwnBody()`).
+  — remove `freecamShowOwnBody()` from the interface entirely.
+- `features/tweaks/src/main/java/de/lazuli/features/tweaks/services/TweakDefinitions.java`
+  and `ConfigSchemas.java` — covered above under AD-3's file list (same
+  lines, batched edit — dropping `showOwnBody` from both).
+- `platform/<module>/src/main/java/de/lazuli/tweaks/TweakHooksImpl.java`
+  (×3) — remove the `freecamShowOwnBody()` method (no longer part of the
+  interface); add a new platform-only method (not on any interface),
+  following the `crosshairConfigurable`/`setZoomActive` precedent (Existing
+  Implementation), e.g. `boolean freecamCameraInsidePlayerBounds()` backed
+  by a field this class exposes a setter for, OR — simpler, avoiding a new
+  mutable field on `TweakHooksImpl` — have `FreecamTicker` compute the
+  boolean itself each tick (it already holds direct references to both
+  entities, per spec's own "Where this lives" recommendation) and pass it
+  straight to a small **static** accessor `FreecamTicker` itself exposes
+  (e.g. `FreecamTicker.isCameraInsidePlayerBounds()`), which the show-body
+  mixins call directly instead of going through `TweakHooksImpl` at all —
+  either placement satisfies the spec's constraint ("cannot live in
+  `FreecamHook`/`features/tweaks`"); recommend the `FreecamTicker`-static
+  option since it avoids adding a new field/setter pair to
+  `TweakHooksImpl` purely to shuttle a value computed one call away, and
+  `TweaksToggleTicker`/mixins already reach `TweakEngineHandoff.require()`
+  for `TweakHooksImpl` state but nothing prevents a mixin also referencing
+  `FreecamTicker` directly (same package, `de.lazuli.tweaks`, both already
+  public/package-visible to `de.lazuli.mixin` the same way
+  `TweakEngineHandoff` is) — **final placement choice (TweakHooksImpl field
+  vs. FreecamTicker static) is a small implementation-time judgment call,
+  not gated on anything else in this plan.**
+- `platform/<module>/src/main/java/de/lazuli/tweaks/FreecamTicker.java`
+  (×3) — inside `lazuli$integrate` (or `lazuli$tick`, wherever both entity
+  references are already in scope each tick), compute `boolean hide =
+  cameraEntity.getBoundingBox() /* actually player's box, see below */`...
+  precisely: `AABB playerBox = player.getBoundingBox(); boolean cameraInside
+  = playerBox.inflate(0.1).contains(cameraEntity.getX(), cameraEntity.getY(),
+  cameraEntity.getZ());` (Mojmap `AABB`/`inflate`/`contains(double,double,double)`;
+  Yarn `Box`/`expand`/`contains` — exact overload names to confirm via a
+  quick `javap` spot-check per spec's Addendum "open items for planning" #2,
+  low risk, both are long-stable core geometry APIs) — store the result
+  somewhere the show-body mixin can read it each frame (per the placement
+  decision above).
+- `platform/<module>/src/main/java/de/lazuli/mixin/{WorldRendererFreecamShowBodyMixin,LevelRendererFreecamShowBodyMixin,LevelExtractorFreecamShowBodyMixin}.java`
+  (×3, one per platform, files already exist and are confirmed-shipped) —
+  change the `@Redirect` handler's condition only (26.2 confirmed exact
+  line: `LevelExtractorFreecamShowBodyMixin.java:40`,
+  `hooks.isFreecamActive() && hooks.freecamShowOwnBody()`) to
+  `hooks.isFreecamActive() && !<newInsideCheck>()` — same `@Redirect`
+  target/ordinal/fallback-to-`real` shape, this one condition line only, on
+  all three files.
 
-### Freecam platform classes (×3 platforms, camera-attachment part — low risk, confirmed API)
+**Files to create:** none for AD-2.
+
+**Test strategy (AD-2-specific, manual only — geometric/render behavior, no
+unit-testable seam):** with Freecam active, fly the camera slowly outward
+from directly inside the player's model until the body appears — confirm it
+appears close to the (inflated) hitbox boundary, not at some other distance;
+fly back in and confirm it disappears again with no visible single-frame
+flicker at moderate flight speed; repeat while the player is sneaking (0.6×
+1.5 box) and swimming (0.6×0.6 box) to confirm the check uses the player's
+*live*, not activation-time-cached, bounding box (spec's explicit
+requirement) — e.g. activate Freecam while standing, then have the player
+start swimming (auto behavior, no input needed since player sim continues
+normally) and confirm the hide/show boundary visibly shrinks to match.
+
+### AD-1 — Player rotation decoupling (javap-blocked: mouse-look call site)
+
+**Mandatory first step:** `javap -c -p` each platform's resolved merged jar
+for the real per-frame mouse-look integration call site, resolving the
+spec's own flagged fork:
+
+- **Branch (a) — hard-codes the player/local entity, needs a new mixin.**
+  Candidate targets per spec: Yarn `net.minecraft.client.Mouse.updateMouse(double)`
+  (private); Mojmap `net.minecraft.client.MouseHandler.turnPlayer()`
+  (public) — **confirm independently on 26.1 and 26.2, do not assume
+  identical** (spec's own repeated caution, rows 69/104/113/116 precedent).
+- **Branch (b) — already keys off `getCameraEntity()`/`entity()`, no mixin
+  needed.** If confirmed, the fix is entirely inside
+  `FreecamCameraEntity.java` (a new `turn(double dx, double dy)`-shaped
+  method the mouse handler calls when the camera entity is the active
+  focus) plus removing the `player.getYRot()/getXRot()` copy from
+  `FreecamTicker.lazuli$integrate`'s call into `cameraEntity.lazuli$integrate(...)`.
+
+**Files to modify regardless of branch (×3):**
 
 - `platform/<module>/src/main/java/de/lazuli/tweaks/FreecamCameraEntity.java`
-  — the phantom camera object (spec Architecture recommendation): a custom
-  `Entity` subclass, never `world.spawnEntity`/added to the world, driven
-  manually once per client tick by `FreecamTicker`. Reduces
-  `readNbt`/`writeNbt`/damage/interaction methods to no-ops. Exposes package-
-  visible position/rotation integration + (when `noclip == false`) a call
-  into its own **inherited** block-collision-sweep method — exact method
-  name/signature is javap-blocked (spec Architecture, "Block collision for
-  `noclip = false`"), so this file's body cannot be finalized before that
-  javap step, only its shape (per-platform, since the base `Entity` class and
-  its collision-sweep primitive's exact name must each be independently
-  confirmed — spec Compatibility explicitly declines to assume 26.1/26.2
-  identical without checking).
+  — `lazuli$integrate`'s signature drops the `float yaw, float pitch`
+  parameters (26.2 today: `lazuli$integrate(Vec3 desiredDelta, float yaw,
+  float pitch, boolean noclip)`, lines 102-105 setting
+  `this.setYRot(yaw)`/`this.setXRot(pitch)` every call) — the camera instead
+  owns its own persistent yaw/pitch, mutated only by the new mouse-turn path
+  (branch a or b above), never by `FreecamTicker` per-tick anymore. Seeded
+  once at `lazuli$activate` time (unchanged — `FreecamTicker.java` already
+  does `camera.setYRot(client.player.getYRot()); camera.setXRot(...)` at
+  activation, this specific call stays).
 - `platform/<module>/src/main/java/de/lazuli/tweaks/FreecamTicker.java` —
-  the `ZoomTicker`-precedent `ClientTickEvents.END_CLIENT_TICK` registration.
-  Proposed signature `register(TweaksKeyBindings, TweakHooksImpl hooks,
-  TweakRegistry registry)` (registry included, unlike `ZoomTicker`, so this
-  ticker can call `registry.setEnabled(TweakId.FREECAM, false)` directly for
-  the auto-disable safety net — mirrors `TweaksToggleTicker`'s existing
-  `register(keyBindings, registry)` shape rather than adding a new
-  `TweakHooksImpl` mutator method). Responsibilities: on toggle-on, construct
-  one `FreecamCameraEntity` and call `MinecraftClient.setCameraEntity(...)`;
-  each tick while active, read movement keybindings + the player's live yaw/
-  pitch, integrate the phantom entity's position (via the collision-sweep
-  primitive when `noclip == false`), apply `moveSpeed`/`sprintMultiplier`;
-  detect the safety-net triggers (disconnect, respawn, dimension change,
-  death — exact per-tick vanilla state to poll for each is not yet
-  identified, see Risks) and force-disable via `registry.setEnabled` if any
-  fire; on toggle-off (including forced), call
-  `setCameraEntity(client.player)` and drop the phantom reference.
+  `lazuli$integrate`'s call to `cameraEntity.lazuli$integrate(delta,
+  player.getYRot(), player.getXRot(), hooks.freecamNoclip())` drops the two
+  rotation arguments: `cameraEntity.lazuli$integrate(delta,
+  hooks.freecamNoclip())`. **Batch this edit with AD-3/AD-5's edits to the
+  same method** (sequencing note above) to avoid three separate diffs
+  touching adjacent lines of the same ~15-line method.
 
-### Freecam mixins (×3 platforms each, all three genuinely javap-blocked — see Risks)
+**Files to create (only if branch (a) is confirmed, ×3, provisional names):**
 
-- `platform/<module>/src/main/java/de/lazuli/mixin/<TBD>FreecamMovementRoutingMixin.java`
-  — gates the per-tick movement-key read that currently feeds
-  `ClientPlayerEntity`/`LocalPlayer`'s own walk state, so WASD/jump/sneak
-  reach `FreecamTicker`'s integration instead of the player while active
-  (spec Architecture, "Movement-key routing" — the spec's own single
-  highest-risk item for this tweak). Target class/method name: **unconfirmed,
-  provisional filename only**.
-- `platform/<module>/src/main/java/de/lazuli/mixin/<TBD>FreecamHideBodyMixin.java`
-  — only needed to implement `showOwnBody == false` (the `true` default is a
-  free side effect of `setCameraEntity`, per spec Architecture). Target:
-  whatever "is this the entity the camera is focused on" check normally
-  hides the local player's own body in first-person — **unconfirmed,
-  provisional filename only**.
-- `platform/<module>/src/main/java/de/lazuli/mixin/<TBD>FreecamSuppressInteractionMixin.java`
-  — implements the spec's Non-goals default (block left/right-click
-  interaction entirely while Freecam is active — see Open Questions below,
-  this is the still-unconfirmed-by-user default). Target: wherever
-  `MinecraftClient` processes the attack/use-item keys each tick (candidate
-  shape `MinecraftClient.handleInputEvents()`/`doAttack()`/`doItemUse()`, not
-  javap-verified this pass — **this exact target was not analyzed in the
-  spec at all** and is a genuinely new risk item this plan is surfacing, see
-  Risks).
-
-### No Rain mixins (×3 platforms — split visual/sound, medium-to-fully-unconfirmed target)
-
-- `platform/fabric-1.21.11/src/main/java/de/lazuli/mixin/WeatherRenderingNoRainMixin.java`
-  — provisional name/target (`net.minecraft.client.render.WeatherRendering`,
-  medium confidence per spec for the literal `1.21.11+build.6` pin, not yet
-  javap-confirmed). Three `@Inject(..., cancellable = true)` methods: on
-  `buildPrecipitationPieces(...)` and/or `renderPrecipitation(...)` (visual,
-  gated by `NoRainHook.isNoRainActive()` and, when `noRainIncludesSnow() ==
-  false`, a per-invocation biome-precipitation-type check — see Risks for the
-  private-method accessor question) and on `addParticlesAndSound(...)` (sound
-  + splash particles, gated additionally by `noRainIncludesSound()`).
-- `platform/fabric-26.1/src/main/java/de/lazuli/mixin/<TBD>NoRainMixin.java` —
-  **fully unresolved target class** per spec Architecture ("26.1/26.2 (Mojmap):
-  unresolved this pass"); filename is a placeholder only, to be renamed to
-  match whatever class the mandatory javap pass finds.
-- `platform/fabric-26.2/src/main/java/de/lazuli/mixin/<TBD>NoRainMixin.java` —
-  same caveat as 26.1; spec explicitly declines to assume 26.1/26.2 share a
-  class here without independent confirmation (spec Compatibility).
-
-## Files to Modify
-
-- `api/src/main/java/de/lazuli/api/tweaks/TweakId.java` — add `NO_RAIN`,
-  `FREECAM` constants (spec Public API).
-- `features/tweaks/src/main/java/de/lazuli/features/tweaks/services/TweakDefinitions.java`
-  — one new `of(...)` field each for `NO_RAIN` (`map("includeSnow", true,
-  "includeSound", true)`) and `FREECAM` (`map("moveSpeed", 1.0,
-  "sprintMultiplier", 2.0, "noclip", true, "showOwnBody", true)`), both
-  `hasSecondaryKeyBinding = false`; append both to `ALL`.
-- `features/tweaks/src/main/java/de/lazuli/features/tweaks/services/ConfigSchemas.java`
-  — `ALL.put(TweakId.NO_RAIN, List.of(bool("includeSnow", ...), bool
-  ("includeSound", ...)))`; `ALL.put(TweakId.FREECAM, List.of(numeric
-  ("moveSpeed", ..., 0.1, 10.0, 0.1), numeric("sprintMultiplier", ..., 1.0,
-  5.0, 0.5), bool("noclip", ...), bool("showOwnBody", ...)))` — ranges/steps/
-  defaults exactly per spec Requirements T14.
-- `platform/<module>/src/main/java/de/lazuli/tweaks/TweakHooksImpl.java` (×3)
-  — add `NoRainHook, FreecamHook` to the `implements` clause; add the 7
-  trivial state-reading methods (3 for `NoRainHook`, 5 for `FreecamHook`,
-  minus `isFreecamActive()` reused as `state(TweakId.FREECAM).enabled()`, no
-  extra field needed — unlike Zoom, Freecam has no separate hold-vs-toggle
-  state to track in this class, per spec's Non-goals removing
-  `freezePlayer`). No new mutable fields expected on this class for either
-  tweak (contrast with Zoom's `zoomActive`/`zoomFactor` fields, which exist
-  only because of Zoom's hold/transition behavior that Freecam does not
-  have).
-- `platform/<module>/src/main/java/de/lazuli/TweaksClientInitializer.java`
-  (×3) — add `de.lazuli.tweaks.FreecamTicker.register(keyBindings, hooks,
-  registry);` alongside the existing `ZoomTicker.register(...)`/
-  `TweaksToggleTicker.register(...)` calls (line ~53-54 today). No Rain needs
-  no ticker registration (its mixins read `NoRainHook` state directly at each
-  vanilla call site, no per-tick polling, per spec Events).
+- `platform/<module>/src/main/java/de/lazuli/mixin/<TBD>FreecamMouseLookRedirectMixin.java`
+  — `@Redirect`/`@ModifyArgs`-shaped, mirroring
+  `LocalPlayerFreecamKeepPositionSyncMixin`'s existing precedent shape
+  (already-shipped file in the same `de.lazuli.mixin` package) — while
+  Freecam is active, routes that frame's raw mouse delta to
+  `FreecamCameraEntity`'s new turn method and suppresses the real player's
+  own turn for that same delta. Exact target method/redirect point is fully
+  `javap`-blocked per platform (mandatory first step, this item's own
+  biggest risk).
 - `platform/<module>/src/main/resources/lazuli.mixins.json` (×3) — append
-  each new mixin's simple class name once that file is actually created
-  (batch-by-batch, matching `tweaks-hooks-wiring-plan.md`'s own sequencing
-  note about not referencing not-yet-written classes).
-- `features/tweaks/src/test/java/de/lazuli/features/tweaks/config/TweaksConfigIOTest.java`
-  — extend `parseRoundTripsSerializedDefault` (or add a sibling assertion) to
-  also cover `TweakId.NO_RAIN`/`TweakId.FREECAM` default-config round-tripping,
-  matching the existing per-tweak-spot-check pattern already used for `ZOOM`/
-  `ANTI_DROP` (small, low-risk, no new test infrastructure).
+  the new mixin's simple class name, only once branch (a) is confirmed and
+  the file above actually exists (same "don't reference not-yet-written
+  classes" sequencing discipline the original plan already established).
+
+**Files to modify (only if branch (a), additionally):** `TweakHooksImpl.java`
+is not expected to need a new method for AD-1 (the new mixin reads
+`TweakEngineHandoff.require().isFreecamActive()`, already exposed) — no
+change expected there, called out only to rule it in/out during
+implementation.
+
+**Test strategy (AD-1-specific, manual only):** activate Freecam, move the
+mouse in all directions, and from a second vantage point (a second client
+session, or `/spectate`-equivalent, or simply watching the player's own
+body/head model from outside via `showOwnBody`'s now-automatic on-state)
+confirm the player's body/head **do not turn** while the camera's own view
+freely looks around; deactivate Freecam and confirm mouse-look immediately
+resumes controlling the real player's rotation with no visible snap
+(continuing from the pinned snapshot value, per spec's exact "no
+discontinuity" requirement); confirm the previously-shipped row 120 fix is
+not regressed (no anti-cheat rubber-banding after a Freecam session — the
+pinned rotation should still be networked correctly per spec's explicit
+"does not reopen row 120" note).
+
+### AD-4 — Noclip-off collision: real bounding box (javap-blocked: dimensions override point)
+
+**Mandatory first step:** `javap -c -p` each platform's resolved merged jar
+to confirm whether `Entity.getDimensions(Pose)` (Mojmap) /
+`Entity.getDimensions(EntityPose)` (Yarn) is actually the live source of
+`getBoundingBox()`'s size for an `Entity` that is constructed, positioned via
+`setPos(...)`, but never added to the world/ticked by vanilla's own loop —
+per spec's own flagged uncertainty, this is a genuinely new question no
+existing row answers. Confirm independently on 26.1 and 26.2 (standing "do
+not assume identical" caution).
+
+**Files to modify (×3):**
+
+- `platform/<module>/src/main/java/de/lazuli/tweaks/FreecamCameraEntity.java`
+  — **primary branch (if `getDimensions` confirmed live):** override
+  `protected EntityDimensions getDimensions(Pose pose)` (Mojmap) /
+  `protected EntityDimensions getDimensions(EntityPose pose)` (Yarn) to
+  return a fixed `0.45F × 0.45F` box (exact factory method —
+  `EntityDimensions.fixed(float, float)` or equivalent overload — to confirm
+  via the same `javap` pass). **Fallback branch (if not live for a
+  never-ticked entity):** add a one-time `this.setBoundingBox(...)`-shaped
+  call in the constructor computing a fixed `0.45×0.45×0.45` `AABB`/`Box`
+  from the entity's current position, OR recompute it at the top of
+  `lazuli$integrate` each tick from the entity's current position before the
+  collision sweep runs (spec's own named fallback) — this branch touches the
+  same method AD-1 already edits (`lazuli$integrate`), so **batch AD-1 and
+  AD-4's edits to `FreecamCameraEntity.java` into one pass per platform**
+  (sequencing note above), regardless of which AD-4 branch is confirmed.
+- Update each file's class Javadoc to remove the now-stale "this
+  incidentally also gives it MarkerEntity's own zero-size bounding box... a
+  deliberate v1 simplification" passage (26.2/1.21.11 both currently contain
+  this text, confirmed this pass) and replace with a short note describing
+  the fixed 0.45-block box and which override mechanism was actually
+  confirmed live.
+
+**Files to create:** none expected for AD-4 (a `FreecamCameraEntity.java`
+method addition/override, not a new class or mixin) — confirm during the
+`javap` spike that no mixin onto vanilla's own dimension-resolution
+machinery is needed (expected: none, since `FreecamCameraEntity` is our own
+subclass with ordinary Java override access to `getDimensions`, per the same
+"genuine subclass, no mixin needed" precedent row 115 already established
+for the collision-sweep primitive).
+
+**Findings to record:** once confirmed, add a new row to
+`.claude/context/minecraft.md` documenting the exact `getDimensions`/
+`EntityDimensions` factory signatures per platform and whether the override
+is in fact live for a manually-driven entity — the spec explicitly calls
+this out as a new fact this addendum's implementation should feed back into
+that table (no existing row covers it).
+
+**Test strategy (AD-4-specific, manual only):** with `noclip = false`,
+fly directly at a solid wall/floor/ceiling from multiple angles and confirm
+the camera stops at the surface instead of passing through (the confirmed
+bug being fixed); fly through a 1-block gap a full player couldn't fit
+through but that's wider than 0.45 blocks, confirming the smaller head-sized
+box (not a full 0.6-wide body box) is what's actually being swept; with
+`noclip = true`, confirm collision is still fully bypassed (unaffected by
+this item); fly the camera close to/through a mob or another player in both
+noclip states and confirm entity collision is still never applied (this
+item's fix must not regress the already-shipped, unconditional entity-
+collision exclusion).
 
 ## Dependencies
 
-No new external (non-Fabric) dependency for either tweak. Both are built
-entirely on:
+No new external (non-Fabric) dependency for any of the 5 addendum items —
+all five are implemented entirely with:
 
 - Vanilla Minecraft classes already on each platform module's existing
-  Yarn/Mojmap compile classpath (`net.minecraft.client.*` / `net.minecraft.world.entity.*`
-  equivalents) — same classpath every other tweak's mixins already use, no
-  `build.gradle` change.
-- The existing Sponge Mixin setup (plain `@Inject`/`cancellable = true`, no
-  MixinExtras — matching `tweaks-hooks-wiring-plan.md`'s explicit "keep it
-  that way" convention, confirmed still true by this pass's mixin-file read).
-- Existing Fabric API `ClientTickEvents.END_CLIENT_TICK` (already a
-  dependency, used by `ZoomTicker`/`TweaksToggleTicker` today).
+  Yarn/Mojmap compile classpath (no `build.gradle` change) — `Entity`,
+  `AABB`/`Box`, `EntityDimensions`, and whichever mouse-input class AD-1's
+  `javap` pass confirms.
+- The existing Sponge Mixin setup (plain `@Inject`/`@Redirect`,
+  `cancellable = true` where relevant, no MixinExtras — same standing
+  convention the original plan already established and this repo's shipped
+  Freecam mixins already follow).
+- Plain Java (`features/tweaks` module) for AD-3's migration branch — no
+  Minecraft-jar dependency at all.
 
-No Maven Central verification needed per this plan's own Dependencies
-instruction (no new coordinate proposed). If implementation later needs a
-genuinely new dependency (unlikely — the spec's own Architecture section
-finds no such need), that requires the standard Maven Central check before
-adoption, same as `tweaks-hooks-wiring-plan.md` flagged for its own
-hypothetical case.
+No Maven Central verification is needed for this plan (no new coordinate
+proposed for any of the 5 items). If AD-1's `javap` spike somehow surfaces a
+need for a library-level dependency (not expected — this is a mixin/vanilla-
+API question, not a missing-library question), that would require the
+standard Maven Central check before adoption, same standing rule as the
+original plan.
 
 ## Risks
 
-- **No Rain's Mojmap (26.1/26.2) target class is fully unconfirmed** (spec
-  Architecture, Compatibility) — the single largest risk in this plan. If no
-  `WeatherRendering`/`WeatherEffectRenderer`-shaped dedicated class exists on
-  26.x, the fallback (tracing whichever renderer class owns the weather
-  field(s), per spec) is a materially different, larger mixin design than the
-  clean two/three-method cancel this plan assumes for 1.21.11. Recommend
-  running the 26.1 `javap` pass **before** starting 1.21.11 implementation,
-  so if the fallback design is needed, it's discovered early rather than
-  after 1.21.11's mixin is already written and reviewed.
-- **No Rain's 1.21.11 target is also only medium confidence** for the exact
-  `1.21.11+build.6` pin (spec: confirmed class shape as of Yarn
-  1.21.9+build.1, not this literal pin; a real structural relocation from an
-  older `WorldRenderer.renderWeather(...)` shape happened somewhere in the
-  1.21.x line, per spec). A `javap` pass on 1.21.11's own jar is mandatory
-  before writing this mixin, not just recommended.
-- **`includeSnow = false`'s private-method problem** (spec Architecture): the
-  natural rain-vs-snow discriminator (`getPrecipitationAt`) is `private`
-  inside the target class. This repo has documented precedent for
-  invoker/accessor pitfalls on non-public members (`.claude/context/minecraft.md`
-  rows 82/85, the `AbstractSelectionList.Entry` saga, cited not re-read this
-  pass). Implementation must pick one of the spec's two named alternatives
-  (an `@Invoker` accessor, or duplicating the lookup via the public
-  `Biome.getPrecipitationAt`/`getPrecipitation`-shaped API) at `javap` time,
-  not guess in advance.
-- **Freecam's movement-key routing target is fully unconfirmed** (spec
-  Architecture's own "single highest-risk item" for this tweak) — same
-  category of risk `tweaks-hooks-wiring-plan.md` flagged for Anti-Drop's
-  `LocalPlayer.drop(boolean)` discovery, but with no prior candidate method
-  name at all here (Anti-Drop's spec at least guessed the eventual real
-  target; this spec has none).
-- **Freecam's interaction-suppression target was never analyzed by the spec
-  at all** — this plan is the first pass to name it as a required mixin (see
-  Files to Create). It carries the same javap-blocked risk as movement-key
-  routing but with even less prior investigation, and depends on the
-  still-open Open Question 1 below (whether suppression is even the wanted
-  final behavior). Recommend treating this as its own small spike separate
-  from the movement-key-routing spike, since the two target different input
-  paths (movement keys vs. attack/use keys) and may not share a choke point.
-- **Freecam auto-disable safety-net triggers are unenumerated at the vanilla
-  API level** (disconnect, respawn, dimension change, death — spec
-  Requirements T14). `FreecamTicker`'s polling-based design (checking
-  per-tick, since Freecam intentionally uses no new event type per spec
-  Events) needs each of these four conditions mapped to something pollable
-  from `MinecraftClient`/`ClientPlayerEntity` each tick (e.g. `client.world
-  == null`, a dimension-changed comparison against the last-seen
-  `RegistryKey<World>`, `client.player.isDead()`/health <= 0) — not
-  javap-blocked in the same way as the other risks (these are all
-  reasonably well-known accessors) but still unconfirmed and untested this
-  pass; a missed trigger (e.g. respawn without a dimension change) would
-  leave the camera detached, violating the spec's hard safety requirement.
-- **`FreecamCameraEntity`'s safe-no-op method surface is a real spike, not a
-  known quantity** (spec Open Questions #4): which `Entity` methods must be
-  overridden to keep a never-world-added entity safe (avoiding NPEs from
-  assumed-non-null world/registry state in inherited methods) is only
-  discoverable by trial once the class skeleton exists.
-- **General mixin-authoring risk applies to every target above once
-  confirmed** (exact `@At` injection point, whether a target method is
-  `final`, local-capture ordinals for `@ModifyVariable` if that shape ends up
-  needed instead of plain `@Inject`) — same standing risk
-  `tweaks-hooks-wiring-plan.md` already carries for its own batches.
-- **Scope/size**: per spec's own Architecture classification, Freecam alone
-  is larger and more failure-prone than any single tweak in the T1-T13
-  catalog (3 javap-blocked mixin targets plus a new Entity subclass, versus
-  every other tweak's 0-1 javap-blocked target). Recommend sequencing Freecam
-  as its own implementation pass separate from No Rain, landing No Rain
-  first (spec's own framing: "much smaller, better-precedented change").
+- **AD-1's mouse-look call site is the single largest unknown in this
+  revision** (spec's own framing) — until the `javap` spike resolves branch
+  (a) vs. (b), the size of this item (new mixin + new redirect target vs. a
+  small in-class method addition) is unknown. Recommend running this spike
+  first among the two javap-blocked items, since it also determines whether
+  `FreecamCameraEntity`'s public method surface needs a new `turn(...)`-
+  shaped entry point that AD-4's own edits to the same file should be aware
+  of (batch order: AD-1's spike result should land before finalizing AD-4's
+  edits to the same file, even though both are "batched" into one pass per
+  the sequencing note — spike AD-1 first, then make both edits together).
+- **AD-1 cross-platform divergence risk**: per the spec's own explicit
+  caution and this repo's repeated real precedent (rows 69/104/113/116), do
+  not assume 26.1 and 26.2 share the same mouse-handler class/method shape
+  even though both are "26.x Mojmap" — each needs its own independent
+  `javap` confirmation, not a single check reused for both.
+- **AD-2 margin/hysteresis risk**: the spec's own fixed 0.1-block margin is
+  explicitly flagged as possibly needing a real hysteresis dead-band if live
+  testing shows flicker at the boundary (spec Future Extensions) — not
+  required for this pass, but the manual test plan above specifically
+  exercises the boundary at "moderate flight speed" to surface this early
+  if it's going to be a problem, rather than only discovering it much later.
+- **AD-2 placement choice (`TweakHooksImpl` field vs. `FreecamTicker`
+  static)** is an open, small implementation-time judgment call (see AD-2's
+  Files to Modify) — does not block planning but should be resolved
+  consistently across all three platforms (pick one shape, use it on all
+  three, don't let 1.21.11 diverge from 26.1/26.2 here for no reason).
+- **AD-3 migration idempotency is the most safety-critical piece of this
+  entire revision** — a bug that re-divides an already-migrated value on a
+  second load would silently and repeatedly halve a user's chosen speed
+  every time the game restarts. This is exactly why the unit test plan
+  above includes an explicit "serialize the migrated result, then parse it
+  again, confirm no second division" case (case (d)) as a first-class
+  regression test, not an afterthought — recommend treating that specific
+  test as a hard gate before this item is considered done, independent of
+  the rest of the acceptance criteria below.
+- **AD-4 dimensions-override-liveness risk**: the spec itself flags this as
+  a genuinely open question ("whether `getDimensions(Pose)` is in fact live
+  for a manually-driven, never-ticked `Entity` subclass's `getBoundingBox()`
+  result") with a named fallback if it isn't. Budget time for both branches
+  during implementation rather than assuming the cleaner override-based
+  branch will pan out.
+- **AD-4/AD-1 shared-file batching risk**: since both items edit
+  `FreecamCameraEntity.java`'s `lazuli$integrate` method (AD-1 removes
+  parameters, AD-4 either adds a `getDimensions` override elsewhere in the
+  class or adds bounding-box recomputation inside this same method), doing
+  them as two fully separate, sequential PRs against the same method
+  invites a trivial but annoying merge/rebase conflict — recommend a single
+  combined edit pass per platform for this one file, even though the two
+  items' `javap` spikes and acceptance criteria remain independently
+  trackable.
+- **General mixin-authoring risk** (AD-1's new mixin, if branch (a) is
+  confirmed): exact `@At` injection point, whether the target method is
+  `final`, local-capture ordinals if `@ModifyArgs`/`@ModifyVariable` ends up
+  needed instead of a plain `@Redirect` — same standing risk category the
+  original plan already carries for every mixin target in this feature.
+- **No live-launch verification by the implementing/verifying agent this
+  round** — the user is on remote control and cannot see/close a launched
+  Minecraft window right now (`feedback_no_launch_minecraft_remote.md`).
+  Every manual test listed above (AD-1 through AD-5's "Test strategy"
+  subsections) must be executed by the **user**, later, not simulated or
+  assumed passing by any agent. This round's agent-side verification is
+  strictly limited to: compiling all three platform modules
+  (`./gradlew :platform:fabric-1.21.11:compileJava
+  :platform:fabric-26.1:compileJava :platform:fabric-26.2:compileJava`, or
+  equivalent full `build`/`check` task per module), running the extended
+  `TweaksConfigIOTest` suite (AD-3), and a careful re-read of the final
+  diffs against each addendum item's target behavior described above — not
+  an in-game pass. This is a hard process constraint for this round, not
+  merely a preference.
 
-## Test Strategy
+## Test Strategy (summary — see each AD-N subsection above for the detailed version)
 
-No automated test harness in this repo covers mixin/tick-level gameplay
-behavior (Existing Implementation) — same conclusion
-`tweaks-hooks-wiring-plan.md` reached, still true. Both tweaks are
-manual/in-game verification at the platform level, plus the small amount of
-plain-Java logic that *is* unit-testable.
-
-- **Unit-testable (features/tweaks only)**:
-  - `TweaksConfigIOTest` extended per Files to Modify: round-trip
-    `NO_RAIN`/`FREECAM` default state through `serialize`/`parse`, and a
-    non-default value for at least one configurable each (mirrors existing
-    `ZOOM`/`ANTI_DROP` spot checks).
-  - Optional: a `TweakDefinitionsTest`/`ConfigSchemasTest` assertion that
-    every `TweakId.values()` entry has a `ConfigSchemas.fieldsFor(id)` entry
-    with no exception — cheap regression guard against forgetting to wire a
-    new tweak's schema (no such test exists today; nice-to-have, not
-    required by the spec).
-- **No Rain, manual, per platform (×3)**:
-  - Toggle on during an active rain storm: precipitation visual stops,
-    ambient patter sound stops (when `includeSound = true`); toggle off
-    restores both immediately with no residual state.
-  - `includeSound = false`: visual suppressed, sound still plays.
-  - `includeSnow = false` in a snowy biome during snowfall: snow still
-    renders/sounds; rain in a rain biome is still suppressed (discriminator
-    check).
-  - **Lightning regression check, every platform, every configurable
-    combination**: during an active storm with lightning, confirm the
-    flash, the bolt entity, and the thunderclap sound all still occur
-    exactly as vanilla — this is the spec's own explicit "must be manually
-    verified in-game, not trusted from static analysis alone" requirement
-    (spec Architecture), and the single most load-bearing manual check in
-    this whole plan given the user's explicit framing that lightning must
-    stay fully untouched.
-- **Freecam, manual, per platform (×3)**:
-  - Toggle on/off via hotkey and via the Tweaks tab checkbox with no hotkey
-    bound (safety requirement).
-  - While active: WASD+mouse-look flies the camera correctly; jump/sneak
-    move it straight up/down; `moveSpeed` and `sprintMultiplier` (holding
-    Sprint) visibly change speed; the real player's body is visible from
-    outside when `showOwnBody = true` and hidden when `false`.
-  - `noclip = true` passes through blocks; `noclip = false` collides with
-    block geometry (walls/floor/ceiling) but still passes through every
-    entity in both cases (spawn a mob/other player nearby and fly through
-    it).
-  - **Player-simulation-untouched check** (the spec's core invariant):
-    while Freecam is active, confirm off-screen that the real player
-    continues taking fall damage, drowning, being targeted/attacked by
-    mobs, and losing hunger — e.g. stand the player over lava/in a mob's
-    aggro range right before toggling Freecam on, and confirm the player's
-    health/hunger still changes while the camera is detached and not
-    looking at the player's body.
-  - Each safety-net trigger individually: disconnect from a server,
-    die, respawn, and change dimension (Nether portal) while Freecam is
-    active — confirm the camera snaps back to the player in every case with
-    no way to end up permanently detached.
-  - Whatever the resolved answer to Open Question 1 turns out to be
-    (interaction suppressed vs. allowed): confirm left/right-click behaves
-    exactly as that resolution specifies while Freecam is active.
+- **Automated/unit** (the only agent-executable verification this round):
+  `features/tweaks/src/test/java/de/lazuli/features/tweaks/config/TweaksConfigIOTest.java`
+  extended per AD-3's 5 new cases (a-e above); existing test suite must
+  continue passing unmodified for every other `TweakId`.
+- **Compile-only, per platform** (the only platform-level agent-executable
+  verification this round, per the Risks note above): a full Gradle
+  compile/check of `platform:fabric-1.21.11`, `platform:fabric-26.1`,
+  `platform:fabric-26.2` after each addendum item's edits land, confirming
+  no mixin-registration errors (`lazuli.mixins.json` entries, if AD-1 adds
+  one, must resolve), no type errors from the `FreecamHook` interface change
+  (AD-2) rippling through `TweakHooksImpl`, `TweaksConfigIOTest`, and any
+  other caller.
+- **Manual, in-game, per platform (×3) — deferred to the user, not run by
+  any agent this round.** A consolidated checklist (superset of each AD-N
+  subsection's own "Test strategy" above, organized for a single Freecam
+  session per platform rather than five separate sessions):
+  1. AD-5: press A, confirm camera strafes left; press D, confirm right.
+  2. AD-3: open the Tweaks tab, confirm `Move Speed` now steps in `0.25`
+     increments from `0.25` to `5.0`; for a pre-existing install with a
+     previously-tuned `moveSpeed`, confirm the felt flight speed after
+     upgrading is unchanged from before (the core migration promise); for a
+     fresh install, confirm the new default's felt speed is reasonable (not
+     required to match the old default's feel, per spec).
+  3. AD-2: confirm the `Show Own Body` checkbox row no longer appears in the
+     Tweaks tab at all; confirm the body auto-hides/auto-shows per the
+     camera-inside-hitbox rule, including while the player's pose changes
+     (sneaking/swimming) mid-session.
+  4. AD-4: confirm `noclip = false` now actually stops the camera at block
+     boundaries (previously did not); confirm `noclip = true` and entity-
+     passthrough are both unaffected.
+  5. AD-1: confirm the player's body/head do not turn to follow the freecam
+     view; confirm mouse-look resumes controlling the real player smoothly
+     (no snap) on deactivation; confirm no anti-cheat/rubber-banding
+     regression (row 120's fix still holds).
+  6. Regression pass on already-shipped behavior this addendum must not
+     break: the 4 safety-net triggers (disconnect/respawn/dimension-change/
+     death) still restore the camera; interaction is still suppressed while
+     active; the real player's own simulation (fall damage, drowning, AI
+     targeting, hunger) is still fully unaffected by Freecam being active.
 
 ## Acceptance Criteria
 
-- **No Rain** ships when: on all 3 platforms, toggling the tweak on
-  suppresses rain/snow precipitation rendering and (when `includeSound`)
-  its ambient sound, `includeSnow`/`includeSound` each independently behave
-  per spec Requirements T13, lightning is manually confirmed fully unaffected
-  on every platform, and toggling off restores stock vanilla behavior with no
-  residual state.
-- **Freecam** ships when: on all 3 platforms, the hotkey and Tweaks-tab
-  checkbox both toggle a detached, free-flying camera with mouse-look
-  identical to vanilla, WASD/jump/sneak fly the camera per spec Requirements
-  T14, `moveSpeed`/`sprintMultiplier`/`noclip`/`showOwnBody` each behave
-  exactly as configured, entity collision never applies to the camera
-  regardless of `noclip`, the real player entity is confirmed still
-  simulating normally (fall damage/drowning/AI/hunger) while Freecam is
-  active, all four safety-net triggers reliably restore the camera, and the
-  Tweaks-tab checkbox alone (no hotkey bound) can always disable it.
-- **Overall**: both tweaks persist correctly through `tweaks.json` with zero
-  `TweaksConfigIO`/schema-version code changes (per Existing Implementation),
-  both render through the existing generic `TweaksPanel` UI with no
-  `TweaksPanel` code changes, and no platform module ships either tweak
-  silently inert (config UI present but no gameplay effect).
+- **AD-1**: while Freecam is active, the real player entity's yaw/pitch
+  fields never change as a result of mouse input (verified both visually
+  from a second vantage point and, if feasible, by the user directly
+  inspecting network/position state); the camera's own look direction is
+  driven directly and exclusively by mouse input; deactivation hands mouse
+  control back to the player continuing from the pinned snapshot with no
+  discontinuity; row 120's already-shipped position/rotation-networking fix
+  is not regressed.
+- **AD-2**: the `showOwnBody` configurable, its `TweakDefinitions`/
+  `ConfigSchemas` entries, and its `FreecamHook` method are all fully
+  removed with no compile errors anywhere in the codebase; the player's body
+  automatically hides exactly when the freecam camera's position is inside
+  the player's own live (inflated-by-0.1) bounding box and shows otherwise,
+  tracking the player's live pose (not an activation-time snapshot) on all
+  three platforms.
+- **AD-3**: `moveSpeed`'s UI range/step/default are `0.25`-`5.0`/`0.25`/
+  `1.0`; an old, pre-addendum `tweaks.json` with a previously-tuned
+  `moveSpeed` value loads with an unchanged felt flight speed (migration
+  correctness); the migration runs at most once per save file
+  (idempotency, the hard-gated regression test); a brand-new install starts
+  at the new default with no migration branch taken; `sprintMultiplier` is
+  provably unaffected (unchanged bounds/behavior).
+- **AD-4**: `noclip = false` now actually prevents the camera from passing
+  through block geometry on all three platforms (the confirmed regression
+  this item fixes), using a fixed ~0.45-block cube, without affecting
+  `noclip = true`'s full pass-through or the unconditional entity-collision
+  exclusion.
+- **AD-5**: A strafes left, D strafes right, on all three platforms; W/S and
+  Space/Sneak are unaffected (regression-checked, not just assumed from the
+  single-line diff).
+- **Overall**: all three platform modules compile cleanly after every item
+  lands; `TweaksConfigIOTest` (including AD-3's 5 new cases) passes; no
+  agent-side claim of "verified in-game" is made for any of the 5 items —
+  in-game verification is explicitly the user's own follow-up step this
+  round, per the Risks section's remote-control constraint; a plain-text
+  checklist mirroring the "Manual, in-game" summary above is handed back to
+  the user at the end of implementation so they know exactly what to check
+  when they're next able to launch the game themselves.
 
-## Open Questions (carried from spec, not resolved by this plan)
+## Open Questions (carried from spec's Addendum, not resolved by this plan)
 
-1. **Freecam + block/entity interaction** (spec Open Question 1): this plan
-   assumes the spec's stated default — interaction fully suppressed while
-   Freecam is active — and plans a dedicated mixin for it (Files to Create).
-   If the user instead wants raycasting to originate from the real player's
-   position regardless of camera location, that is a materially different,
-   larger mixin (a position override on the interaction raycast rather than
-   an outright suppression) and would need its own follow-up planning pass,
-   not a drop-in swap of this plan's proposed file.
-2. **No Rain's 26.1/26.2 target class** (spec Open Question 2) — unresolved,
-   mandatory first `javap` step, see Risks.
-3. **Freecam's movement-key routing target** (spec Open Question 3) —
-   unresolved, mandatory `javap` spike, see Risks.
-4. **`FreecamCameraEntity`'s exact safe-no-op method surface** (spec Open
-   Question 4) — unresolved, implementation-time spike, see Risks.
+1. **AD-1's mouse-look call site — branch (a) vs. (b)** (spec Addendum "open
+   items for planning" #1) — the single most consequential unresolved
+   question in this revision, determines whether a new mixin is needed at
+   all.
+2. **AD-2's exact `inflate`/`expand`/`contains` overload names per
+   platform** (spec #2) — low risk, quick `javap` spot-check.
+3. **AD-4's exact bounding-box override mechanism** (spec #3) —
+   `getDimensions(Pose)` override vs. manual `setBoundingBox` fallback; also
+   whether 26.1/26.2 diverge here.
+4. **AD-2's `TweakHooksImpl`-field vs. `FreecamTicker`-static placement
+   choice** (this plan's own addition, not in the spec) — small,
+   non-blocking implementation-time judgment call, see Risks.

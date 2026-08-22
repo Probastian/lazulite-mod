@@ -29,7 +29,8 @@
 		"ClientLevelNoRainMixin",
 		"LevelExtractorFreecamShowBodyMixin",
 		"MinecraftFreecamSuppressInteractionMixin",
-		"LocalPlayerFreecamKeepPositionSyncMixin"
+		"LocalPlayerFreecamKeepPositionSyncMixin",
+		"MouseHandlerFreecamLookRedirectMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1

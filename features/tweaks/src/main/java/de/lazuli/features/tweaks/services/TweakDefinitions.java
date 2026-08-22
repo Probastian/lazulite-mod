@@ -19,7 +19,22 @@ public final class TweakDefinitions {
     }
 
     private static TweakDefinition of(TweakId id, String description, Map<String, Object> defaultConfigurables, boolean hasSecondary) {
-        TweakState defaultState = new TweakState(false, defaultConfigurables);
+        return of(id, description, defaultConfigurables, hasSecondary, false);
+    }
+
+    /**
+     * Compass spec C2: unlike every other tweak (which default to
+     * {@code enabled=false}, since they change vanilla behavior a player
+     * must opt into), {@code TweakId.COMPASS} defaults to {@code
+     * enabled=true} because it merely continues to render the compass bar
+     * Waypoints already ships unconditionally today -- defaulting it off
+     * would be a silent regression for existing Waypoints users the moment
+     * this tweak ships. This overload is the only place a non-{@code false}
+     * default-enabled value is threaded through {@link #of(TweakId, String,
+     * Map, boolean)}.
+     */
+    private static TweakDefinition of(TweakId id, String description, Map<String, Object> defaultConfigurables, boolean hasSecondary, boolean defaultEnabled) {
+        TweakState defaultState = new TweakState(defaultEnabled, defaultConfigurables);
         String translationKey = "tweak.lazuli." + id.name().toLowerCase(java.util.Locale.ROOT);
         return new TweakDefinition() {
             @Override
@@ -115,12 +130,17 @@ public final class TweakDefinitions {
 
     public static final TweakDefinition FREECAM = of(TweakId.FREECAM,
             "Toggles a detached, free-flying spectator-style camera with configurable speed and block noclip.",
-            map("moveSpeed", 1.0, "sprintMultiplier", 2.0, "noclip", true, "showOwnBody", true), false);
+            map("moveSpeed", 1.0, "sprintMultiplier", 2.0, "noclip", true, "moveSpeedRescaled", true), false);
+
+    public static final TweakDefinition COMPASS = of(TweakId.COMPASS,
+            "Configures the waypoint compass bar above the hotbar: waypoint dots, cardinal letters, heading readout, and border.",
+            map("showWaypoints", true, "showCardinals", true, "showHeadingReadout", false, "showBorder", true),
+            false, true);
 
     public static final List<TweakDefinition> ALL = List.of(
             ANTI_DROP, FORCE_BRIGHTNESS, CHAT_FILTER, CHAT_PLAYER_HEADS, CUSTOM_CROSSHAIR,
             DISABLE_ANIMATIONS, DISABLE_PARTICLES, HIDE_PLAYER_NAMES, CLEAR_WATER,
-            DISABLE_COSMETICS, ZOOM, DISABLE_BOSS_BARS, NO_RAIN, FREECAM);
+            DISABLE_COSMETICS, ZOOM, DISABLE_BOSS_BARS, NO_RAIN, FREECAM, COMPASS);
 
     public static TweakDefinition byId(TweakId id) {
         for (TweakDefinition def : ALL) {

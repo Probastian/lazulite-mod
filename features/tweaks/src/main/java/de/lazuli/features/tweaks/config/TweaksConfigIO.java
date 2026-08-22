@@ -104,11 +104,41 @@ public final class TweaksConfigIO {
                 for (Map.Entry<String, MainMenuJson.JsonValue> confEntry : configurablesObject.members().entrySet()) {
                     configurables.put(confEntry.getKey(), toJavaValue(confEntry.getValue()));
                 }
+                if (id == TweakId.FREECAM) {
+                    migrateFreecamMoveSpeed(configurablesObject, configurables);
+                }
                 tweaks.put(id, new TweakState(enabled, configurables));
             }
             return ParseResult.ok(new TweaksConfig(tweaks));
         } catch (MainMenuJson.JsonParseException | MainMenuJson.JsonSchemaException e) {
             return ParseResult.fallback("Malformed tweaks config (" + e.getMessage() + "); using defaults.");
+        }
+    }
+
+    /**
+     * Addendum AD-3: a small, {@code FREECAM}-only migration, not a general
+     * schema-version bump. An old (pre-corrective-release) {@code tweaks.json}
+     * stored {@code moveSpeed} on the 0.1-10.0 scale; the new scale is
+     * 0.25-5.0 with a compensating {@code MOVE_SPEED_RUNTIME_SCALE} factor
+     * applied at runtime (see {@code FreecamTicker}). A file is migrated
+     * (divided by 10) exactly once, signalled by the presence/absence of the
+     * {@code moveSpeedRescaled} marker key in the raw saved JSON -- once
+     * migrated, that marker is always written back on next save, making this
+     * an idempotent, one-time conversion per save file.
+     */
+    private static void migrateFreecamMoveSpeed(MainMenuJson.JsonObject configurablesObject, Map<String, Object> configurables) {
+        if (configurablesObject.has("moveSpeed") && !configurablesObject.has("moveSpeedRescaled")) {
+            Object raw = configurables.get("moveSpeed");
+            if (raw instanceof Number n) {
+                configurables.put("moveSpeed", n.doubleValue() / 10.0);
+            }
+        }
+        configurables.put("moveSpeedRescaled", true);
+
+        Object raw = configurables.get("moveSpeed");
+        if (raw instanceof Number n) {
+            double clamped = Math.max(0.25, Math.min(5.0, n.doubleValue()));
+            configurables.put("moveSpeed", clamped);
         }
     }
 
