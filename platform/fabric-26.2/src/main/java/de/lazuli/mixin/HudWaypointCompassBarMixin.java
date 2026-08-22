@@ -87,7 +87,10 @@ abstract class HudWaypointCompassBarMixin {
         // Plan section 4 (numeric/visual-design defaults, hardcoded --
         // Waypoints has no config screen of its own per spec Configuration).
         private static final int BAR_WIDTH = 182;
-        private static final int BAR_HEIGHT = 10;
+        // Live-refinement pass 2: thinner bar (was 10) per in-game feedback --
+        // all dependent vertical-centering math below (dot/tick/label Y) is
+        // derived from BAR_HEIGHT so it stays correct at the new value.
+        private static final int BAR_HEIGHT = 6;
         // Fix #1: vanilla's armor/air-bubble row top is guiHeight() - 49
         // (javap-confirmed against Hud.extractPlayerHealth/extractArmor/
         // extractAirBubbles -- see class Javadoc); the compass bar now sits
@@ -105,17 +108,26 @@ abstract class HudWaypointCompassBarMixin {
         private static final double NAME_LABEL_HALF_DEGREES = 5.0;
 
         // Fix #3: bearing-ruler background (battle-royale-compass style).
-        private static final int TICK_STEP_DEGREES = 10;
-        private static final int MAJOR_TICK_STEP_DEGREES = 20;
-        private static final int MINOR_TICK_HEIGHT = 4;
-        private static final int CARDINAL_LABEL_GAP_ABOVE_BAR = 9;
+        // Live-refinement pass 2: the old two-tier tick system (10-degree
+        // minor / 20-degree major) is gone -- one uniform tier of short/thin
+        // ticks (the old "sub-bar" style), now every 15 degrees.
+        private static final int TICK_STEP_DEGREES = 15;
+        private static final int TICK_HEIGHT = 4;
         private static final int COLOR_TICK = 0xFFC8C8C8;
         private static final int COLOR_CARDINAL_LABEL = 0xFFFFFFFF;
+        // Live-refinement pass 2: cardinal letters (N/E/S/W) are now drawn
+        // inline in the tick row itself, replacing the tick at that exact
+        // 15-degree position, instead of a separate label row above the bar
+        // -- gated behind this toggle so they can be turned off entirely.
+        private static final boolean SHOW_CARDINALS = true;
 
         // Fix #4: a little less transparent than the original 0x66 (40%)
         // alpha, plus a thin light-grey border around the bar's rectangle.
         private static final int COLOR_BAR_BG = 0x80000000;
         private static final int COLOR_BAR_BORDER = 0xFFC8C8C8;
+        // Live-refinement pass 2: gate the border behind a toggle (default
+        // unchanged -- still on) instead of drawing it unconditionally.
+        private static final boolean SHOW_BORDER = true;
 
         static void paint(GuiGraphicsExtractor extractor) {
             Minecraft client = Minecraft.getInstance();
@@ -139,10 +151,12 @@ abstract class HudWaypointCompassBarMixin {
             int barCenterX = barLeft + BAR_WIDTH / 2;
 
             extractor.fill(barLeft, barTop, barLeft + BAR_WIDTH, barBottom, COLOR_BAR_BG);
-            drawBorder(extractor, barLeft, barTop, barLeft + BAR_WIDTH, barBottom);
+            if (SHOW_BORDER) {
+                drawBorder(extractor, barLeft, barTop, barLeft + BAR_WIDTH, barBottom);
+            }
 
             double yaw = player.getYRot();
-            drawRuler(extractor, client, barTop, barBottom, barCenterX, yaw);
+            drawRuler(extractor, client, barTop, barCenterX, yaw);
 
             double px = player.getX();
             double py = player.getY();
@@ -205,16 +219,21 @@ abstract class HudWaypointCompassBarMixin {
         /**
          * Fix #3: a scrolling bearing ruler, world-bearing-fixed (moves across
          * the bar as the player turns, same {@link #FOV_HALF_DEGREES}/linear
-         * mapping R11 already uses for waypoint dots) -- a tick every {@link
-         * #TICK_STEP_DEGREES} degrees of world bearing, taller at every {@link
-         * #MAJOR_TICK_STEP_DEGREES}-degree mark, and a small cardinal letter
+         * mapping R11 already uses for waypoint dots) -- a single uniform
+         * tier of short/thin ticks every {@link #TICK_STEP_DEGREES} degrees
+         * of world bearing (live-refinement pass 2: the old two-tier
+         * minor/major tick split is gone). At the four cardinal bearings
          * (using this codebase's own yaw convention: 0=S, 90=W, 180=N, 270=E,
          * matching {@code Entity.getLookAngle()}'s {@code (-sin(yaw),
-         * cos(yaw))} forward vector) in place of the tick at 0/90/180/270.
+         * cos(yaw))} forward vector), the letter is drawn inline in place of
+         * that position's tick -- not as a separate row above the bar --
+         * when {@link #SHOW_CARDINALS} is enabled; otherwise that position
+         * just renders a normal tick like any other.
          */
-        private static void drawRuler(GuiGraphicsExtractor extractor, Minecraft client, int barTop, int barBottom, int barCenterX, double yaw) {
+        private static void drawRuler(GuiGraphicsExtractor extractor, Minecraft client, int barTop, int barCenterX, double yaw) {
             int startBearing = (int) (Math.floor((yaw - FOV_HALF_DEGREES) / TICK_STEP_DEGREES) * TICK_STEP_DEGREES);
             int endBearing = (int) (Math.ceil((yaw + FOV_HALF_DEGREES) / TICK_STEP_DEGREES) * TICK_STEP_DEGREES);
+            int tickCenterY = barTop + BAR_HEIGHT / 2;
             for (int worldBearing = startBearing; worldBearing <= endBearing; worldBearing += TICK_STEP_DEGREES) {
                 double theta = normalizeAngle(worldBearing - yaw);
                 if (Math.abs(theta) > FOV_HALF_DEGREES) {
@@ -223,15 +242,12 @@ abstract class HudWaypointCompassBarMixin {
 
                 int tickX = barCenterX + (int) Math.round((theta / FOV_HALF_DEGREES) * (BAR_WIDTH / 2.0));
                 int normalizedBearing = ((worldBearing % 360) + 360) % 360;
-                String cardinal = cardinalLabelFor(normalizedBearing);
+                String cardinal = SHOW_CARDINALS ? cardinalLabelFor(normalizedBearing) : null;
                 if (cardinal != null) {
-                    extractor.fill(tickX, barTop, tickX + 1, barBottom, COLOR_TICK);
-                    extractor.centeredText(client.font, cardinal, tickX, barTop - CARDINAL_LABEL_GAP_ABOVE_BAR, COLOR_CARDINAL_LABEL);
-                } else if (normalizedBearing % MAJOR_TICK_STEP_DEGREES == 0) {
-                    extractor.fill(tickX, barTop, tickX + 1, barBottom, COLOR_TICK);
+                    extractor.centeredText(client.font, cardinal, tickX, tickCenterY - 4, COLOR_CARDINAL_LABEL);
                 } else {
-                    int minorTop = barTop + (BAR_HEIGHT - MINOR_TICK_HEIGHT) / 2;
-                    extractor.fill(tickX, minorTop, tickX + 1, minorTop + MINOR_TICK_HEIGHT, COLOR_TICK);
+                    int tickTop = barTop + (BAR_HEIGHT - TICK_HEIGHT) / 2;
+                    extractor.fill(tickX, tickTop, tickX + 1, tickTop + TICK_HEIGHT, COLOR_TICK);
                 }
             }
         }
