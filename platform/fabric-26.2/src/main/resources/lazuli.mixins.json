@@ -32,7 +32,6 @@
 		"LocalPlayerFreecamKeepPositionSyncMixin",
 		"MouseHandlerFreecamLookRedirectMixin",
 		"PlayerFreecamSuppressSneakMixin",
-		"LocalPlayerFreecamZeroMovementInputMixin",
 		"HudFreecamHudMixin",
 		"LivingEntityFreecamOnHurtMixin"
 	],
