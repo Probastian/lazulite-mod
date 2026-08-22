@@ -31,6 +31,17 @@ accurately describe the original v1 design intent and its own resolved Open
 Questions — the Addendum explicitly marks which specific statements above it
 supersedes.
 
+**Second post-ship corrective revision note (see "Addendum 2" at the very end
+of this document):** after AD-1..AD-5 above shipped and were live-tested
+in-game, three further items were reported: a real player-momentum bug
+(sliding/gliding after Freecam activates mid-walk) unrelated to anything
+AD-1..AD-5 touched, a HUD-visibility regression (hotbar/health/hunger/armor/
+air disappearing while Freecam is active) caused by reusing vanilla's own
+camera-detachment mechanism, and a new user-facing "On Hurt" behavior
+request. Addendum 2 specifies target behavior for all three. Nothing in the
+original spec above or in AD-1..AD-5 is relitigated or reopened by Addendum
+2 except where it explicitly says so.
+
 ### Methodology limitation — read before trusting class/method names below
 
 This specification pass had **no shell/`javap` tool available** (agent
@@ -301,7 +312,9 @@ this pass) — `freecamShowOwnBody()` is REMOVED by Addendum AD-2** (no
 replacement method on this cross-platform interface; the auto-detection
 logic needs an `Entity`/`AABB`-typed position comparison, which per this
 interface's own "primitives/booleans only" constraint (below) cannot live
-here — see Addendum AD-2 for exactly where it lives instead).
+here — see Addendum AD-2 for exactly where it lives instead). **Addendum 2
+adds three further methods — see "Addendum 2 — updated Public API summary"
+at the end of this document.**
 
 Deliberately primitives/booleans-only (no `Entity`/`Vec3d`/`Camera` types),
 matching every existing hook interface's Minecraft-agnostic constraint (see
@@ -539,7 +552,9 @@ seem like the obvious precedent):
   `LocalPlayerFreecamKeepPositionSyncMixin`/
   `ClientPlayerEntityFreecamKeepPositionSyncMixin` — already shipped, not
   part of this Addendum's 5 items, listed here only for context since AD-1's
-  fix touches the same rotation-adjacent territory.**
+  fix touches the same rotation-adjacent territory. **Addendum 2's AD-6
+  finds and fixes a third, still-unrelated real bug reached by this exact
+  same gate family — see AD-6.**]**
 
 **The phantom camera object should be a real, custom `Entity` subclass (not
 a repurposed vanilla entity type), specifically so it has genuine, direct
@@ -585,7 +600,9 @@ assumed: `.claude/context/minecraft.md` row 112, vanilla's own
 `isCamera()`/`isControlledCamera()` gate already handles this for free, no
 mixin needed. Also see Addendum AD-5 for a real, separate bug found in
 `FreecamTicker`'s own input-to-velocity math (not a vanilla-API-target
-problem at all) — a sign inversion on the strafe axis only.**
+problem at all) — a sign inversion on the strafe axis only. Addendum 2's
+AD-6 finds that this same gate leaves a residual, previously-undocumented
+"stale input" side effect on the real player — see AD-6.**
 
 **Block collision for `noclip = false` — now in scope for v1, recommended
 approach.** Because the phantom camera object is a genuine `Entity`
@@ -653,7 +670,8 @@ the collision approach both meaningfully shrink its scope versus the first
 pass of this spec. **Post-ship status: T14 shipped, and — beyond the 5 real
 bugs already fixed post-ship (rows 119/120) and the 5 covered by this
 Addendum — the original architecture held up. See Addendum for what's still
-open.**
+open. Addendum 2 (end of document) covers three further post-live-test
+items found after AD-1..AD-5 shipped.**
 
 ## UI
 
@@ -670,6 +688,10 @@ Freecam's four configurables render as two numeric-stepper rows
 Addendum AD-2 — Freecam now renders three configurable rows, not four: the
 `showOwnBody` checkbox row is removed entirely (no replacement row; the
 behavior becomes fully automatic with nothing for the user to configure).**
+**Further superseded by Addendum 2 — Freecam gains a fourth checkbox row
+(`hideHudWhileActive`, AD-7) and a new `ENUM` "pill" row (`onHurt`, AD-8),
+both using widget kinds `TweaksPanel` already implements generically for
+other tweaks — see Addendum 2's own UI notes.**
 
 ## Configuration
 
@@ -698,7 +720,9 @@ compatible shape — `features/tweaks/src/main/java/de/lazuli/features/tweaks/co
 
 **Superseded by Addendum AD-2/AD-3 — see Addendum "Updated Configuration
 shape" for the current, post-corrective-revision `FREECAM` JSON shape (no
-`showOwnBody` key, `moveSpeed` rescaled with a migration marker key).**
+`showOwnBody` key, `moveSpeed` rescaled with a migration marker key).
+Further superseded by Addendum 2 — see "Addendum 2 — updated Configuration
+shape" for the two additional keys AD-7/AD-8 add.**
 
 New `TweakDefinitions.ALL`/`ConfigSchemas.ALL` entries (additive, following
 the exact `of(...)`/`map(...)`/`ConfigFieldSpec.bool/numeric(...)` shape
@@ -764,7 +788,9 @@ Addendum.**
 - No new dependency on any other shipped feature for either tweak.
 - **Addendum items AD-1 through AD-5 all need their own per-platform
   `javap` confirmation before implementation — see each Addendum item and
-  the Addendum's own "Open items for planning" list.**
+  the Addendum's own "Open items for planning" list. Addendum 2's AD-6/AD-7/
+  AD-8 likewise each need their own per-platform `javap` confirmation — see
+  Addendum 2's own "Open items for planning" list.**
 
 ## Performance
 
@@ -796,7 +822,11 @@ Addendum.**
   of. Addendum AD-1's mouse-look redirect and AD-4's larger bounding box add
   no new allocation or per-frame cost beyond what the existing mechanisms
   already pay (a redirected field write / a differently-sized existing
-  collision-shape query, not new work).**
+  collision-shape query, not new work). Addendum 2's AD-6 fix (zeroing three
+  float fields once per tick while active) and AD-8's reveal-timer
+  (comparing a stored tick count against the current tick once per tick
+  while active) are both similarly negligible — no new allocation, no new
+  per-frame work.**
 
 ## Future Extensions
 
@@ -824,6 +854,9 @@ Addendum.**
   after implementation shows the single-margin approach still flickers at
   the boundary — not needed unless that's actually observed (see Addendum
   AD-2).**
+- **Addendum 2's AD-8 fixed 3-second HUD-reveal-on-hurt window could become
+  a user-configurable duration if live testing shows 3 seconds feels wrong
+  in practice — not needed unless that's actually observed (see AD-8).**
 
 ## Open Questions / Recommendations (for user approval, not decided here)
 
@@ -1028,6 +1061,16 @@ in freecam — exactly the reported bug.
 3. Whichever branch AD-1's `javap` pass lands on, the acceptance behavior
    is identical: the real player's own yaw/pitch fields do not move while
    Freecam is active; the camera's do, driven by mouse.
+
+**Resolved as shipped, confirmed via `javap -c` — see
+`.claude/context/minecraft.md` row 122.** Branch (a) was the real shape on
+all three platforms: the mouse-look call site hard-codes `client.player`
+directly (never keys off the camera-entity accessor), so a new
+`@Redirect` mixin was needed after all — `MouseFreecamLookRedirectMixin`
+(1.21.11) / `MouseHandlerFreecamLookRedirectMixin` (26.1/26.2), redirecting
+the inner `Entity.changeLookDirection`/`Entity.turn` call (itself declared
+on the base `Entity` class, so `FreecamCameraEntity` already inherits it
+with no new method needed).
 
 ### AD-2 — "Show Own Body" becomes automatic (config toggle removed)
 
@@ -1373,6 +1416,15 @@ implementation time: the exact `getDimensions`/`EntityDimensions.fixed(...)`
 `Entity` subclass's `getBoundingBox()` result (a genuinely new question this
 spec raises, not yet answered by any existing row).
 
+**Resolved as shipped, confirmed via `javap -c` — see
+`.claude/context/minecraft.md` row 123.** The override-alone approach was
+NOT live for a manually-driven, never-world-added entity (the constructor
+reads `EntityType.getDimensions()` directly, bypassing the override
+entirely); the fix additionally calls the public no-arg refresh method
+(`Entity.calculateDimensions()` Yarn / `Entity.refreshDimensions()` Mojmap)
+once in the constructor after `super(...)`, confirmed identical in shape on
+all three platforms.
+
 ### AD-5 — Inverted strafe
 
 **Confirmed root cause (read directly from shipped code, high confidence —
@@ -1425,6 +1477,12 @@ standard manual in-game verification (press A, confirm camera strafes left;
 press D, confirm it strafes right) remains part of this item's acceptance
 check, same as every other tweak's manual verification discipline.
 
+**Confirmed as shipped** — this fix landed with the rest of AD-1..AD-5 (see
+`FreecamTicker.java` on all three platforms, current `strafe` computation
+matches the target fix above exactly, confirmed by reading the live code
+this pass — see the top-of-file `FreecamTicker.java` excerpts quoted in
+Addendum 2's AD-6 below, which read this same line unchanged).
+
 ### Addendum — updated Public API summary
 
 ```java
@@ -1445,19 +1503,509 @@ public interface FreecamHook {
    critically whether it already keys off the camera-entity accessor
    (no-mixin-needed branch) or hard-codes `client.player` (mixin-needed
    branch) — the single most consequential unknown left by this Addendum,
-   since it determines AD-1's implementation shape and size.
+   since it determines AD-1's implementation shape and size. **Resolved —
+   row 122: hard-codes `client.player` on all three platforms, mixin
+   needed, already shipped as `MouseFreecamLookRedirectMixin`/
+   `MouseHandlerFreecamLookRedirectMixin`.**
 2. **AD-2's exact `AABB`/`Box` `inflate`/`expand` and `contains` overload
    names per platform** — both expected high-confidence/stable, but
-   unconfirmed against this repo's exact three pins.
+   unconfirmed against this repo's exact three pins. **Resolved as shipped
+   — see `FreecamTicker.java`'s `player.getBoundingBox().inflate(SHOW_BODY_MARGIN)`
+   (26.x) / `.expand(SHOW_BODY_MARGIN)` (1.21.11), confirmed by reading the
+   live code this pass.**
 3. **AD-4's exact bounding-box override mechanism** — `getDimensions(Pose)`-
    shaped override vs. a manual `setBoundingBox` fallback; exact
    `EntityDimensions` factory method name/signature; whether 26.1 and 26.2
    diverge here (check independently, per this repo's own repeated
-   precedent for that pairing surprising past features).
+   precedent for that pairing surprising past features). **Resolved — row
+   123.**
 4. **AD-3's `TweaksConfigIO.parse` migration branch** is plain Java logic
    (no vanilla/Minecraft-jar dependency at all) — not `javap`-blocked, fully
    implementable and unit-testable (extend
    `TweaksConfigIOTest`) without any platform-specific work first.
+   **Confirmed shipped — `TweakDefinitions.FREECAM`'s default configurables
+   map includes `moveSpeedRescaled = true`, confirmed by reading the live
+   code this pass.**
 5. **AD-5** is not `javap`-blocked at all (root cause and fix both already
    fully determined by reading the shipped source this pass) — safe to
    implement first, independent of the other four items' `javap` spikes.
+   **Confirmed shipped.**
+
+## Addendum 2: T14 Freecam second-round corrective revision (post-live-test)
+
+This addendum specifies three further items reported after Addendum
+AD-1..AD-5 shipped and were live-tested in-game. Like the first Addendum,
+this is **corrective/behavioral work on already-shipped code** (AD-6) plus
+one **genuinely new, additive feature** (AD-8, the "On Hurt" dropdown) and
+one item that is a mix of both (AD-7: fixing a default-behavior regression
+and adding a new opt-in toggle). Nothing in the original spec or in
+AD-1..AD-5 is relitigated except where explicitly noted below.
+
+### Addendum 2 methodology note
+
+Same constraint as both prior passes: **no shell/`javap` tool was available**
+to the specification agent this pass either (`Read`/`Glob`/`Grep`/`Write`/
+`WebFetch`/`WebSearch` only — no `Bash`). Unlike the original spec pass but
+like the first Addendum, this pass *does* have direct `Read` access to the
+actual shipped source (`FreecamTicker.java`/`FreecamCameraEntity.java`/
+`FreecamHook.java`/all five existing Freecam mixins on `fabric-26.2`,
+`TweakDefinitions.java`/`ConfigSchemas.java`/`ConfigFieldSpec.java`/
+`TweaksPanel.java`, plus `.claude/context/minecraft.md` rows 112/113/119/120/
+122/123's already-`javap`-confirmed findings) — so AD-6's root cause and
+AD-8's UI-mechanism design are grounded in reading the real shipped code,
+not guesswork. AD-6's exact field names, AD-7's exact HUD-gate method
+names/call sites, and AD-8's exact damage-detection hook are all **new
+vanilla API targets this pass introduces** (not covered by any existing
+`.claude/context/minecraft.md` row) — each is marked with an explicit
+confidence tier below and **must** get its own `javap -p`/`javap -c -p`
+pass against each platform's resolved merged jar as the mandatory first
+implementation step, per this repo's established convention. No new
+`.claude/context/minecraft.md` rows are added by this specification pass
+itself, since nothing below was actually confirmed via `javap` this pass —
+those rows should be added at implementation time once each item's `javap`
+pass completes, following the exact format every existing row already
+demonstrates.
+
+### AD-6 — Real player keeps sliding/gliding after Freecam activates mid-walk
+
+**Root cause (grounded in already-shipped, already-`javap`-confirmed
+sibling gates in this exact class family; medium-high confidence on the
+mechanism shape, medium confidence on the exact field names — see
+confidence notes below).** Row 112 (movement-key routing) and row 120
+(`sendPosition()`/`sendMovementPackets()`) both independently confirm, via
+real `javap -c` bytecode traces already recorded in this codebase, that the
+`isCamera()`/`isControlledCamera()` gate works the same way at every call
+site it reaches: the gated method is still called **unconditionally, every
+tick**, but its own body opens with an `ifeq`-shaped early return straight
+to the method's final `return` the instant the check evaluates false — see
+`LocalPlayerFreecamKeepPositionSyncMixin`'s own Javadoc (already in this
+codebase, `platform/fabric-26.2/src/main/java/de/lazuli/mixin/LocalPlayerFreecamKeepPositionSyncMixin.java:18-35`)
+for the exact wording of this already-confirmed pattern, applied there to a
+different (already-fixed) call site. The walking-movement method row 112
+already identified (`tickMovementInput()`/`applyInput()`, declared on
+`ClientPlayerEntity`/`LocalPlayer`) is a third member of this same gated
+family. Its job — a well-known, long-stable vanilla `Player`/`LivingEntity`
+mechanic — is to translate that tick's raw pressed-key state into three
+float movement-accumulator fields that `aiStep()`/`travel(Vec3)` read every
+tick to compute acceleration (Mojmap's long-stable, historically-mnemonic
+names: `LivingEntity.xxa` = sideways/strafe, `yya` = vertical, `zza` =
+forward; Yarn's equivalent — not yet confirmed this pass, candidate names
+`sidewaysSpeed`/`upwardSpeed`/`forwardSpeed`). Critically, `aiStep()`/
+`travel(Vec3)` themselves are **not** part of the gated method — they run
+unconditionally for every living entity every tick, using whatever value
+those three fields currently hold, regardless of whether anything updated
+them this tick. Once Freecam activates and the gate goes false, the method
+that would normally update those fields every tick (in particular, zero
+them out the instant a key is released) simply stops running its body at
+all — so the three fields stay frozen at whatever value they held on the
+exact tick Freecam activated (e.g. `zza = 1.0` if W was held at that
+instant), and `travel()` keeps consuming that same frozen "key still held"
+signal indefinitely, every subsequent tick, for as long as Freecam stays
+active. This is not "friction stops applying" in isolation — it is the
+player continuously receiving live forward/strafe/vertical *input* it no
+longer actually has, which is exactly the reported "sliding/gliding,
+uncontrolled" symptom (continued acceleration, not merely a missing
+deceleration term). Nothing clears these fields on Freecam *deactivation*
+either, so without a fix the stale value would also persist for a moment
+after turning Freecam back off, until the player's own next real keypress
+overwrites it.
+
+**Confidence tiering.** The gate-family bytecode shape (unconditional call,
+internal early-return) is **high confidence** — it is the literal,
+already-`javap`-confirmed mechanism documented for two sibling call sites
+in this same class (rows 112/120), and `tickMovementInput()`/`applyInput()`
+is the same method row 112 already named as the third member of that
+family. The three exact field names (`xxa`/`yya`/`zza` Mojmap; Yarn
+equivalent) are **medium confidence** — long-stable, widely-documented
+Minecraft internals (these exact three-letter Mojmap names have been
+stable across many past versions), but not yet `javap`-confirmed against
+this repo's exact three pins. **Mandatory first implementation step**:
+`javap -p`/`javap -c -p` against `LivingEntity`/`Player` on each platform's
+resolved merged jar to confirm (a) the exact field names, (b) that
+`tickMovementInput()`/`applyInput()` is genuinely where they get written
+each tick for the local player specifically, and (c) the exact class that
+declares/overrides it (expected `LocalPlayer`/`ClientPlayerEntity`, per row
+112's own framing, mirroring `LocalPlayerFreecamKeepPositionSyncMixin`'s
+target class).
+
+**Target behavior.** Once Freecam activates, the real player's existing
+momentum decays via **exactly the same friction/deceleration curve it
+already uses today for an ordinary "player releases every movement key"
+moment, with Freecam entirely uninvolved** — matching the task's own
+verbatim requirement, "Movement should not be affected in any way of the
+actual player." Concretely: from `travel()`'s perspective, Freecam
+activating must be indistinguishable from the player having released every
+movement key at that exact instant — no continued acceleration input, only
+vanilla's own normal ground/air friction acting on whatever velocity the
+player already had. This holds for the tweak's entire active duration (the
+fields must not merely be zeroed once at activation and then left alone —
+if the real gate genuinely blocks every subsequent write for the whole
+duration, as analysis above concludes, the fix must keep them at zero for
+every tick Freecam is active, not just the first one). On deactivation,
+normal key-reading resumes immediately and behaves exactly as it does
+today (unaffected by this fix — row 112's own finding that the gate simply
+reopens on its own already covers this half).
+
+**Mechanism (recommended).** A new mixin on the same class row 112/120
+already target (`LocalPlayer`/`ClientPlayerEntity`):
+`@Inject(method = "applyInput"/"tickMovementInput", at = @At("HEAD"))`,
+unconditional (fires every tick regardless of the internal gate, since the
+injection point is *before* vanilla's own early-return, exactly like
+`PlayerFreecamSuppressSneakMixin`'s and `LocalPlayerFreecamKeepPositionSyncMixin`'s
+existing `@Redirect`s already do for their own, different call sites in
+this same gated family) — when `this == client.player` and
+`TweakEngineHandoff.require().isFreecamActive()`, `@Shadow`s the three
+movement-accumulator fields (`@Mutable` if needed — these are plain,
+non-final vanilla fields, so likely unnecessary, to confirm via `javap`)
+and sets all three to `0.0F` before vanilla's own (about-to-no-op) method
+body runs. This is deliberately modeled on this codebase's own
+`PlayerFreecamSuppressSneakMixin`/`LocalPlayerFreecamKeepPositionSyncMixin`
+pattern (small, single-purpose, scoped strictly to the local player) rather
+than routed through `FreecamTicker`'s own central per-tick state, since it
+needs no cross-tick bookkeeping and this injection point fires at exactly
+the right moment every tick regardless of exactly where inside the method
+body vanilla's own internal early-return sits. This fix does **not** reopen
+or change movement-key routing itself (row 112, unaffected) — WASD still
+reaches only the freecam camera while active, never the real player; AD-6
+only stops a previously-undocumented *residual* value from persisting after
+the last real keypress before activation.
+
+### AD-7 — HUD (hotbar/health/hunger/armor/air) hidden by default while Freecam is active; add a toggle, default to shown
+
+**Root cause.** No dedicated Freecam-HUD-hide mixin exists anywhere in this
+codebase — confirmed this pass by listing every existing Freecam mixin
+(`platform/fabric-26.2/src/main/java/de/lazuli/mixin/*Freecam*.java`:
+`MinecraftFreecamSuppressInteractionMixin`, `LocalPlayerFreecamKeepPositionSyncMixin`,
+`LevelExtractorFreecamShowBodyMixin`, `MouseHandlerFreecamLookRedirectMixin`,
+`PlayerFreecamSuppressSneakMixin` — none HUD-shaped). The observed behavior
+is vanilla's own long-standing, intentional "hide the local-player HUD
+while the client's camera is following a non-player entity" behavior (the
+same behavior visible in vanilla's own `/spectate`/entity-follow scenarios)
+— an unwanted side effect of Architecture's own chosen mechanism
+(`setCameraEntity`, still the correct approach for every other purpose)
+now also firing for Freecam's non-`Player` phantom camera entity, not a bug
+this codebase's own code introduced directly.
+
+Per this repo's own already-`javap`-confirmed precedent for the closely
+related "own body" render check (row 113), vanilla's HUD-render dispatch
+(`Gui`/`InGameHud` on 1.21.11; `Gui`/`Hud` post-split on 26.x, per row 66's
+already-documented `Gui`/`Hud` split) is expected to resolve "is there a
+player to draw HUD elements for" via a `getCameraPlayer()`-shaped helper
+(returns the camera entity cast to `Player`, or `null` if the camera isn't
+one) consulted by the hotbar/health/hunger/armor/air-bubble render or
+`extract*` methods specifically — while the XP/experience bar is, per this
+repo's own already-`javap`-confirmed row 121, architecturally a member of
+the separate "contextual bar" family (`ContextualBar`/`ExperienceBar`, a
+distinct class hierarchy from `Gui`/`Hud`'s own per-element methods) that
+instead reads `Minecraft.player`/`MinecraftClient.player` directly — the
+real, always-non-null local player field, never the camera-entity
+accessor. This asymmetry (most HUD rows keyed off the camera entity, the
+one contextual-bar family keyed off the real player field) is the most
+plausible, best-grounded explanation for exactly the reported partial
+symptom: hotbar/health/hunger/armor/air vanish (all presumed behind the
+camera-keyed gate) while the XP bar alone survives (behind the
+player-field-keyed gate instead).
+
+**Confidence tier: medium.** Grounded in this repo's own already-confirmed
+row 66 (`Gui`/`Hud` split) and row 121 (`ContextualBar` family being
+architecturally separate) findings, plus long-stable, widely-documented
+general vanilla HUD architecture — but this exact gate (a shared
+`getCameraPlayer()`-shaped helper covering hotbar/health/hunger/armor/air
+specifically) was not itself freshly `javap`-confirmed this pass (no
+shell/`javap` tool was available in this session). **Must be
+`javap`-confirmed per platform as the mandatory first implementation
+step** — specifically: (a) locate the exact shared gate/helper method
+name and every call site among the hotbar/health/food/armor/air render
+methods (`Gui.render`/`InGameHud.render` on 1.21.11; the per-element
+`extract*` methods on `Gui`/`Hud` per row 66's precedent on 26.1/26.2), (b)
+confirm the `ContextualBar`/`ExperienceBar` family genuinely does not
+consult the same gate (this pass's explanation for why the XP bar
+survives — if `javap` finds otherwise, the XP bar's own survival needs a
+different explanation and this addendum's scope may need to expand to
+cover it too, though per the reported symptom it should stay untouched
+either way), and (c) confirm 26.1 vs 26.2 don't diverge here the way they
+already have for several adjacent HUD-family methods (rows 66/117/121) —
+do not assume identical without checking both independently.
+
+**Target behavior.**
+- New boolean configurable, `hideHudWhileActive`, default `false`. `false`
+  (the new default) = the HUD renders normally while Freecam is active,
+  indistinguishable from ordinary first-person view — this is the fix for
+  the reported regression, counteracting the vanilla gate above for the
+  confirmed-affected elements only. `true` = the user opts back into
+  vanilla's own natural "hidden while spectating a non-player camera"
+  behavior — which, per the root cause above, needs **zero additional
+  code** to produce, since it is already what happens today with no fix
+  applied at all.
+- Scope: only the elements confirmed gated by the shared
+  `getCameraPlayer()`-shaped check at implementation time (expected:
+  hotbar, health, hunger/food, armor, air bubbles, and any other row
+  confirmed to share that exact gate, e.g. a jump/mount meter if one
+  exists and is gated the same way). The crosshair (unaffected per the
+  reported symptom, no fix needed) and the XP bar (architecturally
+  separate per row 121, already renders correctly) are out of scope either
+  way.
+- Mechanism: for each confirmed render/extract method gated behind the
+  shared camera-player check, a `@Redirect`/`@ModifyExpressionValue`-shaped
+  mixin that, while Freecam is active and `hideHudWhileActive() == false`,
+  substitutes the real `client.player` reference for that one check instead
+  of the (non-`Player`) freecam camera entity — mirroring exactly the
+  single-comparison `@Redirect` shape row 113's own already-shipped
+  show-body mixin uses (spoof the return value to the one, fixed real
+  player reference; no local-variable capture needed, same reasoning as
+  row 113, since there is only ever one local player instance). **Prefer a
+  single shared choke point over N per-element redirects if `javap`
+  confirms one exists** (the more likely, cleaner shape — analogous to
+  T13's own single `addParticlesAndSound` choke point, this spec's own
+  established preference, Architecture) — redirect the one shared helper
+  method rather than each individual render/extract call site
+  individually, if `javap` finds that shape.
+- Interaction with AD-8: when `hideHudWhileActive() == true` and the new
+  `onHurt` configurable (AD-8) is set to `HURT_INDICATOR`, taking damage
+  temporarily overrides this and reveals the HUD for a fixed window — see
+  AD-8's own target behavior for the exact mechanism/timing.
+
+**Public API / Configuration / UI additions.** `FreecamHook` gains:
+```java
+/** @return true if the user has opted into hiding the HUD while Freecam is active (T14 AD-7's hideHudWhileActive). Default false (HUD shown). */
+boolean freecamHideHudWhileActive();
+```
+`TweakDefinitions.FREECAM`'s default configurables map gains
+`"hideHudWhileActive", false`. `ConfigSchemas.FREECAM`'s field list gains
+`ConfigFieldSpec.bool("hideHudWhileActive", "Hide HUD While Active")` —
+renders automatically as a fourth checkbox row, no `TweaksPanel` code
+change needed (Architecture — Framework Fit, same generic rendering every
+other boolean configurable already gets). No migration needed — this is a
+brand-new, purely additive configurable key; `TweaksConfigIO`'s existing
+default-backfill behavior (Architecture — Framework Fit, `TweaksConfigIO.java:32-36`)
+already covers an old file simply not having this key yet.
+
+### AD-8 — New "On Hurt" behavior configurable (3-option dropdown)
+
+**Config schema / UI — reuses an existing precedent exactly, no new widget
+kind.** `ConfigFieldSpec.Kind.ENUM` and its `enumField(key, label, values)`
+factory already exist and are already used for exactly this shape of
+3-option (and 2-option) mode selector elsewhere in this same catalog —
+`DISABLE_ANIMATIONS`/`DISABLE_PARTICLES`/`DISABLE_BOSS_BARS`'s `"mode"`
+field (`ALL`/`WHITELIST`/`BLACKLIST`,
+`features/tweaks/src/main/java/de/lazuli/features/tweaks/services/ConfigSchemas.java:71,76,105`)
+and `CHAT_PLAYER_HEADS`'s `"position"` field (`BEFORE`/`AFTER`,
+`ConfigSchemas.java:51`). `TweaksPanel` already renders any `ENUM`-kind
+field as a click-to-cycle "pill" widget and already handles clicking it by
+advancing to the next value in `enumValues()`, wrapping back to the first
+(`TweaksPanel.java`'s `ENUM` case in `renderConfigRow`/`renderEnumPill`,
+lines 340-345, and the `ENUM` case in the row-click handler, lines
+506-512) — **no new `ConfigFieldSpec.Kind`, no new UI control, no
+`TweaksPanel` code change needed at all.** New entry:
+```java
+ConfigFieldSpec.enumField("onHurt", "On Hurt",
+        List.of("DISABLE_FREECAM", "HURT_INDICATOR", "NOTHING"))
+```
+`TweakDefinitions.FREECAM`'s default configurables map gains
+`"onHurt", "NOTHING"`.
+
+**Default rationale.** `NOTHING` (no special handling — Freecam's
+pre-AD-8 behavior exactly, damage doesn't affect Freecam or HUD state) is
+the default. Reasoning: unlike AD-3's forced value migration (which existed
+specifically to *fix* a bug for existing users), AD-8 is a brand-new,
+purely additive feature request, not a corrective fix — the safest, least
+surprising default for a new optional behavior is "off"/inert, so existing
+Freecam users see zero behavior change until they explicitly opt into one
+of the other two options.
+
+**Damage-detection hook.** Candidate target (medium confidence, genuinely
+new vanilla API target this pass, not analyzed by any prior pass or
+existing `.claude/context/minecraft.md` row — **javap-blocked, mandatory
+first implementation step**): `LivingEntity.animateHurt(float yaw)` — the
+client-side method vanilla's own S2C networking already calls on any
+entity (confirmed general, long-stable vanilla architecture: a
+`ClientboundHurtAnimationPacket`-shaped packet from the server, handled by
+the client's own packet listener, invokes this per-entity method) whenever
+that entity should play its red hurt-flash/knockback-tilt visual — the
+exact same vanilla mechanism already responsible for the visual the
+`HURT_INDICATOR` option's own name describes preserving. This is the
+correct, minimal-risk detection layer for "the local player was just hurt"
+from purely client-side code (this feature is 100% client-side per
+Non-goals; the client never independently knows about a damage instance
+before the server tells it to, so hooking the server's own
+tell-the-client-to-flash signal is the right layer — polling
+`Player.getHealth()` deltas instead would also misfire on non-damage health
+changes such as regeneration/commands/effects with no accompanying hurt
+flash, and would need to separately reinvent exactly the filtering
+`animateHurt`'s own existing gating already provides for free). Scope:
+only when the hooked entity `instanceof LocalPlayer`/`instanceof
+ClientPlayerEntity` **and** `this == client.player` (never for any other
+entity's own hurt animation) **and** `TweakEngineHandoff.require().isFreecamActive()`
+— same guard shape every AD-1..AD-5/AD-6/AD-7 mixin in this codebase
+already uses. **Mandatory first implementation step**: confirm
+`animateHurt`'s exact signature/visibility per platform (candidate: same
+name on both mappings, per this method's general historical stability
+across many past versions — not yet independently confirmed for these
+three exact pins), and confirm it does in fact fire for the *local*
+player's own entity instance (expected, since the local player is itself a
+normal networked entity from the client's own perspective and receives the
+same S2C hurt-animation traffic any other visible entity does — not yet
+independently verified this pass).
+
+**Per-option target behavior.**
+
+1. **`DISABLE_FREECAM`**: on the local player's `animateHurt` firing while
+   Freecam is active, Freecam disables within one client tick
+   (`TweakRegistry.setEnabled(TweakId.FREECAM, false)`), returning the
+   camera to the real player. Recommended mechanism: extend
+   `FreecamTicker`'s existing safety-net family
+   (`lazuli$safetyNetTripped`, Requirements T14's disconnect/respawn/
+   dimension-change/death list) with a new condition — since the hurt
+   signal itself arrives via a packet-handling call site rather than a
+   per-tick poll, the new `animateHurt`-hooking mixin sets a small,
+   `FreecamTicker`-owned "hurt this tick" latch (mirroring
+   `isCameraInsidePlayerBounds`'s existing "platform-only cross-tick
+   state owned by `FreecamTicker`" precedent, AD-2), which
+   `lazuli$safetyNetTripped` reads and clears alongside its existing
+   conditions, gated on `hooks.freecamOnHurtDisablesFreecam()`. The exact
+   plumbing shape (latch vs. a direct `registry.setEnabled` call from
+   inside the mixin itself) is left to planning; the hard requirement is
+   only the effect (Freecam off within one tick of the hurt signal,
+   whenever this option is selected).
+2. **`HURT_INDICATOR`**: Freecam stays active. Vanilla's own hurt-flash/
+   knockback-tilt animation is completely untouched by this option — it
+   already fires normally today regardless of Freecam's state, since
+   `animateHurt` is only *detected* here, never suppressed or redirected
+   in any way. Additionally, if AD-7's `hideHudWhileActive() == true` and
+   Freecam is active: getting hurt starts (or, if one is already running,
+   restarts/extends) a **fixed 3-second (60-client-tick) reveal window**
+   measured from the most recent hurt signal, during which the HUD renders
+   exactly as if `hideHudWhileActive()` were `false` (reusing AD-7's own
+   mechanism/mixins unchanged, just OR'ing in this second, timer-driven
+   condition); once 3 seconds pass with no further hurt signal, the HUD
+   automatically returns to hidden. **Design decision (per the task's own
+   explicit request to pin this down) and reasoning for the two rejected
+   alternatives**: (a) "re-hide once vanilla's own damage-flash animation
+   ends" was rejected — that internal animation timer is a short,
+   version-fragile implementation detail with no stable public API to key
+   a HUD-reveal window off of, and is in practice far too brief (a
+   fraction of a second) for a player to actually read their health/hunger
+   numbers before the HUD vanishes again, defeating this option's own
+   stated purpose ("so the player can see their health"); (b) "stays shown
+   until Freecam deactivates or the toggle is flipped again" was
+   rejected — a single graze would then permanently reveal the HUD for the
+   remainder of that entire Freecam session, which defeats the point of
+   `hideHudWhileActive` existing as a persistent user preference at all
+   (the user deliberately chose hidden; one hit should not silently and
+   permanently undo that choice). A fixed, generous-but-bounded timeout —
+   long enough to glance at current stats, short enough to return
+   promptly to the user's actually-chosen hidden state — best matches this
+   option's own name and stated intent. The timer resets/extends (does not
+   stack additively) on repeated hits within the window, so sustained
+   damage (e.g. standing in fire/lava while flying around) keeps the HUD
+   continuously visible rather than flickering on and off every hit.
+3. **`NOTHING`**: no special handling at all — `animateHurt` firing is
+   detected (the mixin/latch still exists and still fires, per the shared
+   detection mechanism above) but not consumed for any Freecam-specific
+   purpose when this option is selected; Freecam's active/inactive state
+   and the HUD's shown/hidden state are both completely unaffected by
+   damage, matching this tweak's exact pre-AD-8 shipped behavior. This is
+   also the default (see Default rationale above).
+
+**Public API / Configuration additions.** Per `FreecamHook`'s own
+established "primitives/booleans-only, and no live cross-tick timer state"
+constraint (the same reasoning AD-2 already applied to keep
+`isCameraInsidePlayerBounds` off this interface, and the same pattern this
+codebase's `TweakHooksImpl` already uses elsewhere to resolve a raw
+`String` `mode`/`position` configurable into one or more plain, already-
+resolved booleans before it ever crosses this interface — e.g. the existing
+`modeExcludes(...)`-backed `shouldAnimate(String)`, `headBeforeName()`),
+`FreecamHook` gains exactly two new methods, not a raw String:
+```java
+/** @return true if the configured onHurt is DISABLE_FREECAM. */
+boolean freecamOnHurtDisablesFreecam();
+/** @return true if the configured onHurt is HURT_INDICATOR. */
+boolean freecamOnHurtShowsHurtIndicator();
+```
+(mutually exclusive by construction — `TweakHooksImpl` resolves the raw
+`"onHurt"` String configurable into these two booleans the same way it
+already resolves other tweaks' `mode`/`position` strings today). The
+reveal-timer's own live countdown state (AD-8's 3-second window) is
+platform-only, `FreecamTicker`-owned cross-tick state, exposed to the HUD
+mixins via a small platform-only `TweakHooksImpl` method, not part of this
+cross-platform interface — same placement precedent as AD-2's
+`isCameraInsidePlayerBounds`.
+
+### Addendum 2 — updated Public API summary
+
+```java
+public interface FreecamHook {
+    boolean isFreecamActive();
+    float freecamMoveSpeed();
+    float freecamSprintMultiplier();
+    boolean freecamNoclip();
+    boolean freecamHideHudWhileActive();       // new, AD-7
+    boolean freecamOnHurtDisablesFreecam();    // new, AD-8
+    boolean freecamOnHurtShowsHurtIndicator(); // new, AD-8
+    // freecamShowOwnBody() remains removed per AD-2 (first Addendum)
+}
+```
+
+### Addendum 2 — updated Configuration shape
+
+```json
+{
+  "tweaks": {
+    "FREECAM": {
+      "enabled": false,
+      "configurables": {
+        "moveSpeed": 1.0,
+        "sprintMultiplier": 2.0,
+        "noclip": true,
+        "moveSpeedRescaled": true,
+        "hideHudWhileActive": false,
+        "onHurt": "NOTHING"
+      }
+    }
+  }
+}
+```
+
+(`hideHudWhileActive` and `onHurt` are the two new keys this Addendum adds,
+both purely additive — no migration needed, per `TweaksConfigIO`'s existing
+default-backfill behavior, Architecture — Framework Fit.)
+
+### Addendum 2 — updated UI
+
+`TweaksPanel` renders Freecam's config rows as: two numeric-stepper rows
+(`moveSpeed`, `sprintMultiplier`), two boolean checkbox rows (`noclip`,
+`hideHudWhileActive`), and one `ENUM` "pill" row (`onHurt`) — five rows
+total, all using widget kinds `TweaksPanel` already implements generically
+for other tweaks (Architecture — Framework Fit); no new widget kind, no
+`TweaksPanel` code change.
+
+### Addendum 2 — open items for planning (javap-blocked, mandatory first step)
+
+1. **AD-6's exact movement-accumulator field names and declaring class**
+   (`xxa`/`yya`/`zza`-shaped on Mojmap, candidate `sidewaysSpeed`/
+   `upwardSpeed`/`forwardSpeed`-shaped on Yarn; expected declared on
+   `LocalPlayer`/`ClientPlayerEntity` per row 112's own framing) — the
+   mechanism shape itself is high confidence (grounded in rows 112/120's
+   already-confirmed sibling gates), only the exact names/owning class need
+   `javap` confirmation.
+2. **AD-7's exact shared HUD-visibility gate** — the precise
+   `getCameraPlayer()`-shaped helper method name, its exact call sites
+   among the hotbar/health/food/armor/air render/extract methods per
+   platform (`Gui`/`InGameHud` on 1.21.11, `Gui`/`Hud` per row 66's split
+   on 26.1/26.2), independent confirmation that 26.1 and 26.2 share (or
+   diverge on) this shape, and confirmation that the `ContextualBar`/
+   `ExperienceBar` family genuinely sits outside this gate (explaining the
+   XP bar's survival) — the single most consequential unknown left by this
+   Addendum, since it determines whether AD-7 is a single-choke-point fix
+   or an N-call-site fix, and whether the XP-bar explanation needs
+   revisiting.
+3. **AD-8's exact `animateHurt`-shaped detection hook** — signature/
+   visibility per platform, and confirmation it genuinely fires for the
+   local player's own entity instance (not just remote players' entities)
+   via the same S2C traffic the client already processes for itself.
+4. **AD-8's `TweakHooksImpl`/`TweaksConfigIO` plumbing for `onHurt`** (String
+   configurable → the two resolved booleans; the "hurt this tick" latch
+   feeding `FreecamTicker`'s safety-net family) is plain Java/`TweakRegistry`
+   logic, not itself `javap`-blocked — implementable and unit-testable
+   independent of the three items above once the raw damage signal is
+   wired up.

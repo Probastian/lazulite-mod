@@ -15,6 +15,7 @@ import de.lazuli.features.tweaks.services.DisableParticlesHook;
 import de.lazuli.features.tweaks.services.ForceBrightnessHook;
 import de.lazuli.features.tweaks.services.FreecamHook;
 import de.lazuli.features.tweaks.services.HidePlayerNamesHook;
+import de.lazuli.features.tweaks.services.LootBinHook;
 import de.lazuli.features.tweaks.services.NoRainHook;
 import de.lazuli.features.tweaks.services.TweakRegistry;
 import de.lazuli.features.tweaks.services.ZoomHook;
@@ -47,7 +48,7 @@ import java.util.Set;
  */
 public final class TweakHooksImpl implements AntiDropHook, ForceBrightnessHook, ChatFilterHook, ChatPlayerHeadsHook,
         CustomCrosshairHook, DisableAnimationsHook, DisableParticlesHook, HidePlayerNamesHook, ClearWaterHook,
-        DisableCosmeticsHook, ZoomHook, DisableBossBarsHook, NoRainHook, FreecamHook, CompassHook {
+        DisableCosmeticsHook, ZoomHook, DisableBossBarsHook, NoRainHook, FreecamHook, CompassHook, LootBinHook {
 
     private final TweakRegistry registry;
     private boolean zoomActive;
@@ -327,6 +328,21 @@ public final class TweakHooksImpl implements AntiDropHook, ForceBrightnessHook, 
     }
 
     @Override
+    public boolean freecamHideHudWhileActive() {
+        return Boolean.TRUE.equals(state(TweakId.FREECAM).configurable("hideHudWhileActive"));
+    }
+
+    @Override
+    public boolean freecamOnHurtDisablesFreecam() {
+        return "DISABLE_FREECAM".equals(state(TweakId.FREECAM).configurable("onHurt"));
+    }
+
+    @Override
+    public boolean freecamOnHurtShowsHurtIndicator() {
+        return "HURT_INDICATOR".equals(state(TweakId.FREECAM).configurable("onHurt"));
+    }
+
+    @Override
     public boolean isCompassActive() {
         return state(TweakId.COMPASS).enabled();
     }
@@ -334,5 +350,15 @@ public final class TweakHooksImpl implements AntiDropHook, ForceBrightnessHook, 
     @Override
     public Object compassConfigurable(String key) {
         return state(TweakId.COMPASS).configurable(key);
+    }
+
+    @Override
+    public boolean isLootBinActive() {
+        return state(TweakId.LOOT_BIN).enabled();
+    }
+
+    @Override
+    public Object lootBinConfigurable(String key) {
+        return state(TweakId.LOOT_BIN).configurable(key);
     }
 }

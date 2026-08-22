@@ -114,8 +114,10 @@ public final class ConfigSchemas {
         ALL.put(TweakId.FREECAM, List.of(
                 ConfigFieldSpec.numeric("moveSpeed", "Move Speed", 0.25, 5.0, 0.25),
                 ConfigFieldSpec.numeric("sprintMultiplier", "Sprint Multiplier", 1.0, 5.0, 0.5),
-                ConfigFieldSpec.bool("noclip", "Noclip")
+                ConfigFieldSpec.bool("noclip", "Noclip"),
                 // no moveSpeedRescaled row (internal-only marker, no ConfigFieldSpec entry)
+                ConfigFieldSpec.bool("hideHudWhileActive", "Hide HUD While Active"),
+                ConfigFieldSpec.enumField("onHurt", "On Hurt", List.of("DISABLE_FREECAM", "HURT_INDICATOR", "NOTHING"))
         ));
 
         ALL.put(TweakId.COMPASS, List.of(
@@ -123,6 +125,18 @@ public final class ConfigSchemas {
                 ConfigFieldSpec.bool("showCardinals", "Show Cardinal Letters"),
                 ConfigFieldSpec.bool("showHeadingReadout", "Show Heading Readout"),
                 ConfigFieldSpec.bool("showBorder", "Show Border")
+        ));
+
+        ALL.put(TweakId.LOOT_BIN, List.of(
+                ConfigFieldSpec.bool("applyToChestFamily", "Chests / Barrels / Ender Chests"),
+                ConfigFieldSpec.bool("applyToShulkerBox", "Shulker Boxes"),
+                ConfigFieldSpec.enumField("groupOrder", "Group Order",
+                        List.of("CREATIVE_TAB_ORDER", "ALPHABETICAL")),
+                ConfigFieldSpec.enumField("sortWithinGroup", "Sort Within Group",
+                        List.of("CREATIVE_ORDER", "COUNT_DESC", "ALPHABETICAL")),
+                ConfigFieldSpec.bool("showSearchBar", "Show Search Bar"),
+                ConfigFieldSpec.enumField("countTextStyle", "Count Text Style",
+                        List.of("PLAIN", "WITH_STACK_HINT"))
         ));
     }
 

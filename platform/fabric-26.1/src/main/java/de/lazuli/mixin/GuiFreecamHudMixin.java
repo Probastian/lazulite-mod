@@ -1,0 +1,61 @@
+package de.lazuli.mixin;
+
+import de.lazuli.tweaks.FreecamTicker;
+import de.lazuli.tweaks.TweakEngineHandoff;
+import de.lazuli.tweaks.TweakHooksImpl;
+
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.Gui;
+import net.minecraft.world.entity.player.Player;
+
+import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
+
+/**
+ * Tweaks spec T14 (Freecam) Addendum 2 AD-7 -- HUD (hotbar/health/hunger/
+ * armor/air) hidden by default while Freecam is active; add a toggle,
+ * default to shown. Also AD-8's HUD half: a fixed reveal window when
+ * {@code onHurt == HURT_INDICATOR}.
+ *
+ * <p><strong>Confirmed root cause/choke point via {@code javap -c} against
+ * this module's own resolved merged Minecraft jar:</strong> {@code
+ * Gui.getCameraPlayer()} (private, {@code this.minecraft.getCameraEntity()
+ * instanceof Player ? (Player) ... : null}) is a single shared choke point
+ * with exactly three call sites in this class -- {@code
+ * extractHotbarAndDecorations}, {@code extractPlayerHealth} (itself gating
+ * hearts/food/armor/air bubbles), and {@code getPlayerVehicleWithHealth}
+ * (mount health) -- confirmed identical in shape and call-site count to
+ * {@code fabric-26.2}'s {@code Hud.getCameraPlayer()} and {@code
+ * fabric-1.21.11}'s {@code InGameHud.getCameraPlayer()} (no 26.1-vs-26.2
+ * divergence found here, unlike several other adjacent HUD-family methods).
+ * The XP/contextual bar family is a separate, unaffected call path
+ * (confirmed absent from this method's call sites) -- out of scope per spec,
+ * untouched by this mixin.
+ *
+ * <p>Fix: while Freecam is active and either the user has not opted into
+ * {@code hideHudWhileActive} or AD-8's hurt-reveal window is currently open,
+ * spoof this one method's return value to the real local player -- mirrors
+ * {@code LevelRendererFreecamShowBodyMixin}'s existing "there is only ever
+ * one local player instance" spoof-the-return-value shape exactly, applied
+ * to the single owning method rather than each of its three call sites.
+ */
+@Mixin(Gui.class)
+abstract class GuiFreecamHudMixin {
+
+    @Inject(method = "getCameraPlayer", at = @At("HEAD"), cancellable = true)
+    private void lazuli$revealHudDuringFreecam(CallbackInfoReturnable<Player> cir) {
+        TweakHooksImpl hooks = TweakEngineHandoff.require();
+        if (!hooks.isFreecamActive()) {
+            return;
+        }
+        if (hooks.freecamHideHudWhileActive() && !FreecamTicker.isHurtRevealActive()) {
+            return;
+        }
+        Player player = Minecraft.getInstance().player;
+        if (player != null) {
+            cir.setReturnValue(player);
+        }
+    }
+}

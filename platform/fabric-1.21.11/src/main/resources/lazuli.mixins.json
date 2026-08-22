@@ -29,7 +29,10 @@
 		"MinecraftClientFreecamSuppressInteractionMixin",
 		"ClientPlayerEntityFreecamKeepPositionSyncMixin",
 		"MouseFreecamLookRedirectMixin",
-		"PlayerEntityFreecamSuppressSneakMixin"
+		"PlayerEntityFreecamSuppressSneakMixin",
+		"ClientPlayerEntityFreecamZeroMovementInputMixin",
+		"InGameHudFreecamHudMixin",
+		"LivingEntityFreecamOnHurtMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1

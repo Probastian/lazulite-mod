@@ -31,7 +31,10 @@
 		"MinecraftFreecamSuppressInteractionMixin",
 		"LocalPlayerFreecamKeepPositionSyncMixin",
 		"MouseHandlerFreecamLookRedirectMixin",
-		"PlayerFreecamSuppressSneakMixin"
+		"PlayerFreecamSuppressSneakMixin",
+		"LocalPlayerFreecamZeroMovementInputMixin",
+		"HudFreecamHudMixin",
+		"LivingEntityFreecamOnHurtMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1

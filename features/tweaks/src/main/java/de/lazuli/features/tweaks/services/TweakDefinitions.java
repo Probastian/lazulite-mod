@@ -130,17 +130,25 @@ public final class TweakDefinitions {
 
     public static final TweakDefinition FREECAM = of(TweakId.FREECAM,
             "Toggles a detached, free-flying spectator-style camera with configurable speed and block noclip.",
-            map("moveSpeed", 1.0, "sprintMultiplier", 2.0, "noclip", true, "moveSpeedRescaled", true), false);
+            map("moveSpeed", 1.0, "sprintMultiplier", 2.0, "noclip", true, "moveSpeedRescaled", true,
+                    "hideHudWhileActive", false, "onHurt", "NOTHING"), false);
 
     public static final TweakDefinition COMPASS = of(TweakId.COMPASS,
             "Configures the waypoint compass bar above the hotbar: waypoint dots, cardinal letters, heading readout, and border.",
             map("showWaypoints", true, "showCardinals", true, "showHeadingReadout", false, "showBorder", true),
             false, true);
 
+    public static final TweakDefinition LOOT_BIN = of(TweakId.LOOT_BIN,
+            "Replaces storage-container screens with a searchable, grouped item list; every click still issues one ordinary vanilla slot click.",
+            map("applyToChestFamily", true, "applyToShulkerBox", true,
+                    "groupOrder", "CREATIVE_TAB_ORDER", "sortWithinGroup", "CREATIVE_ORDER",
+                    "showSearchBar", true, "countTextStyle", "PLAIN"),
+            true);
+
     public static final List<TweakDefinition> ALL = List.of(
             ANTI_DROP, FORCE_BRIGHTNESS, CHAT_FILTER, CHAT_PLAYER_HEADS, CUSTOM_CROSSHAIR,
             DISABLE_ANIMATIONS, DISABLE_PARTICLES, HIDE_PLAYER_NAMES, CLEAR_WATER,
-            DISABLE_COSMETICS, ZOOM, DISABLE_BOSS_BARS, NO_RAIN, FREECAM, COMPASS);
+            DISABLE_COSMETICS, ZOOM, DISABLE_BOSS_BARS, NO_RAIN, FREECAM, COMPASS, LOOT_BIN);
 
     public static TweakDefinition byId(TweakId id) {
         for (TweakDefinition def : ALL) {

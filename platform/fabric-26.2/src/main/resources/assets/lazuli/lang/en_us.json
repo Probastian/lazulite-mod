@@ -29,6 +29,8 @@
 	"key.lazuli.disable_boss_bars": "Disable Boss Bars: Toggle",
 	"key.lazuli.no_rain": "No Rain: Toggle",
 	"key.lazuli.freecam": "Freecam: Toggle",
+	"key.lazuli.loot_bin": "Loot Bin UI: Toggle",
+	"key.lazuli.loot_bin_toggle_view": "Loot Bin UI: Toggle Grouped View",
 	"tweak.lazuli.anti_drop": "Anti-Drop",
 	"tweak.lazuli.force_brightness": "Force Brightness",
 	"tweak.lazuli.chat_filter": "Chat Filter",
@@ -40,5 +42,6 @@
 	"tweak.lazuli.clear_water": "Clear Water",
 	"tweak.lazuli.disable_cosmetics": "Disable Cosmetics",
 	"tweak.lazuli.zoom": "Zoom",
-	"tweak.lazuli.disable_boss_bars": "Disable Boss Bars"
+	"tweak.lazuli.disable_boss_bars": "Disable Boss Bars",
+	"tweak.lazuli.loot_bin": "Loot Bin UI"
 }

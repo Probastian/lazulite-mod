@@ -37,6 +37,7 @@ public final class TweaksKeyBindings {
 
     private final Map<TweakId, KeyMapping> primary = new EnumMap<>(TweakId.class);
     private final KeyMapping antiDropSecondary;
+    private final KeyMapping lootBinSecondary;
 
     public TweaksKeyBindings() {
         for (TweakId id : TweakId.values()) {
@@ -46,14 +47,24 @@ public final class TweaksKeyBindings {
         }
         antiDropSecondary = KeyMappingHelper.registerKeyMapping(
                 new KeyMapping("key.lazuli.anti_drop_toggle_whitelist", GLFW.GLFW_KEY_UNKNOWN, CATEGORY));
+        lootBinSecondary = KeyMappingHelper.registerKeyMapping(
+                new KeyMapping("key.lazuli.loot_bin_toggle_view", GLFW.GLFW_KEY_UNKNOWN, CATEGORY));
     }
 
     public KeyMapping keyBindingOf(TweakId id) {
         return primary.get(id);
     }
 
-    /** Non-null only for {@link TweakId#ANTI_DROP}; {@code null} for every other tweak. */
+    /**
+     * Non-null for {@link TweakId#ANTI_DROP} (whitelist toggle) and
+     * {@link TweakId#LOOT_BIN} (grouped/vanilla-grid view toggle, spec R15);
+     * {@code null} for every other tweak.
+     */
     public KeyMapping secondaryKeyBindingOf(TweakId id) {
-        return id == TweakId.ANTI_DROP ? antiDropSecondary : null;
+        return switch (id) {
+            case ANTI_DROP -> antiDropSecondary;
+            case LOOT_BIN -> lootBinSecondary;
+            default -> null;
+        };
     }
 }

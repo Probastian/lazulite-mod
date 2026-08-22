@@ -39,6 +39,16 @@ import net.minecraft.world.phys.Vec3;
  * compensates for the {@code moveSpeed} configurable's rescaled 0.25-5.0 UI
  * range so a migrated user's felt flight speed is unchanged -- see {@code
  * TweaksConfigIO.parse}'s {@code FREECAM}-scoped migration branch.
+ *
+ * <p><strong>Addendum 2 AD-8:</strong> {@link #onLocalPlayerHurt()} is called
+ * by {@code LivingEntityFreecamOnHurtMixin} whenever the local player's own {@code
+ * animateHurt} fires while Freecam is active -- it (a) extends/resets the
+ * fixed 60-client-tick HUD-reveal window ({@link #isHurtRevealActive()},
+ * consumed by {@code GuiFreecamHudMixin} alongside AD-7's own toggle) when
+ * {@code onHurt == HURT_INDICATOR}, and (b) sets a one-tick "hurt this tick"
+ * latch that {@link #lazuli$safetyNetTripped} folds into its existing
+ * disconnect/respawn/dimension-change/death safety-net family when {@code
+ * onHurt == DISABLE_FREECAM}.
  */
 public final class FreecamTicker {
 
@@ -48,11 +58,17 @@ public final class FreecamTicker {
     /** Addendum AD-2: fixed inflate margin (blocks) to avoid boundary flicker -- see spec AD-2. */
     private static final double SHOW_BODY_MARGIN = 0.1;
 
+    /** Addendum 2 AD-8: fixed 60-client-tick (3s) HUD-reveal-on-hurt window -- see spec AD-8. */
+    private static final long HURT_REVEAL_TICKS = 60L;
+
     private static FreecamCameraEntity cameraEntity;
     private static LocalPlayer lastPlayer;
     private static ResourceKey<Level> lastDimension;
     private static boolean wasActive;
     private static boolean cameraInsidePlayerBounds;
+    private static long tickCounter;
+    private static long hurtRevealUntilTick = Long.MIN_VALUE;
+    private static boolean hurtSignalPending;
 
     private FreecamTicker() {
     }
@@ -71,13 +87,29 @@ public final class FreecamTicker {
         return cameraInsidePlayerBounds;
     }
 
+    /** Addendum 2 AD-8: true if a HUD-reveal-on-hurt window (onHurt == HURT_INDICATOR) is currently active. */
+    public static boolean isHurtRevealActive() {
+        return tickCounter <= hurtRevealUntilTick;
+    }
+
+    /** Addendum 2 AD-8: called by {@code LivingEntityFreecamOnHurtMixin} when the local player's own hurt animation fires while Freecam is active. */
+    public static void onLocalPlayerHurt() {
+        hurtSignalPending = true;
+    }
+
     private static void lazuli$tick(Minecraft client, TweakHooksImpl hooks, TweakRegistry registry) {
+        tickCounter++;
         boolean active = hooks.isFreecamActive();
 
-        if (active && lazuli$safetyNetTripped(client)) {
+        if (active && hurtSignalPending && hooks.freecamOnHurtShowsHurtIndicator()) {
+            hurtRevealUntilTick = tickCounter + HURT_REVEAL_TICKS;
+        }
+
+        if (active && lazuli$safetyNetTripped(client, hooks)) {
             registry.setEnabled(TweakId.FREECAM, false);
             active = false;
         }
+        hurtSignalPending = false;
 
         if (active && !wasActive) {
             lazuli$activate(client);
@@ -100,8 +132,13 @@ public final class FreecamTicker {
         }
     }
 
-    /** Disconnect, respawn (new player instance), dimension change, or death (spec Requirements T14 safety net). */
-    private static boolean lazuli$safetyNetTripped(Minecraft client) {
+    /**
+     * Disconnect, respawn (new player instance), dimension change, or death
+     * (spec Requirements T14 safety net). Addendum 2 AD-8 adds a 5th
+     * condition: a pending "hurt this tick" signal while {@code onHurt ==
+     * DISABLE_FREECAM}.
+     */
+    private static boolean lazuli$safetyNetTripped(Minecraft client, TweakHooksImpl hooks) {
         if (client.level == null || client.player == null) {
             return true;
         }
@@ -111,7 +148,10 @@ public final class FreecamTicker {
         if (lastDimension != null && !lastDimension.equals(client.level.dimension())) {
             return true;
         }
-        return client.player.isDeadOrDying() || client.player.getHealth() <= 0.0f;
+        if (client.player.isDeadOrDying() || client.player.getHealth() <= 0.0f) {
+            return true;
+        }
+        return hurtSignalPending && hooks.freecamOnHurtDisablesFreecam();
     }
 
     private static void lazuli$activate(Minecraft client) {
