@@ -120,6 +120,15 @@ abstract class HudWaypointCompassBarMixin {
         // 15-degree position, instead of a separate label row above the bar
         // -- gated behind this toggle so they can be turned off entirely.
         private static final boolean SHOW_CARDINALS = true;
+        // Live-refinement pass 3 (post-5b3dc97 in-game test): vanilla's font
+        // renders roughly FONT_GLYPH_HEIGHT px tall, which is now taller than
+        // the bar itself (BAR_HEIGHT=6) since the previous pass shrank the
+        // bar -- scale the cardinal letters down via GuiGraphicsExtractor's
+        // own pose()/Matrix3x2fStack (same push/scale/pop mechanism already
+        // used by HomePanel/TweaksPanel for the opposite, scale-up case) so
+        // their rendered height roughly matches TICK_HEIGHT instead.
+        private static final int FONT_GLYPH_HEIGHT = 8;
+        private static final float CARDINAL_SCALE = (float) TICK_HEIGHT / FONT_GLYPH_HEIGHT;
 
         // Fix #4: a little less transparent than the original 0x66 (40%)
         // alpha, plus a thin light-grey border around the bar's rectangle.
@@ -244,12 +253,40 @@ abstract class HudWaypointCompassBarMixin {
                 int normalizedBearing = ((worldBearing % 360) + 360) % 360;
                 String cardinal = SHOW_CARDINALS ? cardinalLabelFor(normalizedBearing) : null;
                 if (cardinal != null) {
-                    extractor.centeredText(client.font, cardinal, tickX, tickCenterY - 4, COLOR_CARDINAL_LABEL);
+                    drawScaledCardinal(extractor, client, cardinal, tickX, tickCenterY);
                 } else {
                     int tickTop = barTop + (BAR_HEIGHT - TICK_HEIGHT) / 2;
                     extractor.fill(tickX, tickTop, tickX + 1, tickTop + TICK_HEIGHT, COLOR_TICK);
                 }
             }
+        }
+
+        /**
+         * Live-refinement pass 3: scales the N/E/S/W glyph down to roughly
+         * {@link #TICK_HEIGHT}'s visual height via a pose push/scale/pop
+         * around the draw call -- {@code GuiGraphicsExtractor} has no
+         * font-size parameter (confirmed via {@code javap -p}, matches
+         * {@code minecraft.md}'s Obfuscation Boundary table entry for this
+         * class), so scaling requires this matrix-transform approach
+         * instead, same mechanism {@code HomePanel}/{@code TweaksPanel}
+         * already use (in reverse, for scale-up) via {@code
+         * GuiGraphicsExtractor.pose()}'s {@code Matrix3x2fStack}.
+         *
+         * <p>Because the scale transform is anchored at the coordinate
+         * system's origin (not the text's own position), both the X and Y
+         * draw coordinates passed to {@code centeredText} are pre-divided by
+         * {@link #CARDINAL_SCALE} so the glyph's on-screen center lands back
+         * on {@code tickX}/{@code tickCenterY} once the scale is applied --
+         * otherwise the letters would visibly drift off their tick position.
+         */
+        private static void drawScaledCardinal(GuiGraphicsExtractor extractor, Minecraft client, String cardinal, int tickX, int tickCenterY) {
+            var pose = extractor.pose();
+            pose.pushMatrix();
+            pose.scale(CARDINAL_SCALE, CARDINAL_SCALE);
+            int localX = Math.round(tickX / CARDINAL_SCALE);
+            int localY = Math.round(tickCenterY / CARDINAL_SCALE - FONT_GLYPH_HEIGHT / 2f);
+            extractor.centeredText(client.font, cardinal, localX, localY, COLOR_CARDINAL_LABEL);
+            pose.popMatrix();
         }
 
         private static String cardinalLabelFor(int normalizedBearing) {
